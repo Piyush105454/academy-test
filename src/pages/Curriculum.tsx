@@ -120,21 +120,36 @@ const isSubjectHiddenInPublic = (name: string) => {
   );
 };
 
-const getDisplaySubjectName = (name: string, isPublicView: boolean = false) => {
+const getDisplaySubjectName = (name: string) => {
   if (!name) return name;
-  if (!isPublicView) return name;
-  
   const lower = name.toLowerCase().trim();
-  if (lower.includes('artificial intelligence')) {
-    return 'Artificial Intelligence (Main)';
+  if (lower.includes('certified computer') || lower.includes('computer course')) {
+    return '1. Certified Computer Course (CCC)';
   }
-  if (lower.includes('cybersecurity') || lower.includes('cyber security')) {
-    return 'Cybersecurity (Specialization)';
+  if (lower.includes('english') || lower.includes('soft skill')) {
+    return '2. English Com and Soft Skill';
+  }
+  if (lower.includes('artificial intelligence')) {
+    return '3.1 Artificial Intelligence (Main)';
   }
   if (lower.includes('python')) {
-    return 'Python (Specialization)';
+    return '3.2 Python (Specialization)';
+  }
+  if (lower.includes('cybersecurity') || lower.includes('cyber security') || lower.includes('cyber')) {
+    return '3.3 Cybersecurity (Specialization)';
   }
   return name;
+};
+
+const getSubjectSortOrder = (name: string): number => {
+  if (!name) return 99;
+  const lower = name.toLowerCase().trim();
+  if (lower.includes('certified computer') || lower.includes('computer course')) return 1;
+  if (lower.includes('english') || lower.includes('soft skill')) return 2;
+  if (lower.includes('artificial intelligence')) return 3;
+  if (lower.includes('python')) return 4;
+  if (lower.includes('cybersecurity') || lower.includes('cyber security') || lower.includes('cyber')) return 5;
+  return 99;
 };
 
 export default function Curriculum({ isStudent = false }: { isStudent?: boolean }) {
@@ -317,10 +332,10 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     return Object.values(subjectsMap);
   })();
 
-  const rawSubjectName = selectedSubject && selectedSubject !== 'all' 
-    ? subjects.find(s => s.id === selectedSubject)?.name || 'Subject' 
+  const rawSubjectName = selectedSubject && selectedSubject !== 'all'
+    ? subjects.find((s) => s.id === selectedSubject)?.name || ''
     : 'All Subjects Included';
-  const currentSubjectName = getDisplaySubjectName(rawSubjectName, isPublic);
+  const currentSubjectName = getDisplaySubjectName(rawSubjectName);
 
   const handleColumnSort = (column: keyof CurriculumItem) => {
     if (sortColumn === column) {
@@ -624,25 +639,42 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
 
   const fetchSubjects = async (classId?: string) => {
     try {
-      let query: any = supabase
-        .from('subjects')
-        .select('id, name, description')
-        .order('name', { ascending: true });
+      let subjectsList: any[] = [];
 
-      const { data, error } = await query;
+      if (classId) {
+        // Fetch only subjects assigned to the selected class's curriculum
+        const { data: currSubjects, error: currErr } = await supabase
+          .from('curriculum')
+          .select('subject_id, subjects:subject_id(id, name, description)')
+          .eq('class_id', classId);
 
-      if (error) {
-        // Fallback: fetch all subjects if class_id filter fails
-        const { data: allData } = await (supabase as any)
-          .from('subjects')
-          .select('id, name, description')
-          .order('name', { ascending: true });
-        setSubjects(allData || []);
-        return;
+        if (!currErr && currSubjects && currSubjects.length > 0) {
+          const subMap = new Map<string, any>();
+          currSubjects.forEach((item: any) => {
+            if (item.subjects && item.subjects.id) {
+              subMap.set(item.subjects.id, item.subjects);
+            }
+          });
+          subjectsList = Array.from(subMap.values());
+        }
       }
-      setSubjects(data || []);
+
+      // Fallback if no classId or no curriculum records for classId
+      if (subjectsList.length === 0) {
+        const { data, error } = await supabase
+          .from('subjects')
+          .select('id, name, description');
+        if (!error && data) {
+          subjectsList = data;
+        }
+      }
+
+      // Sort by custom subject sequence
+      subjectsList.sort((a, b) => getSubjectSortOrder(a.name) - getSubjectSortOrder(b.name));
+
+      setSubjects(subjectsList);
     } catch (error) {
-      console.warn('Subjects table not available yet');
+      console.warn('Error fetching subjects:', error);
       setSubjects([]);
     }
   };
@@ -1176,7 +1208,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                   .filter((subject) => !isPublic || !isSubjectHiddenInPublic(subject.name))
                   .map((subject) => (
                     <SelectItem key={subject.id} value={subject.id}>
-                      {getDisplaySubjectName(subject.name, isPublic)}
+                      {getDisplaySubjectName(subject.name)}
                     </SelectItem>
                   ))}
               </SelectContent>
@@ -1358,7 +1390,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                       {filteredCurriculum.map((item) => (
                         <TableRow key={item.id}>
                           <TableCell>
-                            <Badge variant="secondary">{getDisplaySubjectName(item.subject_name || 'Unassigned', isPublic)}</Badge>
+                            <Badge variant="secondary">{getDisplaySubjectName(item.subject_name || 'Unassigned')}</Badge>
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline"><TruncatedText text={item.content_category} maxLength={15} /></Badge>

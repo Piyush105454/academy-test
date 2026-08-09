@@ -50,7 +50,7 @@ const navGroups: NavGroup[] = [
     items: [
       { title: 'Student Earnings', url: '/admin-earnings', icon: ClipboardList, requiredRole: null, studentVisible: false },
       { title: 'Facilitator Earnings', url: '/admin-facilitator-earnings', icon: ClipboardList, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
-      { title: 'Volunteer Log Hours', url: '/volunteer-log-hours', icon: Clock, requiredRole: null, studentVisible: false },
+      { title: 'Volunteer Log Hours', url: '/volunteer-log-hours', icon: Clock, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
     ]
   },
   {
