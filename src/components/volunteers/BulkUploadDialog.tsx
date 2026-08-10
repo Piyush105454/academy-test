@@ -208,10 +208,10 @@ export function BulkUploadDialog({ open, onOpenChange, onSuccess }: BulkUploadDi
         toast.warning(`${previewData.length - newVolunteers.length} duplicate(s) skipped`);
       }
 
-      const volunteersToInsert = newVolunteers.map(v => ({
-        ...v,
-        volunteer_id: generateVolunteerId(v)
-      }));
+      const volunteersToInsert = newVolunteers.map(v => {
+        const { volunteer_id, ...rest } = v as any;
+        return rest;
+      });
 
       // Insert with error handling for conflicts
       console.log(`Attempting to insert ${volunteersToInsert.length} volunteers...`);

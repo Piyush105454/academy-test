@@ -94,9 +94,10 @@ export default function FacilitatorEarnings() {
       const fetchedRecords = data || [];
       
       const filtered = fetchedRecords.filter(r => {
-        const earnedAt = new Date(r.created_at);
-        const matchesAcademicYear = earnedAt >= startDate && earnedAt <= endDate;
-        const matchesMonth = selectedMonth === 'all' || earnedAt.getMonth().toString() === selectedMonth;
+        const recordDateStr = r.sessions?.session_date || r.created_at;
+        const recordDate = new Date(recordDateStr);
+        const matchesAcademicYear = recordDate >= startDate && recordDate <= endDate;
+        const matchesMonth = selectedMonth === 'all' || recordDate.getMonth().toString() === selectedMonth;
         return matchesAcademicYear && matchesMonth;
       });
       

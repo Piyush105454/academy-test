@@ -374,7 +374,7 @@ export default function AdminFacilitatorEarnings() {
       // Filter existing recorded earnings by academic year
       const recorded: EarningRecord[] = (data || [])
         .filter(r => {
-          const earnedAt = new Date(r.created_at);
+          const earnedAt = r.sessions?.session_date ? new Date(r.sessions.session_date) : new Date(r.created_at);
           return earnedAt >= startDate && earnedAt <= endDate;
         })
         .map(r => {

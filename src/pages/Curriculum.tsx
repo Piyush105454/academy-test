@@ -152,6 +152,34 @@ const getSubjectSortOrder = (name: string): number => {
   return 99;
 };
 
+const getDisplayCategoryName = (name: string) => {
+  if (!name) return name;
+  const lower = name.toLowerCase().trim();
+  if (lower === 'microsoft - ai content' || lower.includes('3.1.1')) {
+    return '3.1.1 Microsoft - AI Content';
+  }
+  if (lower === 'students requested - topics' || lower.includes('3.1.2')) {
+    return '3.1.2 Students Requested - Topics';
+  }
+  if (lower === 'python programming - topics' || lower.includes('3.1.3')) {
+    return '3.1.3 Python Programming Basic - Topics';
+  }
+  if (lower === 'gt suggested - topics' || lower === 'volunteers suggested - topics' || lower.includes('3.1.4')) {
+    return '3.1.4 Volunteers Suggested - Topics';
+  }
+  return name;
+};
+
+const getCategorySortOrder = (name: string): number => {
+  if (!name) return 99;
+  const lower = name.toLowerCase().trim();
+  if (lower.includes('3.1.1') || lower.includes('microsoft')) return 1;
+  if (lower.includes('3.1.2') || lower.includes('students requested')) return 2;
+  if (lower.includes('3.1.3') || lower.includes('python programming')) return 3;
+  if (lower.includes('3.1.4') || lower.includes('volunteers suggested') || lower.includes('gt suggested')) return 4;
+  return 99;
+};
+
 export default function Curriculum({ isStudent = false }: { isStudent?: boolean }) {
   const { user } = useAuth();
   const [curriculum, setCurriculum] = useState<CurriculumItem[]>([]);
@@ -398,7 +426,8 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     if (selectedSubject && selectedSubject !== 'all') {
       source = source.filter((item) => item.subject_id === selectedSubject);
     }
-    const uniqueCategories = [...new Set(source.map((item) => item.content_category))].sort();
+    const uniqueCategories = [...new Set(source.map((item) => item.content_category))]
+      .sort((a, b) => getCategorySortOrder(a) - getCategorySortOrder(b) || a.localeCompare(b));
     setCategories(uniqueCategories as string[]);
     // Reset category if current selection is no longer valid
     if (selectedCategory !== 'all' && !uniqueCategories.includes(selectedCategory)) {
@@ -1238,7 +1267,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                 <SelectItem value="all">All Categories</SelectItem>
                 {categories.map((category) => (
                   <SelectItem key={category} value={category}>
-                    {category}
+                    {getDisplayCategoryName(category)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1404,7 +1433,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                             <Badge variant="secondary">{getDisplaySubjectName(item.subject_name || 'Unassigned')}</Badge>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline"><TruncatedText text={item.content_category} maxLength={15} /></Badge>
+                            <Badge variant="outline"><TruncatedText text={getDisplayCategoryName(item.content_category)} maxLength={25} /></Badge>
                           </TableCell>
                           <TableCell className="font-medium"><TruncatedText text={item.module_title} maxLength={25} /></TableCell>
                           <TableCell className="max-w-[200px]"><TruncatedText text={item.topic_title} maxLength={25} /></TableCell>
@@ -1606,7 +1635,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                       {/* Category and Module Info */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <Badge variant="outline" className="mb-2">{item.content_category}</Badge>
+                          <Badge variant="outline" className="mb-2">{getDisplayCategoryName(item.content_category)}</Badge>
                           <h3 className="font-semibold text-foreground break-words">{item.module_title}</h3>
                           <p className="text-xs text-muted-foreground mt-1">Module No & Module Name</p>
                         </div>
