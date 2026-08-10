@@ -63,17 +63,44 @@ export function EditCategoryModuleTopicDialog({
     try {
       setLoading(true);
 
+      const oldCategory = item.content_category;
+      const oldModule = item.module_title;
+      const oldTopic = item.topic_title;
+
+      const newCategory = formData.content_category.trim() || null;
+      const newModule = formData.module_name.trim() || null;
+      const newTopic = formData.topics_covered.trim() || null;
+
       const { error } = await supabase
         .from('curriculum')
         .update({
-          content_category: formData.content_category.trim() || null,
-          module_name: formData.module_name.trim() || null,
-          topics_covered: formData.topics_covered.trim() || null,
+          content_category: newCategory,
+          module_name: newModule,
+          topics_covered: newTopic,
           updated_at: new Date().toISOString(),
         })
         .eq('id', item.id);
 
       if (error) throw error;
+
+      // Cascade update to sessions table so scheduled sessions stay linked
+      if (oldTopic) {
+        const sessionUpdate: any = {};
+        if (newTopic && newTopic !== oldTopic) sessionUpdate.topics_covered = newTopic;
+        if (newModule && newModule !== oldModule) sessionUpdate.module_name = newModule;
+        if (newCategory && newCategory !== oldCategory) sessionUpdate.content_category = newCategory;
+
+        if (Object.keys(sessionUpdate).length > 0) {
+          const { error: sessionErr } = await supabase
+            .from('sessions')
+            .update(sessionUpdate)
+            .eq('topics_covered', oldTopic);
+
+          if (sessionErr) {
+            console.warn('Warning: Failed to sync sessions table with new curriculum details:', sessionErr);
+          }
+        }
+      }
 
       toast.success('Category, Module & Topic updated successfully');
       onOpenChange(false);

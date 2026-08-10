@@ -259,6 +259,17 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
   const [modules, setModules] = useState<string[]>([]);
   const [topics, setTopics] = useState<string[]>([]);
   const [sessionInfo, setSessionInfo] = useState<Record<string, SessionInfo>>({});
+
+  const getSessionInfo = (topicTitle?: string): SessionInfo | undefined => {
+    if (!topicTitle) return undefined;
+    if (sessionInfo[topicTitle]) return sessionInfo[topicTitle];
+    const trimmed = topicTitle.trim();
+    if (sessionInfo[trimmed]) return sessionInfo[trimmed];
+    const match = Object.keys(sessionInfo).find(
+      (k) => k.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    return match ? sessionInfo[match] : undefined;
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -293,7 +304,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     let revisionCompleted = 0;
     
     subjectBaseCurriculum.forEach(item => {
-      const info = sessionInfo[item.topic_title];
+      const info = getSessionInfo(item.topic_title);
       if (info) {
         const fresh = getFilteredSessions(info.fresh_sessions);
         if (fresh.some(s => s.status === 'completed')) freshCompleted++;
@@ -322,7 +333,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
       }
       subjectsMap[sId].total++;
       
-      const info = sessionInfo[item.topic_title];
+      const info = getSessionInfo(item.topic_title);
       if (info) {
         if (info.fresh_sessions?.some(s => s.status === 'completed')) subjectsMap[sId].fresh++;
         if (info.revision_sessions?.some(s => s.status === 'completed')) subjectsMap[sId].revision++;
@@ -402,7 +413,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
       const volunteerSubjectIds = new Set<string>();
       
       curriculum.forEach(item => {
-        const info = sessionInfo[item.topic_title];
+        const info = getSessionInfo(item.topic_title);
         if (info) {
           const hasFresh = info.fresh_sessions?.some(s => s.volunteer.toLowerCase().includes(search));
           const hasRevision = info.revision_sessions?.some(s => s.volunteer.toLowerCase().includes(search));
@@ -449,7 +460,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     // Filter by status
     if (statusFilter !== 'all') {
       filtered = filtered.filter((item) => {
-        const info = sessionInfo[item.topic_title];
+        const info = getSessionInfo(item.topic_title);
         if (statusFilter === 'fresh') {
           return info?.fresh_status === statusFilter || info?.fresh_count > 0;
         } else if (statusFilter === 'revision') {
@@ -462,7 +473,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     // Filter by session type (Fresh or Revision)
     if (sessionTypeFilter !== 'all') {
       filtered = filtered.filter((item) => {
-        const info = sessionInfo[item.topic_title];
+        const info = getSessionInfo(item.topic_title);
         if (sessionTypeFilter === 'fresh') {
           return info?.fresh_count > 0;
         } else if (sessionTypeFilter === 'revision') {
@@ -475,7 +486,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     // Filter by session category (GT/GS/LT)
     if (sessionCategoryFilter !== 'all') {
       filtered = filtered.filter((item) => {
-        const info = sessionInfo[item.topic_title];
+        const info = getSessionInfo(item.topic_title);
         // Check if there are ANY sessions of the selected type for this topic
         return (info as any)?.session_types?.has(sessionCategoryFilter);
       });
@@ -484,7 +495,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter((item) => {
-        const info = sessionInfo[item.topic_title];
+        const info = getSessionInfo(item.topic_title);
         return (
           item.content_category?.toLowerCase().includes(q) ||
           item.module_code?.toLowerCase().includes(q) ||
@@ -504,7 +515,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     if (publicVolunteerSearch.trim()) {
       const search = publicVolunteerSearch.toLowerCase().trim();
       filtered = filtered.filter(item => {
-        const info = sessionInfo[item.topic_title];
+        const info = getSessionInfo(item.topic_title);
         if (!info) return false;
         const hasFresh = info.fresh_sessions?.some(s => s.volunteer.toLowerCase().includes(search));
         const hasRevision = info.revision_sessions?.some(s => s.volunteer.toLowerCase().includes(search));
@@ -857,7 +868,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     const className = classes.find(c => c.id === selectedClass)?.name || 'Unknown';
 
     filteredCurriculum.forEach(item => {
-      const info = sessionInfo[item.topic_title];
+      const info = getSessionInfo(item.topic_title);
       let status = 'Not Started';
       let latestDate = '-';
       let sessionScheduledDate = '-';
@@ -1427,7 +1438,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                           </TableCell>
                           <TableCell>
                             {(() => {
-                              const info = sessionInfo[item.topic_title];
+                              const info = getSessionInfo(item.topic_title);
                               if (!info?.fresh_sessions || info.fresh_sessions.length === 0) {
                                 return <span className="text-muted-foreground text-xs">-</span>;
                               }
@@ -1482,7 +1493,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                           </TableCell>
                           <TableCell>
                             {(() => {
-                              const info = sessionInfo[item.topic_title];
+                              const info = getSessionInfo(item.topic_title);
                               if (!info?.revision_sessions || info.revision_sessions.length === 0) {
                                 return <span className="text-muted-foreground text-xs">-</span>;
                               }
@@ -1637,7 +1648,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
 
                       {/* Fresh Session */}
                       {(() => {
-                        const info = sessionInfo[item.topic_title];
+                        const info = getSessionInfo(item.topic_title);
                         if (!info?.fresh_sessions || info.fresh_sessions.length === 0) {
                           return null;
                         }
@@ -1661,7 +1672,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
 
                       {/* Revision Session */}
                       {(() => {
-                        const info = sessionInfo[item.topic_title];
+                        const info = getSessionInfo(item.topic_title);
                         if (!info?.revision_sessions || info.revision_sessions.length === 0) {
                           return null;
                         }
@@ -1687,7 +1698,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                       <div className="border-t border-border pt-2">
                         <p className="text-xs text-muted-foreground mb-2">Session Status</p>
                         {(() => {
-                          const info = sessionInfo[item.topic_title];
+                          const info = getSessionInfo(item.topic_title);
                           if (!info || (info.fresh_count === 0 && info.revision_count === 0)) {
                             return <span className="text-xs text-muted-foreground">No sessions created</span>;
                           }
@@ -1845,7 +1856,10 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
         open={isEditCategoryModuleTopicOpen}
         onOpenChange={setIsEditCategoryModuleTopicOpen}
         item={selectedItem}
-        onSuccess={() => fetchCurriculum(selectedClass)}
+        onSuccess={() => {
+          fetchCurriculum(selectedClass);
+          fetchSessionInfo(selectedClass);
+        }}
       />
 
       {/* Edit Status Dialog */}
