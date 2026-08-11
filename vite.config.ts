@@ -10,7 +10,12 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "0.0.0.0",
       port: 8080,
-      allowedHosts: ["academy.wazireducationsociety.org", "https://fellow.wazireducationsociety.org","localhost", "127.0.0.1"],
+      allowedHosts: [
+        "fellow.wazireducationsociety.org",
+        "academy.wazireducationsociety.org",
+        "localhost",
+        "127.0.0.1"
+      ],
       hmr: {
         overlay: false,
       },
