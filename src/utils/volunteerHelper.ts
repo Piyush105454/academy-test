@@ -34,3 +34,18 @@ export function generateVolunteerId(v: {
 
   return `${name}-${companyCode}-${city}-${roleShort}`;
 }
+
+/**
+ * Returns effective Volunteer ID (either custom saved ID or formula generated)
+ */
+export function getEffectiveVolunteerId(v: any): string {
+  if (!v) return '';
+  if (v.volunteer_id && typeof v.volunteer_id === 'string' && v.volunteer_id.trim()) {
+    return v.volunteer_id.trim();
+  }
+  if (v.remarks && typeof v.remarks === 'string' && v.remarks.includes('VOLUNTEER_ID:')) {
+    const custom = v.remarks.split('VOLUNTEER_ID:')[1]?.split('\n')[0]?.trim();
+    if (custom) return custom;
+  }
+  return generateVolunteerId(v);
+}

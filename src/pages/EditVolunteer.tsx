@@ -19,7 +19,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { countries, commonIndianCities, countryCodes } from '@/utils/geoData';
-import { generateVolunteerId } from '@/utils/volunteerHelper';
+import { generateVolunteerId, getEffectiveVolunteerId } from '@/utils/volunteerHelper';
 
 const volunteerSchema = z.object({
   organization_type: z.enum(['company', 'individual', 'institute']),
@@ -67,6 +67,7 @@ export default function EditVolunteer() {
   const [preferredDay, setPreferredDay] = useState('none');
   const [preferredClass, setPreferredClass] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [customVolunteerId, setCustomVolunteerId] = useState('');
   const [isOtherCity, setIsOtherCity] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -124,6 +125,7 @@ export default function EditVolunteer() {
         setPreferredDay(data.preferred_day || 'none');
         setPreferredClass(data.preferred_class || '');
         setRemarks(data.remarks || '');
+        setCustomVolunteerId(getEffectiveVolunteerId(data));
         setVolunteerStatus(data.volunteer_status || (data.is_active ? 'active' : 'inactive'));
 
         // Set isOtherCity based on fetched data
@@ -175,6 +177,16 @@ export default function EditVolunteer() {
     }
 
     try {
+      let updatedRemarks = validation.data.remarks || '';
+      if (customVolunteerId.trim()) {
+        if (updatedRemarks.includes('VOLUNTEER_ID:')) {
+          const parts = updatedRemarks.split('VOLUNTEER_ID:');
+          const rest = parts[1]?.split('\n').slice(1).join('\n') || '';
+          updatedRemarks = (parts[0] + rest).trim();
+        }
+        updatedRemarks = `VOLUNTEER_ID:${customVolunteerId.trim()}\n${updatedRemarks}`.trim();
+      }
+
       const { error } = await supabase
         .from('volunteers')
         .update({
@@ -195,7 +207,7 @@ export default function EditVolunteer() {
           interested_topic: validation.data.interested_topic || null,
           preferred_day: validation.data.preferred_day === 'none' ? null : validation.data.preferred_day || null,
           preferred_class: validation.data.preferred_class || null,
-          remarks: validation.data.remarks || null,
+          remarks: updatedRemarks || null,
           volunteer_status: validation.data.volunteer_status,
           is_active: validation.data.volunteer_status === 'active',
         })
@@ -255,19 +267,17 @@ export default function EditVolunteer() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Volunteer ID preview */}
+              {/* Volunteer ID Input */}
               <div className="space-y-1.5 bg-primary/5 p-3.5 rounded-lg border border-primary/20">
-                <Label className="text-xs font-bold uppercase tracking-wider text-primary">Volunteer ID</Label>
-                <div className="font-mono text-sm font-bold text-primary">
-                  {generateVolunteerId({
-                    name,
-                    organization_type: organizationType,
-                    organization_name: organizationName,
-                    city,
-                    preference: preferences.join(', ')
-                  })}
-                </div>
-                <p className="text-[11px] text-muted-foreground">Auto-generated identifier code derived from Volunteer Name, Company, City, and Role</p>
+                <Label htmlFor="customVolunteerId" className="text-xs font-bold uppercase tracking-wider text-primary">Volunteer ID</Label>
+                <Input
+                  id="customVolunteerId"
+                  value={customVolunteerId}
+                  onChange={(e) => setCustomVolunteerId(e.target.value)}
+                  placeholder="Enter Volunteer ID"
+                  className="font-mono text-sm font-bold bg-background text-primary border-primary/30"
+                />
+                <p className="text-[11px] text-muted-foreground">Customize Volunteer ID or keep default formula code</p>
               </div>
 
               <div className="space-y-2">

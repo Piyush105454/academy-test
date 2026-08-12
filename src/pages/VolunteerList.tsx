@@ -54,13 +54,13 @@ import {
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Plus, Users, MoreVertical, Pencil, Calendar, Trash2, UserCheck, UserX, Upload, BookOpen, Settings, Search, ExternalLink, Filter, X } from 'lucide-react';
+import { Plus, Users, MoreVertical, Pencil, Calendar, Trash2, UserCheck, UserX, Upload, BookOpen, Settings, Search, ExternalLink, Filter, X, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { BulkUploadDialog } from '@/components/volunteers/BulkUploadDialog';
 import { SessionTypeDialog } from '@/components/sessions/SessionTypeDialog';
 import { AddSessionDialog } from '@/components/sessions/AddSessionDialog';
 import { getDialCode } from '@/utils/geoData';
-import { generateVolunteerId } from '@/utils/volunteerHelper';
+import { generateVolunteerId, getEffectiveVolunteerId } from '@/utils/volunteerHelper';
 
 interface Volunteer {
   id: string;
@@ -134,7 +134,52 @@ export default function VolunteerList() {
   const [isSavingRemark, setIsSavingRemark] = useState(false);
   const [editingRemarkIndex, setEditingRemarkIndex] = useState<number | null>(null);
   const [editingRemarkText, setEditingRemarkText] = useState<string>('');
+  const [editingVolunteerId, setEditingVolunteerId] = useState(false);
+  const [volunteerIdInput, setVolunteerIdInput] = useState('');
+  const [savingVolunteerId, setSavingVolunteerId] = useState(false);
   const navigate = useNavigate();
+
+  const handleSaveVolunteerId = async () => {
+    if (!selectedVolunteer) return;
+    try {
+      setSavingVolunteerId(true);
+      const newCustomId = volunteerIdInput.trim();
+      let currentRemarks = selectedVolunteer.remarks || '';
+
+      if (currentRemarks.includes('VOLUNTEER_ID:')) {
+        const parts = currentRemarks.split('VOLUNTEER_ID:');
+        const rest = parts[1]?.split('\n').slice(1).join('\n') || '';
+        currentRemarks = (parts[0] + rest).trim();
+      }
+
+      const updatedRemarks = newCustomId
+        ? `VOLUNTEER_ID:${newCustomId}\n${currentRemarks}`
+        : currentRemarks;
+
+      const { error } = await supabase
+        .from('volunteers')
+        .update({ remarks: updatedRemarks, updated_at: new Date().toISOString() })
+        .eq('id', selectedVolunteer.id);
+
+      if (error) throw error;
+
+      const updatedVol = {
+        ...selectedVolunteer,
+        remarks: updatedRemarks,
+        volunteer_id: newCustomId,
+      };
+
+      setSelectedVolunteer(updatedVol);
+      setVolunteers(prev => prev.map(v => v.id === updatedVol.id ? updatedVol : v));
+      setEditingVolunteerId(false);
+      toast.success('Volunteer ID updated successfully!');
+    } catch (err: any) {
+      console.error('Error saving volunteer ID:', err);
+      toast.error('Failed to save Volunteer ID');
+    } finally {
+      setSavingVolunteerId(false);
+    }
+  };
 
   function parseRemarks(remarksStr: string | null): RemarkEntry[] {
     if (!remarksStr) return [];
@@ -1555,7 +1600,52 @@ export default function VolunteerList() {
 
                   <div className="text-muted-foreground">Volunteer ID</div>
                   <div className="font-medium font-mono text-primary font-bold">
-                    {generateVolunteerId(selectedVolunteer)}
+                    {editingVolunteerId ? (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Input
+                          value={volunteerIdInput}
+                          onChange={(e) => setVolunteerIdInput(e.target.value)}
+                          placeholder="Custom Volunteer ID"
+                          className="h-7 text-xs font-mono w-48 bg-background border-primary/40 focus:ring-1"
+                          autoFocus
+                        />
+                        <Button
+                          size="icon"
+                          variant="default"
+                          className="h-7 w-7 bg-green-600 hover:bg-green-700 text-white shrink-0"
+                          title="Save Volunteer ID"
+                          disabled={savingVolunteerId}
+                          onClick={handleSaveVolunteerId}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+                          title="Cancel"
+                          onClick={() => setEditingVolunteerId(false)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <span>{getEffectiveVolunteerId(selectedVolunteer)}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                          title="Edit Volunteer ID"
+                          onClick={() => {
+                            setVolunteerIdInput(getEffectiveVolunteerId(selectedVolunteer));
+                            setEditingVolunteerId(true);
+                          }}
+                        >
+                          <Pencil className="h-3.5 w-3.5 text-primary" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
