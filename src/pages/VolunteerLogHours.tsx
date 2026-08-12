@@ -523,7 +523,6 @@ export default function VolunteerLogHours() {
               <Table className="text-xs">
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead className="font-bold min-w-[200px]">Volunteer ID</TableHead>
                     <TableHead className="font-bold min-w-[180px]">Session ID</TableHead>
                     <TableHead className="font-bold min-w-[160px]">Volunteer Name</TableHead>
                     <TableHead className="font-bold min-w-[180px]">Work Email</TableHead>
@@ -537,27 +536,17 @@ export default function VolunteerLogHours() {
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-xs">Loading completed volunteer logs...</TableCell>
+                      <TableCell colSpan={8} className="text-center py-8 text-xs">Loading completed volunteer logs...</TableCell>
                     </TableRow>
                   ) : filteredLogs.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-xs text-muted-foreground">
+                      <TableCell colSpan={8} className="text-center py-8 text-xs text-muted-foreground">
                         No completed volunteer session records found for the selected month.
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredLogs.map((log) => (
                       <TableRow key={log.session_id} className="hover:bg-muted/40">
-                        {/* 1. VOLUNTEER ID */}
-                        <TableCell className="py-2.5">
-                          <Badge 
-                            variant="outline" 
-                            className="font-mono text-[11px] bg-primary/10 text-primary border-primary/20 font-bold px-2 py-0.5 whitespace-nowrap"
-                          >
-                            {log.volunteer_code}
-                          </Badge>
-                        </TableCell>
-
                         {/* 2. SESSION ID */}
                         <TableCell className="py-2.5">
                           <Badge 

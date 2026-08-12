@@ -71,6 +71,7 @@ interface SessionHoursTracker {
   total_volunteering_time: number;
   logged_hours_in_benevity: boolean;
   notes: string;
+  supervisor_feedback?: string;
 }
 
 export default function FeedbackDetails() {
@@ -264,7 +265,23 @@ export default function FeedbackDetails() {
         throw error;
       }
       if (data) {
-        setHoursTracker(data as unknown as SessionHoursTracker);
+        const record = data as any;
+        let sFeedback = record.supervisor_feedback || '';
+        let cleanNotes = record.notes || '';
+
+        if (!sFeedback && cleanNotes.includes('SUPERVISOR_FEEDBACK:')) {
+          const parts = cleanNotes.split('SUPERVISOR_FEEDBACK:');
+          const fbPart = parts[1]?.split('\n---NOTES---\n')[0] || parts[1];
+          sFeedback = fbPart?.trim() || '';
+          const noteParts = parts[1]?.split('\n---NOTES---\n');
+          cleanNotes = noteParts && noteParts.length > 1 ? noteParts[1].trim() : (parts[0] || '').trim();
+        }
+
+        setHoursTracker({
+          ...record,
+          notes: cleanNotes,
+          supervisor_feedback: sFeedback,
+        } as unknown as SessionHoursTracker);
       }
     } catch (error) {
       console.error('Error fetching hours tracker:', error);
@@ -532,6 +549,12 @@ export default function FeedbackDetails() {
                   <strong>Total Volunteering Time:</strong> {hoursTracker.total_volunteering_time} hrs
                 </p>
                 <p className="mt-2"><strong>Logged in Benevity:</strong> {hoursTracker.logged_hours_in_benevity ? '✓ Yes' : 'No'}</p>
+                {hoursTracker.supervisor_feedback && (
+                  <div className="col-span-2 mt-4 pt-3 border-t border-gray-200">
+                    <span className="font-bold text-gray-800">Supervisor Feedback:</span>
+                    <p className="whitespace-pre-wrap mt-1 text-gray-700">{hoursTracker.supervisor_feedback}</p>
+                  </div>
+                )}
                 {hoursTracker.notes && (
                   <div className="col-span-2 mt-4 pt-3 border-t border-gray-200">
                     <span className="font-bold text-gray-800">Notes:</span>
@@ -1046,6 +1069,12 @@ export default function FeedbackDetails() {
                           </Badge>
                         </TableCell>
                       </TableRow>
+                      {hoursTracker.supervisor_feedback && (
+                        <TableRow>
+                          <TableCell className="font-semibold">Supervisor Feedback</TableCell>
+                          <TableCell className="whitespace-pre-wrap">{hoursTracker.supervisor_feedback}</TableCell>
+                        </TableRow>
+                      )}
                       {hoursTracker.notes && (
                         <TableRow>
                           <TableCell className="font-semibold">Notes</TableCell>

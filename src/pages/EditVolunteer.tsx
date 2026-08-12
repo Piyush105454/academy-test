@@ -19,6 +19,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { countries, commonIndianCities, countryCodes } from '@/utils/geoData';
+import { generateVolunteerId } from '@/utils/volunteerHelper';
 
 const volunteerSchema = z.object({
   organization_type: z.enum(['company', 'individual', 'institute']),
@@ -254,6 +255,21 @@ export default function EditVolunteer() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Volunteer ID preview */}
+              <div className="space-y-1.5 bg-primary/5 p-3.5 rounded-lg border border-primary/20">
+                <Label className="text-xs font-bold uppercase tracking-wider text-primary">Volunteer ID</Label>
+                <div className="font-mono text-sm font-bold text-primary">
+                  {generateVolunteerId({
+                    name,
+                    organization_type: organizationType,
+                    organization_name: organizationName,
+                    city,
+                    preference: preferences.join(', ')
+                  })}
+                </div>
+                <p className="text-[11px] text-muted-foreground">Auto-generated identifier code derived from Volunteer Name, Company, City, and Role</p>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name *</Label>
                 <Input

@@ -80,6 +80,7 @@ interface SessionHoursTracker {
   total_volunteering_time?: number;
   logged_hours_in_benevity: boolean;
   notes: string;
+  supervisor_feedback?: string;
 }
 
 const isRichTextEmpty = (html: string | null | undefined) => {
@@ -130,7 +131,9 @@ export default function SessionRecording() {
     reflection_feedback_followup_hours: 0,
     logged_hours_in_benevity: false,
     notes: '',
+    supervisor_feedback: '',
   });
+  const [supervisorFeedback, setSupervisorFeedback] = useState<string>('');
   const [hoursValidationId, setHoursValidationId] = useState<string>('');
   const [homeworkRecords, setHomeworkRecords] = useState<any[]>([]);
   const [homeworkLoading, setHomeworkLoading] = useState(false);
@@ -494,8 +497,25 @@ export default function SessionRecording() {
         throw error;
       }
       if (data && data.length > 0) {
-        setHoursData(data[0] as unknown as SessionHoursTracker);
-        setHoursValidationId((data[0] as any).validation_id || '');
+        const record = data[0] as any;
+        let sFeedback = record.supervisor_feedback || '';
+        let cleanNotes = record.notes || '';
+
+        if (!sFeedback && cleanNotes.includes('SUPERVISOR_FEEDBACK:')) {
+          const parts = cleanNotes.split('SUPERVISOR_FEEDBACK:');
+          const fbPart = parts[1]?.split('\n---NOTES---\n')[0] || parts[1];
+          sFeedback = fbPart?.trim() || '';
+          const noteParts = parts[1]?.split('\n---NOTES---\n');
+          cleanNotes = noteParts && noteParts.length > 1 ? noteParts[1].trim() : (parts[0] || '').trim();
+        }
+
+        setHoursData({
+          ...record,
+          notes: cleanNotes,
+          supervisor_feedback: sFeedback,
+        } as unknown as SessionHoursTracker);
+        setSupervisorFeedback(sFeedback);
+        setHoursValidationId(record.validation_id || '');
       }
     } catch (error) {
       console.error('Error fetching hours tracker:', error);
@@ -1040,6 +1060,10 @@ export default function SessionRecording() {
         .limit(1);
       const existingData = existingDataList?.[0];
 
+      const formattedNotes = supervisorFeedback.trim()
+        ? `SUPERVISOR_FEEDBACK: ${supervisorFeedback.trim()}\n---NOTES---\n${hoursData.notes || ''}`
+        : hoursData.notes;
+
       if (existingData) {
         // Update existing record
         const { error } = await supabase
@@ -1050,7 +1074,7 @@ export default function SessionRecording() {
             session_hours: Number(hoursData.session_hours) || 0,
             reflection_feedback_followup_hours: Number(hoursData.reflection_feedback_followup_hours) || 0,
             logged_hours_in_benevity: hoursData.logged_hours_in_benevity,
-            notes: hoursData.notes,
+            notes: formattedNotes,
             validation_id: hoursValidationId,
             updated_at: new Date().toISOString(),
           })
@@ -1069,7 +1093,7 @@ export default function SessionRecording() {
               session_hours: Number(hoursData.session_hours) || 0,
               reflection_feedback_followup_hours: Number(hoursData.reflection_feedback_followup_hours) || 0,
               logged_hours_in_benevity: hoursData.logged_hours_in_benevity,
-              notes: hoursData.notes,
+              notes: formattedNotes,
               validation_id: hoursValidationId,
             },
           ]);
@@ -3068,6 +3092,18 @@ export default function SessionRecording() {
                               </div>
                             </div>
                           </div>
+                        </div>
+
+                        {/* Supervisor Feedback */}
+                        <div>
+                          <Label htmlFor="supervisor_feedback" className="text-sm">Supervisor Feedback <span className="text-muted-foreground text-xs font-normal">(Optional)</span></Label>
+                          <Textarea
+                            id="supervisor_feedback"
+                            value={supervisorFeedback}
+                            onChange={(e) => setSupervisorFeedback(e.target.value)}
+                            placeholder="Add supervisor feedback, remarks, or observations about this session"
+                            className="mt-1 min-h-[80px]"
+                          />
                         </div>
 
                         {/* Notes */}

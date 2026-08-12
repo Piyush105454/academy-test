@@ -782,7 +782,6 @@ export default function VolunteerList() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="px-3 py-3 text-xs font-bold">Volunteer ID</TableHead>
                         <TableHead 
                           className="px-3 py-3 text-xs cursor-pointer hover:bg-muted/50 transition-colors"
                           onClick={() => handleColumnSort('name')}
@@ -810,14 +809,6 @@ export default function VolunteerList() {
                     <TableBody>
                       {filteredVolunteers.map((volunteer) => (
                         <TableRow key={volunteer.id}>
-                          <TableCell className="px-3 py-2">
-                            <Badge 
-                              variant="outline" 
-                              className="font-mono text-[11px] bg-primary/10 text-primary border-primary/20 font-bold px-2 py-0.5 whitespace-nowrap"
-                            >
-                              {volunteer.volunteer_id || generateVolunteerId(volunteer)}
-                            </Badge>
-                          </TableCell>
                           <TableCell className="px-3 py-2 font-medium text-sm truncate max-w-[150px]" title={volunteer.name}>
                             {volunteer.name}
                           </TableCell>
@@ -1560,6 +1551,11 @@ export default function VolunteerList() {
                         View Profile
                       </a>
                     ) : '-'}
+                  </div>
+
+                  <div className="text-muted-foreground">Volunteer ID</div>
+                  <div className="font-medium font-mono text-primary font-bold">
+                    {generateVolunteerId(selectedVolunteer)}
                   </div>
                 </div>
               </div>
