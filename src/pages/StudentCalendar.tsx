@@ -143,6 +143,19 @@ export default function StudentCalendar() {
           }
         });
 
+        // Get student designation if available
+        let studentDesignation: string | null = null;
+        if (user?.email || profileData?.id) {
+          const { data: studentObj } = await supabase
+            .from('students')
+            .select('designation')
+            .or(`email.eq.${user?.email},id.eq.${user?.id}`)
+            .maybeSingle();
+          if (studentObj?.designation) {
+            studentDesignation = studentObj.designation;
+          }
+        }
+
         // Transform data to flatten relationships
         const transformedData = (sessionsData || []).map((session: any) => {
           const facNameKey = session.facilitator_name?.trim().toLowerCase();
@@ -164,7 +177,23 @@ export default function StudentCalendar() {
           };
         });
 
-        setSessions(transformedData || []);
+        // Filter by target designations if session has designations specified
+        const filteredByDesignation = (transformedData || []).filter((session: any) => {
+          if (
+            Array.isArray(session.designations) &&
+            session.designations.length > 0 &&
+            studentDesignation
+          ) {
+            const studentDesLower = studentDesignation.toLowerCase();
+            return session.designations.some((targetDes: string) => {
+              const targetDesLower = targetDes.toLowerCase();
+              return studentDesLower === targetDesLower || studentDesLower.includes(targetDesLower) || targetDesLower.includes(studentDesLower);
+            });
+          }
+          return true;
+        });
+
+        setSessions(filteredByDesignation || []);
       }
     } catch (error) {
       console.error('Error loading student calendar:', error);

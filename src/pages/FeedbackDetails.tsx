@@ -202,7 +202,7 @@ export default function FeedbackDetails() {
       // Fetch all students from that class, filtered by session academic year if available
       let studentQuery = supabase
         .from('students')
-        .select('id, name, student_id')
+        .select('id, name, student_id, designation')
         .eq('class_id', classData.id);
 
       if (sessionData?.academic_year) {
@@ -213,8 +213,23 @@ export default function FeedbackDetails() {
 
       if (studentsError) throw studentsError;
 
-      console.log('Students fetched:', studentsData);
-      setAllStudents(studentsData || []);
+      let finalStudents = studentsData || [];
+      if (
+        Array.isArray(sessionData?.designations) &&
+        sessionData.designations.length > 0
+      ) {
+        finalStudents = finalStudents.filter((st: any) => {
+          if (!st.designation) return false;
+          const stDes = st.designation.toLowerCase();
+          return sessionData.designations.some((targetDes: string) => {
+            const targetDesLower = targetDes.toLowerCase();
+            return stDes === targetDesLower || stDes.includes(targetDesLower) || targetDesLower.includes(stDes);
+          });
+        });
+      }
+
+      console.log('Students fetched:', finalStudents);
+      setAllStudents(finalStudents);
     } catch (error) {
       console.error('Error fetching all students:', error);
     }

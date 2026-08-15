@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Wallet, Search, Filter, ArrowUpDown, Pencil, Trash2, TrendingUp, Info, FileSpreadsheet, UploadCloud } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Wallet, Search, Filter, ArrowUpDown, Pencil, Trash2, TrendingUp, Info, FileSpreadsheet, UploadCloud, ArrowLeft, History, Plus, CheckCircle2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -98,6 +98,110 @@ export default function AdminStudentEarnings() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importMonth, setImportMonth] = useState<string>(new Date().getMonth().toString());
+
+  const categoryBreakdown = useMemo(() => {
+    if (!selectedStudent) return [];
+    
+    const today = new Date();
+    const currentMonthIdx = today.getMonth();
+    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const isCurrentMonthEnded = today.getDate() === lastDayOfMonth;
+
+    const filtered = studentRecords.filter(r => {
+      const earnedAt = new Date(r.earned_at);
+      const matchesMonth = selectedMonth === 'all' || earnedAt.getMonth().toString() === selectedMonth;
+      if (!matchesMonth) return false;
+
+      const desc = (r.description || '').toLowerCase();
+      const isAttendanceBonus = desc.includes('attendance');
+      if (isAttendanceBonus) {
+        const isCurrentMonth = earnedAt.getMonth() === currentMonthIdx && earnedAt.getFullYear() === today.getFullYear();
+        if (isCurrentMonth && !isCurrentMonthEnded) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    const matchedRecordIds = new Set<string>();
+    const configsToUse = rewardConfigs.length > 0 ? rewardConfigs : DEFAULT_EARNING_POTENTIAL;
+
+    const breakdown = configsToUse.map(config => {
+      const taskTypeLower = (config.task_type || '').toLowerCase();
+      
+      const matchingRecords = filtered.filter(r => {
+        const taskName = ((r as any).student_task_feedback?.task_name || '').toLowerCase();
+        const desc = (r.description || '').toLowerCase();
+        const subj = ((r as any).student_task_feedback?.subjects?.name || '').toLowerCase();
+
+        let isMatch = false;
+        if (taskTypeLower.includes('attendance') && (desc.includes('attendance') || taskName.includes('attendance'))) {
+          isMatch = true;
+        } else if (taskTypeLower.includes('ccc') || taskTypeLower.includes('computer')) {
+          if (desc.includes('ccc') || desc.includes('computer') || taskName.includes('ccc') || taskName.includes('computer') || subj.includes('ccc') || subj.includes('computer')) {
+            isMatch = true;
+          }
+        } else if (taskTypeLower.includes('english') || taskTypeLower.includes('reading') || taskTypeLower.includes('speaking')) {
+          if (desc.includes('english') || desc.includes('reading') || taskName.includes('english') || taskName.includes('reading') || subj.includes('english')) {
+            isMatch = true;
+          }
+        } else if (taskTypeLower.includes('gt') || taskTypeLower.includes('guest teacher') || taskTypeLower.includes('session')) {
+          if (desc.includes('gt') || desc.includes('guest teacher') || desc.includes('session') || taskName.includes('gt') || taskName.includes('guest teacher')) {
+            isMatch = true;
+          }
+        } else if (taskTypeLower.includes('mentor')) {
+          if (desc.includes('mentor') || taskName.includes('mentor')) {
+            isMatch = true;
+          }
+        }
+
+        if (isMatch) {
+          matchedRecordIds.add(r.id);
+        }
+        return isMatch;
+      });
+
+      const earnedAmount = matchingRecords.reduce((sum, r) => sum + parseFloat(r.amount as any || 0), 0);
+      const completedCount = matchingRecords.length;
+
+      return {
+        ...config,
+        earnedAmount,
+        completedCount,
+      };
+    });
+
+    const otherRecords = filtered.filter(r => !matchedRecordIds.has(r.id));
+    if (otherRecords.length > 0) {
+      const otherEarned = otherRecords.reduce((sum, r) => sum + parseFloat(r.amount as any || 0), 0);
+      breakdown.push({
+        id: 'other',
+        task_type: 'Other / Custom Earning Rewards',
+        expected_tasks: 0,
+        frequency: 'Custom',
+        rate_per_task: 0,
+        potential_monthly: 0,
+        how_to_earn: 'Additional custom or bonus rewards assigned directly',
+        earnedAmount: otherEarned,
+        completedCount: otherRecords.length,
+      });
+    }
+
+    return breakdown;
+  }, [selectedStudent, studentRecords, rewardConfigs, selectedMonth]);
+
+  const totalPotentialMonthly = useMemo(() => {
+    const configsToUse = rewardConfigs.length > 0 ? rewardConfigs : DEFAULT_EARNING_POTENTIAL;
+    return configsToUse.reduce((sum, c) => sum + (c.potential_monthly || 0), 0);
+  }, [rewardConfigs]);
+
+  const totalCategoryEarned = useMemo(() => {
+    return categoryBreakdown.reduce((sum, c) => sum + c.earnedAmount, 0);
+  }, [categoryBreakdown]);
+
+  const totalCompletedTasks = useMemo(() => {
+    return categoryBreakdown.reduce((sum, c) => sum + c.completedCount, 0);
+  }, [categoryBreakdown]);
 
   useEffect(() => {
     fetchClasses();
@@ -495,258 +599,470 @@ export default function AdminStudentEarnings() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Wallet className="h-6 w-6 text-primary" />
-              Student Earnings Management
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Monitor and manage rewards earned by students
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={handleExportBankFormat} className="gap-2 bg-green-600 hover:bg-green-700">
-              <FileSpreadsheet className="h-4 w-4" />
-              Export Bank Format
-            </Button>
-            <Button onClick={() => setIsImportModalOpen(true)} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
-              <UploadCloud className="h-4 w-4" />
-              Import Mentor Connect
-            </Button>
-            <Button onClick={() => setIsPotentialModalOpen(true)} className="gap-2 bg-blue-600 hover:bg-blue-700">
-              <TrendingUp className="h-4 w-4" />
-              Set Monthly Potential
-            </Button>
-          </div>
-        </div>
+        {selectedStudent ? (
+          /* =========================================================================
+             DETAILED STUDENT EARNING PAGE VIEW (Opened on "View Details" Click)
+             ========================================================================= */
+          <div className="space-y-6">
+            {/* Back Button & Action Controls */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <Button
+                variant="outline"
+                onClick={() => setSelectedStudent(null)}
+                className="gap-2 bg-background hover:bg-accent font-semibold border-primary/30"
+              >
+                <ArrowLeft className="h-4 w-4" /> Back to Student List
+              </Button>
 
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search students..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          <div className="w-full sm:w-48">
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Months" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Months</SelectItem>
-                <SelectItem value="5">June</SelectItem>
-                <SelectItem value="6">July</SelectItem>
-                <SelectItem value="7">August</SelectItem>
-                <SelectItem value="8">September</SelectItem>
-                <SelectItem value="9">October</SelectItem>
-                <SelectItem value="10">November</SelectItem>
-                <SelectItem value="11">December</SelectItem>
-                <SelectItem value="0">January</SelectItem>
-                <SelectItem value="1">February</SelectItem>
-                <SelectItem value="2">March</SelectItem>
-                <SelectItem value="3">April</SelectItem>
-                <SelectItem value="4">May</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-full sm:w-48">
-            <Select value={selectedClass} onValueChange={setSelectedClass}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Classes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Classes</SelectItem>
-                {classes.map((c) => (
-                  <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-full sm:w-48">
-            <Select value={selectedDesignation} onValueChange={setSelectedDesignation}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Designations" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Designations</SelectItem>
-                <SelectItem value="1. CCC">1. CCC</SelectItem>
-                <SelectItem value="2. Junior Fellow">2. Junior Fellow</SelectItem>
-                <SelectItem value="3. Senior Fellow">3. Senior Fellow</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-full sm:w-48">
-            <Select value={filterSubject} onValueChange={setFilterSubject}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Subjects" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Subjects</SelectItem>
-                {subjects.map((s) => (
-                  <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  onClick={() => setIsPotentialModalOpen(true)}
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                >
+                  <TrendingUp className="h-4 w-4" />
+                  View/Edit Reward Structure
+                </Button>
+              </div>
+            </div>
 
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('student_name')}>Student Name <ArrowUpDown className="h-3 w-3" /></div></TableHead>
-                  <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('class_name')}>Class <ArrowUpDown className="h-3 w-3" /></div></TableHead>
-                  <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('designation')}>Designation <ArrowUpDown className="h-3 w-3" /></div></TableHead>
-                  <TableHead className="text-right"><div className="flex items-center justify-end gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('total_earned')}>Total Earned <ArrowUpDown className="h-3 w-3" /></div></TableHead>
-                  <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('last_earned_at')}>Last Reward <ArrowUpDown className="h-3 w-3" /></div></TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
-                      Loading data...
-                    </TableCell>
-                  </TableRow>
-                ) : sortedStudents.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
-                      No student records found
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  sortedStudents.map((s) => (
-                    <TableRow key={s.student_id}>
-                      <TableCell className="font-medium">{s.student_name}</TableCell>
-                      <TableCell>{s.class_name}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px] uppercase font-bold">{s.designation}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-green-600">
-                        ₹{s.total_earned.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {s.last_earned_at ? new Date(s.last_earned_at).toLocaleDateString() : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => {
-                            setSelectedStudent(s);
-                            fetchStudentRecords(s.student_id);
-                          }}
-                        >
-                          View Details
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+            {/* Student Profile Header Card */}
+            <Card className="border border-primary/20 shadow-sm bg-gradient-to-r from-background via-blue-50/30 to-indigo-50/20 dark:via-blue-950/20 dark:to-indigo-950/10">
+              <CardContent className="p-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <h2 className="text-2xl font-black text-foreground tracking-tight">{selectedStudent.student_name}</h2>
+                      <Badge variant="secondary" className="font-bold text-xs bg-primary/10 text-primary">
+                        {selectedStudent.class_name}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs uppercase font-extrabold border-blue-400 text-blue-600 dark:text-blue-400">
+                        {selectedStudent.designation}
+                      </Badge>
+                    </div>
+                    {selectedStudent.bank_name ? (
+                      <p className="text-xs text-muted-foreground">
+                        Bank: <span className="font-medium text-foreground">{selectedStudent.bank_name}</span> | Account: <span className="font-medium text-foreground">{selectedStudent.account_number}</span> | IFSC: <span className="font-medium text-foreground">{selectedStudent.ifsc_code}</span>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic">No bank details registered</p>
+                    )}
+                  </div>
 
-        {/* Student Records Dialog */}
-        <Dialog open={!!selectedStudent} onOpenChange={(open) => !open && setSelectedStudent(null)}>
-          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Earning History: {selectedStudent?.student_name}</DialogTitle>
-              <DialogDescription>
-                Detailed breakdown of rewards for {selectedStudent?.student_name}
-              </DialogDescription>
-            </DialogHeader>
-            
-            <div className="mt-4">
-              {loadingRecords ? (
-                <div className="py-10 text-center">Loading records...</div>
-              ) : (
+                  {/* Summary KPI Counters */}
+                  <div className="flex items-center gap-6 bg-background/80 backdrop-blur-xs p-4 rounded-xl border border-border shadow-xs">
+                    <div>
+                      <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Total Earned</p>
+                      <p className="text-2xl font-black text-green-600 dark:text-green-400">₹{selectedStudent.total_earned.toLocaleString()}</p>
+                    </div>
+                    <div className="h-10 w-px bg-border" />
+                    <div>
+                      <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Monthly Potential</p>
+                      <p className="text-2xl font-black text-blue-600 dark:text-blue-400">₹{totalPotentialMonthly.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Reward Structure & Monthly Earned Breakdown */}
+            <Card className="border border-border">
+              <CardHeader className="border-b bg-muted/20">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-lg font-bold flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5 text-blue-600" />
+                      Reward Criteria & Monthly Earned Breakdown
+                    </CardTitle>
+                    <CardDescription>
+                      Full breakdown of monthly criteria potentials vs {selectedStudent.student_name}'s actual earnings
+                    </CardDescription>
+                  </div>
+
+                  {/* Month Filter */}
+                  <div className="w-full sm:w-48">
+                    <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                      <SelectTrigger className="h-9 text-xs font-semibold bg-background">
+                        <SelectValue placeholder="All Months" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Months</SelectItem>
+                        <SelectItem value="5">June</SelectItem>
+                        <SelectItem value="6">July</SelectItem>
+                        <SelectItem value="7">August</SelectItem>
+                        <SelectItem value="8">September</SelectItem>
+                        <SelectItem value="9">October</SelectItem>
+                        <SelectItem value="10">November</SelectItem>
+                        <SelectItem value="11">December</SelectItem>
+                        <SelectItem value="0">January</SelectItem>
+                        <SelectItem value="1">February</SelectItem>
+                        <SelectItem value="2">March</SelectItem>
+                        <SelectItem value="3">April</SelectItem>
+                        <SelectItem value="4">May</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Task ID</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Task / Description</TableHead>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>Session</TableHead>
-                      <TableHead>Deadline</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
+                    <TableRow className="bg-muted/40 text-xs">
+                      <TableHead className="font-bold">Task Type / Criteria</TableHead>
+                      <TableHead className="font-bold">Frequency</TableHead>
+                      <TableHead className="font-bold text-right">Rate (₹)</TableHead>
+                      <TableHead className="font-bold text-right">Monthly Potential (₹)</TableHead>
+                      <TableHead className="font-bold text-center">Tasks Completed</TableHead>
+                      <TableHead className="font-bold text-right">Student Earned (₹)</TableHead>
+                      <TableHead className="font-bold text-center">Completion Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {studentRecords.filter(r => {
-                      const earnedAt = new Date(r.earned_at);
-                      return selectedMonth === 'all' || earnedAt.getMonth().toString() === selectedMonth;
-                    }).length === 0 ? (
+                    {categoryBreakdown.map((item) => (
+                      <TableRow key={item.task_type}>
+                        <TableCell>
+                          <div className="font-semibold text-sm text-foreground">{item.task_type}</div>
+                          <div className="text-[11px] text-muted-foreground">{item.how_to_earn}</div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-[10px] font-extrabold uppercase">
+                            {item.frequency}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
+                          ₹{item.rate_per_task}
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400">
+                          ₹{item.potential_monthly}
+                        </TableCell>
+                        <TableCell className="text-center font-bold text-sm">
+                          {item.completedCount}
+                        </TableCell>
+                        <TableCell className="text-right font-black text-green-600 dark:text-green-400">
+                          ₹{item.earnedAmount.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {item.potential_monthly > 0 ? (
+                            <Badge
+                              variant={item.earnedAmount >= item.potential_monthly ? "default" : item.earnedAmount > 0 ? "secondary" : "outline"}
+                              className="text-[10px] font-bold"
+                            >
+                              {Math.min(100, Math.round((item.earnedAmount / item.potential_monthly) * 100))}% Cap Achieved
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-[10px] font-bold">
+                              ₹{item.earnedAmount} Earned
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {/* Total Summary Row */}
+                    <TableRow className="bg-muted/30 font-bold border-t-2">
+                      <TableCell colSpan={3} className="text-right text-sm font-extrabold uppercase tracking-wide text-foreground">
+                        Total Potential Monthly:
+                      </TableCell>
+                      <TableCell className="text-right text-base font-black text-blue-600 dark:text-blue-400">
+                        ₹{totalPotentialMonthly.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-center text-base font-black text-foreground">
+                        {totalCompletedTasks}
+                      </TableCell>
+                      <TableCell className="text-right text-base font-black text-green-600 dark:text-green-400">
+                        ₹{totalCategoryEarned.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="default" className="text-[11px] font-bold bg-green-600">
+                          {totalPotentialMonthly > 0 ? `${Math.min(100, Math.round((totalCategoryEarned / totalPotentialMonthly) * 100))}% Overall` : '-'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Itemized Earning History Table */}
+            <Card className="border border-border">
+              <CardHeader className="border-b bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg font-bold flex items-center gap-2">
+                      <History className="h-5 w-5 text-primary" />
+                      Itemized Earning History
+                    </CardTitle>
+                    <CardDescription>
+                      Individual reward entries earned by {selectedStudent.student_name}
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                {loadingRecords ? (
+                  <div className="py-12 text-center text-muted-foreground font-medium">Loading earning records...</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40 text-xs">
+                        <TableHead>Task ID</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Task / Description</TableHead>
+                        <TableHead>Subject</TableHead>
+                        <TableHead>Session</TableHead>
+                        <TableHead>Deadline</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(() => {
+                        const today = new Date();
+                        const currentMonthIdx = today.getMonth();
+                        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                        const isCurrentMonthEnded = today.getDate() === lastDayOfMonth;
+
+                        const validStudentRecords = studentRecords.filter(r => {
+                          const earnedAt = new Date(r.earned_at);
+                          const matchesMonth = selectedMonth === 'all' || earnedAt.getMonth().toString() === selectedMonth;
+                          if (!matchesMonth) return false;
+
+                          const desc = (r.description || '').toLowerCase();
+                          const isAttendanceBonus = desc.includes('attendance');
+                          if (isAttendanceBonus) {
+                            const isCurrentMonth = earnedAt.getMonth() === currentMonthIdx && earnedAt.getFullYear() === today.getFullYear();
+                            if (isCurrentMonth && !isCurrentMonthEnded) {
+                              return false;
+                            }
+                          }
+                          return true;
+                        });
+
+                        if (validStudentRecords.length === 0) {
+                          return (
+                            <TableRow>
+                              <TableCell colSpan={8} className="text-center py-8 text-muted-foreground font-medium">
+                                No earning records found for this student in the selected period.
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+
+                        return validStudentRecords.map((r) => (
+                            <TableRow key={r.id}>
+                              <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                                {(r as any).student_task_feedback?.task_id || '-'}
+                              </TableCell>
+                              <TableCell className="text-xs font-medium whitespace-nowrap">
+                                {new Date(r.earned_at).toLocaleDateString()}
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-medium text-sm">
+                                  {(r as any).student_task_feedback?.task_name || r.description || 'Reward'}
+                                </div>
+                                {(r as any).student_task_feedback?.task_name && r.description && (
+                                  <div className="text-[10px] text-muted-foreground">{r.description}</div>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {(r as any).student_task_feedback?.subjects?.name ? (
+                                  <Badge variant="outline" className="text-[10px] uppercase font-bold">
+                                    {(r as any).student_task_feedback?.subjects?.name}
+                                  </Badge>
+                                ) : '-'}
+                              </TableCell>
+                              <TableCell className="text-xs truncate max-w-[120px]">
+                                {(r as any).student_task_feedback?.sessions?.title || '-'}
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                {(r as any).student_task_feedback?.deadline ? new Date((r as any).student_task_feedback.deadline).toLocaleDateString() : '-'}
+                              </TableCell>
+                              <TableCell className="text-right font-black text-green-600 dark:text-green-400">
+                                ₹{r.amount}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <button
+                                  onClick={() => handleDeleteRecord(r.id)}
+                                  className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-colors"
+                                  title="Delete this earning record"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </TableCell>
+                            </TableRow>
+                          ));
+                      })()}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          /* =========================================================================
+             MAIN ALL STUDENTS EARNINGS LIST VIEW
+             ========================================================================= */
+          <>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold flex items-center gap-2">
+                  <Wallet className="h-6 w-6 text-primary" />
+                  Student Earnings Management
+                </h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Monitor and manage rewards earned by students
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={handleExportBankFormat} className="gap-2 bg-green-600 hover:bg-green-700">
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Export Bank Format
+                </Button>
+                <Button onClick={() => setIsImportModalOpen(true)} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
+                  <UploadCloud className="h-4 w-4" />
+                  Import Mentor Connect
+                </Button>
+                <Button onClick={() => setIsPotentialModalOpen(true)} className="gap-2 bg-blue-600 hover:bg-blue-700">
+                  <TrendingUp className="h-4 w-4" />
+                  Set Monthly Potential
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search students..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <div className="w-full sm:w-48">
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Months" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Months</SelectItem>
+                    <SelectItem value="5">June</SelectItem>
+                    <SelectItem value="6">July</SelectItem>
+                    <SelectItem value="7">August</SelectItem>
+                    <SelectItem value="8">September</SelectItem>
+                    <SelectItem value="9">October</SelectItem>
+                    <SelectItem value="10">November</SelectItem>
+                    <SelectItem value="11">December</SelectItem>
+                    <SelectItem value="0">January</SelectItem>
+                    <SelectItem value="1">February</SelectItem>
+                    <SelectItem value="2">March</SelectItem>
+                    <SelectItem value="3">April</SelectItem>
+                    <SelectItem value="4">May</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full sm:w-48">
+                <Select value={selectedClass} onValueChange={setSelectedClass}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Classes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Classes</SelectItem>
+                    {classes.map((c) => (
+                      <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full sm:w-48">
+                <Select value={selectedDesignation} onValueChange={setSelectedDesignation}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Designations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Designations</SelectItem>
+                    <SelectItem value="1. CCC">1. CCC</SelectItem>
+                    <SelectItem value="2. Junior Fellow">2. Junior Fellow</SelectItem>
+                    <SelectItem value="3. Senior Fellow">3. Senior Fellow</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full sm:w-48">
+                <Select value={filterSubject} onValueChange={setFilterSubject}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Subjects" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Subjects</SelectItem>
+                    {subjects.map((s) => (
+                      <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('student_name')}>Student Name <ArrowUpDown className="h-3 w-3" /></div></TableHead>
+                      <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('class_name')}>Class <ArrowUpDown className="h-3 w-3" /></div></TableHead>
+                      <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('designation')}>Designation <ArrowUpDown className="h-3 w-3" /></div></TableHead>
+                      <TableHead className="text-right"><div className="flex items-center justify-end gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('total_earned')}>Total Earned <ArrowUpDown className="h-3 w-3" /></div></TableHead>
+                      <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('last_earned_at')}>Last Reward <ArrowUpDown className="h-3 w-3" /></div></TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
-                          No records found for this student
+                        <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                          Loading data...
+                        </TableCell>
+                      </TableRow>
+                    ) : sortedStudents.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                          No student records found
                         </TableCell>
                       </TableRow>
                     ) : (
-                      studentRecords
-                        .filter(r => {
-                          const earnedAt = new Date(r.earned_at);
-                          return selectedMonth === 'all' || earnedAt.getMonth().toString() === selectedMonth;
-                        })
-                        .map((r) => (
-                          <TableRow key={r.id}>
-                            <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-                              {(r as any).student_task_feedback?.task_id || '-'}
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              {new Date(r.earned_at).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                              <div className="font-medium text-sm">
-                                {(r as any).student_task_feedback?.task_name || r.description || 'Reward'}
-                              </div>
-                              {(r as any).student_task_feedback?.task_name && r.description && (
-                                <div className="text-[10px] text-muted-foreground">{r.description}</div>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {(r as any).student_task_feedback?.subjects?.name ? (
-                                <Badge variant="outline" className="text-[10px] uppercase font-bold">
-                                  {(r as any).student_task_feedback?.subjects?.name}
-                                </Badge>
-                              ) : '-'}
-                            </TableCell>
-                            <TableCell className="text-xs truncate max-w-[100px]">
-                              {(r as any).student_task_feedback?.sessions?.title || '-'}
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {(r as any).student_task_feedback?.deadline ? new Date((r as any).student_task_feedback.deadline).toLocaleDateString() : '-'}
-                            </TableCell>
-                            <TableCell className="text-right font-bold text-green-600">
-                              ₹{r.amount}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <button
-                                onClick={() => handleDeleteRecord(r.id)}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                                title="Delete this earning record"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                      sortedStudents.map((s) => (
+                        <TableRow key={s.student_id}>
+                          <TableCell className="font-medium">{s.student_name}</TableCell>
+                          <TableCell>{s.class_name}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-[10px] uppercase font-bold">{s.designation}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-bold text-green-600">
+                            ₹{s.total_earned.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                            {s.last_earned_at ? new Date(s.last_earned_at).toLocaleDateString() : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedStudent(s);
+                                fetchStudentRecords(s.student_id);
+                              }}
+                            >
+                              View Details
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
                     )}
                   </TableBody>
                 </Table>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+              </CardContent>
+            </Card>
+          </>
+        )}
 
         {/* Edit Record Modal */}
         <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>

@@ -57,6 +57,7 @@ interface SessionRecording {
   seating_view_rating: number | null;
   session_strength: number | null;
   class_batch: string | null;
+  designations?: string[];
 }
 
 interface StudentPerformance {
@@ -424,6 +425,15 @@ export default function SessionRecording() {
         coordinator_name: sessionData.coordinators?.name || null,
         preferred_class: preferredClass,
       } as SessionRecording);
+
+      // Pre-select designation filter if session was scheduled with specific designations
+      if (Array.isArray(sessionData.designations) && sessionData.designations.length > 0) {
+        if (sessionData.designations.length === 1) {
+          setStudentDesignationFilter(sessionData.designations[0]);
+        } else {
+          setStudentDesignationFilter('scheduled');
+        }
+      }
       const bestPerformerVal = (sessionData as any).best_performer || '';
       setFormData({
         session_objective: (sessionData as any).session_objective || '',
@@ -648,10 +658,10 @@ export default function SessionRecording() {
     try {
       setStudentsLoading(true);
 
-      // Get session to find its class batch
+      // Get session to find its class batch & target designations
       const { data: sessionData, error: sessionError } = await supabase
         .from('sessions')
-        .select('class_batch')
+        .select('class_batch, designations')
         .eq('id', sessionId)
         .single();
 
@@ -687,8 +697,23 @@ export default function SessionRecording() {
         
       if (studentsError) throw studentsError;
 
-      setStudents(studentsData || []);
-      if ((studentsData || []).length === 0) {
+      let finalStudents = studentsData || [];
+      if (
+        Array.isArray(sessionData?.designations) &&
+        sessionData.designations.length > 0
+      ) {
+        finalStudents = finalStudents.filter((st: any) => {
+          if (!st.designation) return false;
+          const stDes = st.designation.toLowerCase();
+          return sessionData.designations.some((targetDes: string) => {
+            const targetDesLower = targetDes.toLowerCase();
+            return stDes === targetDesLower || stDes.includes(targetDesLower) || targetDesLower.includes(stDes);
+          });
+        });
+      }
+
+      setStudents(finalStudents);
+      if (finalStudents.length === 0) {
         toast.warning(`No students found for academic year ${selectedYear} in this class`);
       }
     } catch (error) {
@@ -759,10 +784,21 @@ export default function SessionRecording() {
     if (studentDesignationFilter !== 'all') {
       filtered = filtered.filter(item => {
         const designation = item.student.designation;
+        if (studentDesignationFilter === 'scheduled' && Array.isArray(session?.designations) && session.designations.length > 0) {
+          if (!designation) return false;
+          const stDes = designation.toLowerCase();
+          return session.designations.some((targetDes: string) => {
+            const targetDesLower = targetDes.toLowerCase();
+            return stDes === targetDesLower || stDes.includes(targetDesLower) || targetDesLower.includes(stDes);
+          });
+        }
         if (studentDesignationFilter === 'none') {
           return !designation || designation === 'none';
         }
-        return designation === studentDesignationFilter;
+        if (!designation) return false;
+        const stDes = designation.toLowerCase();
+        const filterDes = studentDesignationFilter.toLowerCase();
+        return stDes === filterDes || stDes.includes(filterDes) || filterDes.includes(stDes);
       });
     }
 
@@ -2147,16 +2183,21 @@ export default function SessionRecording() {
                             </div>
 
                             {/* Designation filter */}
-                            <div className="w-[150px]">
+                            <div className="min-w-[170px]">
                               <Select
                                 value={studentDesignationFilter}
                                 onValueChange={(val: string) => setStudentDesignationFilter(val)}
                               >
-                                <SelectTrigger className="h-8 text-xs">
+                                <SelectTrigger className="h-8 text-xs font-medium border-primary/50">
                                   <SelectValue placeholder="All Designations" />
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="all">All Designations</SelectItem>
+                                  {session?.designations && session.designations.length > 0 && (
+                                    <SelectItem value="scheduled">
+                                      Scheduled ({session.designations.join(', ')})
+                                    </SelectItem>
+                                  )}
                                   <SelectItem value="1. CCC">1. CCC</SelectItem>
                                   <SelectItem value="2. Junior Fellow">2. Junior Fellow</SelectItem>
                                   <SelectItem value="3. Senior Fellow">3. Senior Fellow</SelectItem>

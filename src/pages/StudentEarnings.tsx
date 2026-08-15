@@ -83,9 +83,113 @@ export default function StudentEarnings() {
     });
   }, [earnings, searchQuery, filterSubject, selectedMonth]);
 
-  const totalBalance = useMemo(() => {
-    return filteredEarnings.reduce((sum, item) => sum + item.amount, 0);
+  // Filter earnings to exclude premature attendance bonuses for ongoing months until month end
+  const validEarnings = useMemo(() => {
+    const today = new Date();
+    const currentMonthIdx = today.getMonth();
+    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const isCurrentMonthEnded = today.getDate() === lastDayOfMonth;
+
+    return filteredEarnings.filter(r => {
+      const desc = (r.description || '').toLowerCase();
+      const taskName = (r.task_name || '').toLowerCase();
+      const isAttendanceBonus = desc.includes('attendance') || taskName.includes('attendance');
+
+      if (isAttendanceBonus) {
+        const earnedDate = new Date(r.earned_at);
+        const isCurrentMonth = earnedDate.getMonth() === currentMonthIdx && earnedDate.getFullYear() === today.getFullYear();
+        if (isCurrentMonth && !isCurrentMonthEnded) {
+          return false;
+        }
+      }
+      return true;
+    });
   }, [filteredEarnings]);
+
+  const totalBalance = useMemo(() => {
+    return validEarnings.reduce((sum, item) => sum + item.amount, 0);
+  }, [validEarnings]);
+
+  const categoryBreakdown = useMemo(() => {
+    const matchedRecordIds = new Set<string>();
+    const configsToUse = rewardConfigs.length > 0 ? rewardConfigs : DEFAULT_EARNING_POTENTIAL;
+
+    const breakdown = configsToUse.map(config => {
+      const taskTypeLower = (config.task_type || '').toLowerCase();
+      
+      const matchingRecords = validEarnings.filter(r => {
+        const taskName = (r.task_name || '').toLowerCase();
+        const desc = (r.description || '').toLowerCase();
+        const subj = (r.subject_name || '').toLowerCase();
+
+        let isMatch = false;
+        if (taskTypeLower.includes('attendance') && (desc.includes('attendance') || taskName.includes('attendance'))) {
+          isMatch = true;
+        } else if (taskTypeLower.includes('ccc') || taskTypeLower.includes('computer')) {
+          if (desc.includes('ccc') || desc.includes('computer') || taskName.includes('ccc') || taskName.includes('computer') || subj.includes('ccc') || subj.includes('computer')) {
+            isMatch = true;
+          }
+        } else if (taskTypeLower.includes('english') || taskTypeLower.includes('reading') || taskTypeLower.includes('speaking')) {
+          if (desc.includes('english') || desc.includes('reading') || taskName.includes('english') || taskName.includes('reading') || subj.includes('english')) {
+            isMatch = true;
+          }
+        } else if (taskTypeLower.includes('gt') || taskTypeLower.includes('guest teacher') || taskTypeLower.includes('session')) {
+          if (desc.includes('gt') || desc.includes('guest teacher') || desc.includes('session') || taskName.includes('gt') || taskName.includes('guest teacher')) {
+            isMatch = true;
+          }
+        } else if (taskTypeLower.includes('mentor')) {
+          if (desc.includes('mentor') || taskName.includes('mentor')) {
+            isMatch = true;
+          }
+        }
+
+        if (isMatch) {
+          matchedRecordIds.add(r.id);
+        }
+        return isMatch;
+      });
+
+      const earnedAmount = matchingRecords.reduce((sum, r) => sum + r.amount, 0);
+      const completedCount = matchingRecords.length;
+
+      return {
+        ...config,
+        earnedAmount,
+        completedCount,
+      };
+    });
+
+    const otherRecords = validEarnings.filter(r => !matchedRecordIds.has(r.id));
+    if (otherRecords.length > 0) {
+      const otherEarned = otherRecords.reduce((sum, r) => sum + r.amount, 0);
+      breakdown.push({
+        id: 'other',
+        task_type: 'Other / Custom Earning Rewards',
+        expected_tasks: 0,
+        frequency: 'Custom',
+        rate_per_task: 0,
+        potential_monthly: 0,
+        how_to_earn: 'Additional custom or bonus rewards assigned directly',
+        earnedAmount: otherEarned,
+        completedCount: otherRecords.length,
+      });
+    }
+
+    return breakdown;
+  }, [validEarnings, rewardConfigs]);
+
+  const totalPotentialMonthly = useMemo(() => {
+    const configsToUse = rewardConfigs.length > 0 ? rewardConfigs : DEFAULT_EARNING_POTENTIAL;
+    return configsToUse.reduce((sum, c) => sum + (c.potential_monthly || (c.expected_tasks * c.rate_per_task) || 0), 0);
+  }, [rewardConfigs]);
+
+  const totalCategoryEarned = useMemo(() => {
+    return categoryBreakdown.reduce((sum, c) => sum + c.earnedAmount, 0);
+  }, [categoryBreakdown]);
+
+  const totalCompletedTasks = useMemo(() => {
+    return categoryBreakdown.reduce((sum, c) => sum + c.completedCount, 0);
+  }, [categoryBreakdown]);
 
   const fetchSubjects = async () => {
     const { data } = await supabase.from('subjects').select('id, name').order('name');
@@ -257,6 +361,98 @@ export default function StudentEarnings() {
           </Card>
         </div>
 
+        {/* Reward Criteria & Monthly Potential Breakdown */}
+        <Card className="border border-border">
+          <CardHeader className="border-b bg-muted/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-lg font-bold flex items-center gap-2 text-foreground">
+                  <TrendingUp className="h-5 w-5 text-blue-600" />
+                  Monthly Reward Structure & Earned Breakdown
+                </CardTitle>
+                <CardDescription>
+                  See how much money you can earn for each task type and your current progress
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 text-xs">
+                  <TableHead className="font-bold">Task Type / Criteria</TableHead>
+                  <TableHead className="font-bold">Frequency</TableHead>
+                  <TableHead className="font-bold text-right">Rate (₹)</TableHead>
+                  <TableHead className="font-bold text-right">Monthly Potential (₹)</TableHead>
+                  <TableHead className="font-bold text-center">Tasks Completed</TableHead>
+                  <TableHead className="font-bold text-right">My Earnings (₹)</TableHead>
+                  <TableHead className="font-bold text-center">Status / Cap</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {categoryBreakdown.map((item) => (
+                  <TableRow key={item.task_type}>
+                    <TableCell>
+                      <div className="font-semibold text-sm text-foreground">{item.task_type}</div>
+                      <div className="text-[11px] text-muted-foreground">{item.how_to_earn}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-[10px] font-extrabold uppercase">
+                        {item.frequency}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-medium text-green-600 dark:text-green-400">
+                      ₹{item.rate_per_task}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400">
+                      ₹{item.potential_monthly || (item.expected_tasks * item.rate_per_task)}
+                    </TableCell>
+                    <TableCell className="text-center font-bold text-sm">
+                      {item.completedCount}
+                    </TableCell>
+                    <TableCell className="text-right font-black text-green-600 dark:text-green-400">
+                      ₹{item.earnedAmount.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {(item.potential_monthly || (item.expected_tasks * item.rate_per_task)) > 0 ? (
+                        <Badge
+                          variant={item.earnedAmount >= (item.potential_monthly || (item.expected_tasks * item.rate_per_task)) ? "default" : item.earnedAmount > 0 ? "secondary" : "outline"}
+                          className="text-[10px] font-bold"
+                        >
+                          {Math.min(100, Math.round((item.earnedAmount / (item.potential_monthly || (item.expected_tasks * item.rate_per_task))) * 100))}% Cap Achieved
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px] font-bold">
+                          ₹{item.earnedAmount} Earned
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="bg-muted/30 font-bold border-t-2">
+                  <TableCell colSpan={3} className="text-right text-sm font-extrabold uppercase tracking-wide text-foreground">
+                    Total Potential Monthly:
+                  </TableCell>
+                  <TableCell className="text-right text-base font-black text-blue-600 dark:text-blue-400">
+                    ₹{totalPotentialMonthly.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-center text-base font-black text-foreground">
+                    {totalCompletedTasks}
+                  </TableCell>
+                  <TableCell className="text-right text-base font-black text-green-600 dark:text-green-400">
+                    ₹{totalCategoryEarned.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant="default" className="text-[11px] font-bold bg-green-600">
+                      {totalPotentialMonthly > 0 ? `${Math.min(100, Math.round((totalCategoryEarned / totalPotentialMonthly) * 100))}% Overall` : '-'}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
         {/* Transaction History Filters */}
         <div className="flex flex-col sm:flex-row gap-4 items-end">
           <div className="w-full sm:w-64">
@@ -348,7 +544,7 @@ export default function StudentEarnings() {
                   </TableHeader>
                   <TableBody>
                     {(() => {
-                      if (filteredEarnings.length === 0) {
+                      if (validEarnings.length === 0) {
                         return (
                           <TableRow>
                             <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
@@ -358,7 +554,7 @@ export default function StudentEarnings() {
                         );
                       }
 
-                      return filteredEarnings.map((record) => (
+                      return validEarnings.map((record) => (
                         <TableRow key={record.id} className="hover:bg-muted/30 transition-colors">
                           <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
                             {record.task_id_code || '-'}

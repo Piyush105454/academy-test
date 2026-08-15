@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { GraduationCap, Calendar, Loader2 } from 'lucide-react';
+import { GraduationCap, Calendar, Loader2, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { logActivity } from '@/utils/activityLogger';
 import {
@@ -20,11 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { VolunteerSelector } from './VolunteerSelector';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { formatSingleSessionCode } from '@/utils/sessionIdGenerator';
+
+const ALL_DESIGNATIONS = ['1. CCC', '2. Junior Fellow', '3. Senior Fellow'];
 
 interface CurriculumItem {
   id: string;
@@ -120,6 +124,7 @@ export function AddSessionDialog({
   const [selectedSlot, setSelectedSlot] = useState<string>('');
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>('');
+  const [selectedDesignations, setSelectedDesignations] = useState<string[]>([]);
   const [useCustomTopic, setUseCustomTopic] = useState(false);
   const [customTopicText, setCustomTopicText] = useState('');
   const [formData, setFormData] = useState({
@@ -137,6 +142,9 @@ export function AddSessionDialog({
     class_batch: '',
     meeting_link: '',
   });
+
+  const selectedClassObj = classes.find(c => c.id === selectedClass);
+  const isCccEmpFellow = !!(selectedClassObj?.name?.toLowerCase().includes('ccc emp') || formData.class_batch?.toLowerCase().includes('ccc emp'));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
@@ -818,6 +826,7 @@ export function AddSessionDialog({
       centre_id: selectedCentre,
       centre_time_slot_id: selectedSlot,
       class_batch: formData.class_batch,
+      designations: isCccEmpFellow ? selectedDesignations : [],
       status: 'committed',
     };
 
@@ -1115,6 +1124,82 @@ For any questions, contact the coordinator.
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Designation Multi-Select Option - ONLY SHOW WHEN CLASS IS CCC EMP Fellow */}
+              {isCccEmpFellow && (
+                <div className="space-y-2 mb-4 p-3 bg-blue-50/60 dark:bg-blue-950/30 rounded-lg border border-blue-200/60 dark:border-blue-800/40">
+                  <Label htmlFor="designations" className="text-sm font-semibold text-blue-950 dark:text-blue-100 flex items-center justify-between">
+                    <span>Designation Option (Target Students)</span>
+                    <span className="text-xs font-normal text-muted-foreground bg-blue-100 dark:bg-blue-900/50 px-2 py-0.5 rounded text-blue-800 dark:text-blue-300">CCC EMP Fellow Only</span>
+                  </Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-between text-left font-normal bg-background"
+                      >
+                        <span className="truncate">
+                          {selectedDesignations.length === 0
+                            ? "All Designations"
+                            : selectedDesignations.length === ALL_DESIGNATIONS.length
+                            ? "All Designations"
+                            : selectedDesignations.join(", ")}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[300px] p-3" align="start">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between pb-2 border-b">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Select Designations</span>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              className="text-xs text-primary hover:underline font-medium"
+                              onClick={() => setSelectedDesignations([...ALL_DESIGNATIONS])}
+                            >
+                              Select All
+                            </button>
+                            <button
+                              type="button"
+                              className="text-xs text-muted-foreground hover:underline"
+                              onClick={() => setSelectedDesignations([])}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-2 pt-1">
+                          {ALL_DESIGNATIONS.map((des) => {
+                            const isChecked = selectedDesignations.includes(des);
+                            return (
+                              <label
+                                key={des}
+                                className="flex items-center gap-2 text-sm cursor-pointer p-1.5 rounded hover:bg-accent/50 transition-colors"
+                              >
+                                <Checkbox
+                                  checked={isChecked}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setSelectedDesignations([...selectedDesignations, des]);
+                                    } else {
+                                      setSelectedDesignations(selectedDesignations.filter((d) => d !== des));
+                                    }
+                                  }}
+                                />
+                                <span>{des}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <p className="text-xs text-muted-foreground">
+                    Filter session to specific student designations (1. CCC, 2. Junior Fellow, 3. Senior Fellow).
+                  </p>
+                </div>
+              )}
 
               {/* Subject Selection - AFTER CLASS */}
               {selectedClass && (

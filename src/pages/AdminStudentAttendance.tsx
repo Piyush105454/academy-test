@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Users, Search, ArrowUpDown, CalendarCheck } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Users, Search, ArrowUpDown, CalendarCheck, Gift, Sparkles, Award } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -69,6 +69,27 @@ export default function AdminStudentAttendance() {
   const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
   const { selectedYear, getDateRange } = useAcademicYear();
 
+  // Check if selected month has ended / completed
+  const isMonthEnded = useMemo(() => {
+    const today = new Date();
+    const currentMonthIdx = today.getMonth(); // 0 to 11
+
+    if (selectedMonth === 'all') return false;
+    const monthNum = parseInt(selectedMonth, 10);
+    if (isNaN(monthNum)) return false;
+
+    // Month in past -> month has ended
+    if (monthNum < currentMonthIdx) return true;
+
+    // Current month check -> if today is the last day of month
+    if (monthNum === currentMonthIdx) {
+      const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      return today.getDate() === lastDayOfMonth;
+    }
+
+    return false;
+  }, [selectedMonth]);
+
   useEffect(() => {
     fetchClasses();
     fetchStudentAttendance();
@@ -98,7 +119,6 @@ export default function AdminStudentAttendance() {
 
       if (studentError) throw studentError;
 
-      // Fetch all student_performance for the selected academic year and month
       // Fetch all student_performance for the selected academic year
       const { startDate, endDate } = getDateRange();
       
@@ -116,6 +136,7 @@ export default function AdminStudentAttendance() {
             student_id,
             student_name,
             attendance_status,
+            session_id,
             sessions!inner (
               session_date
             )
@@ -133,8 +154,6 @@ export default function AdminStudentAttendance() {
         
         offset += limit;
         
-        // PostgREST can return fewer rows than the limit if the inner join filters rows out
-        // after the limit is applied. We must only stop when we get exactly 0 rows.
         if (!data || data.length === 0) {
           hasMore = false;
         }
@@ -154,12 +173,28 @@ export default function AdminStudentAttendance() {
         return true;
       });
 
-      // Group by student_id, fallback to name if missing
+      // Track session IDs held for each class + designation group
+      const groupSessionsMap = new Map<string, Set<string>>();
+
+      filteredPerformance.forEach((p: any) => {
+        const studentObj = (students || []).find((s: any) => s.id === p.student_id || (s.name || '').trim().toLowerCase() === (p.student_name || '').trim().toLowerCase());
+        const className = studentObj?.classes?.name || 'Unassigned';
+        const desig = studentObj?.designation || '-';
+        const groupKey = `${className}__${desig}`.toLowerCase();
+
+        if (!groupSessionsMap.has(groupKey)) {
+          groupSessionsMap.set(groupKey, new Set());
+        }
+        if (p.session_id) {
+          groupSessionsMap.get(groupKey)!.add(p.session_id);
+        }
+      });
+
+      // Group student attendance counts
       const attendanceMap = new Map();
       filteredPerformance.forEach(p => {
         let key = p.student_id;
         
-        // Fallback for any records that somehow missed the backfill
         if (!key) {
           let name = (p.student_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
           if (name.includes('puspa lodhi')) name = 'pushpa lodhi';
@@ -178,23 +213,66 @@ export default function AdminStudentAttendance() {
 
       const aggregated = (students || []).map((s: any) => {
         const nameKey = (s.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
-        // Try getting by ID first, fallback to name key
         const counts = attendanceMap.get(s.id) || attendanceMap.get(nameKey) || { present: 0, absent: 0 };
-        const totalSessions = counts.present + counts.absent;
-        const percentage = totalSessions > 0 ? Math.round((counts.present / totalSessions) * 100) : 0;
+        
+        const className = s.classes?.name || 'Unassigned';
+        const desig = s.designation || '-';
+        const groupKey = `${className}__${desig}`.toLowerCase();
+        const groupSessionsSet = groupSessionsMap.get(groupKey);
+
+        const groupTotalSessions = groupSessionsSet ? groupSessionsSet.size : 0;
+        const totalExpectedSessions = Math.max(groupTotalSessions, counts.present + counts.absent);
+        
+        const totalAbsent = totalExpectedSessions > counts.present ? (totalExpectedSessions - counts.present) : counts.absent;
+        const percentage = totalExpectedSessions > 0 ? Math.round((counts.present / totalExpectedSessions) * 100) : 0;
 
         return {
           student_id: s.id,
           student_name: s.name,
-          class_name: s.classes?.name || 'Unassigned',
-          designation: s.designation || '-',
+          class_name: className,
+          designation: desig,
           total_present: counts.present,
-          total_absent: counts.absent,
+          total_absent: totalAbsent,
           attendance_percentage: percentage
         };
       });
 
       setStudentAttendance(aggregated);
+
+      // Automatically award ₹200 bonus ONLY when month has ended/completed
+      if (isMonthEnded) {
+        const eligible100PctStudents = aggregated.filter(s => s.total_present > 0 && s.total_absent === 0 && s.attendance_percentage === 100);
+
+        if (eligible100PctStudents.length > 0) {
+          const studentIds = eligible100PctStudents.map(s => s.student_id);
+
+          const { data: existingEarnings } = await supabase
+            .from('student_earnings')
+            .select('student_id, earned_at')
+            .in('student_id', studentIds)
+            .ilike('description', '%100% attendance%');
+
+          const alreadyAwardedIds = new Set<string>();
+          (existingEarnings || []).forEach(e => {
+            const earnedDate = new Date(e.earned_at);
+            if (earnedDate.getMonth().toString() === selectedMonth) {
+              alreadyAwardedIds.add(e.student_id);
+            }
+          });
+
+          const toAward = eligible100PctStudents.filter(s => !alreadyAwardedIds.has(s.student_id));
+          if (toAward.length > 0) {
+            const newEntries = toAward.map(s => ({
+              student_id: s.student_id,
+              amount: 200,
+              description: 'Bonus for 100% attendance',
+              earned_at: new Date().toISOString(),
+            }));
+
+            await supabase.from('student_earnings').insert(newEntries);
+          }
+        }
+      }
     } catch (error) {
       console.error('Error fetching attendance:', error);
       toast.error('Failed to load attendance data');
@@ -262,9 +340,7 @@ export default function AdminStudentAttendance() {
       direction = 'desc';
     }
     setSortConfig({ key, direction });
-  };
-
-  const filteredStudents = studentAttendance.filter(s => {
+  };  const filteredStudents = studentAttendance.filter(s => {
     const matchesSearch = s.student_name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesClass = selectedClass === 'all' || s.class_name === selectedClass;
     const matchesDesignation = selectedDesignation === 'all' || s.designation === selectedDesignation;
@@ -292,7 +368,7 @@ export default function AdminStudentAttendance() {
               Student Attendance Management
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Monitor and manage session attendance for students
+              Monitor session attendance (100% attendance ₹200 bonus is automatically awarded every month)
             </p>
           </div>
         </div>
@@ -367,19 +443,20 @@ export default function AdminStudentAttendance() {
                   <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('designation')}>Designation <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                   <TableHead className="text-center"><div className="flex justify-center items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('total_present')}>Present <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                   <TableHead className="text-center"><div className="flex justify-center items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('total_absent')}>Absent <ArrowUpDown className="h-3 w-3" /></div></TableHead>
+                  <TableHead className="text-center"><div className="flex justify-center items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('attendance_percentage')}>Attendance % <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
                       Loading data...
                     </TableCell>
                   </TableRow>
                 ) : sortedStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
                       No student records found
                     </TableCell>
                   </TableRow>
@@ -396,6 +473,23 @@ export default function AdminStudentAttendance() {
                       </TableCell>
                       <TableCell className="text-center font-bold text-red-500">
                         {s.total_absent}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {s.total_present > 0 && s.attendance_percentage === 100 ? (
+                          isMonthEnded ? (
+                            <Badge className="bg-emerald-600 text-white font-bold text-[10px] gap-1">
+                              <Sparkles className="h-3 w-3" /> 100% Perfect (₹200 Auto-Awarded)
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="border-emerald-600 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] gap-1">
+                              <Sparkles className="h-3 w-3" /> 100% (In Progress)
+                            </Badge>
+                          )
+                        ) : (
+                          <Badge variant="secondary" className="font-semibold text-[10px]">
+                            {s.attendance_percentage}%
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button 
