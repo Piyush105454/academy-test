@@ -138,6 +138,9 @@ const getDisplaySubjectName = (name: string) => {
   if (lower.includes('cybersecurity') || lower.includes('cyber security') || lower.includes('cyber')) {
     return '3.3 Cybersecurity (Specialization)';
   }
+  if (lower.includes('azure')) {
+    return '3.4 Azure (Specialization)';
+  }
   return name;
 };
 
@@ -149,6 +152,7 @@ const getSubjectSortOrder = (name: string): number => {
   if (lower.includes('artificial intelligence')) return 3;
   if (lower.includes('python')) return 4;
   if (lower.includes('cybersecurity') || lower.includes('cyber security') || lower.includes('cyber')) return 5;
+  if (lower.includes('azure')) return 6;
   return 99;
 };
 
@@ -677,37 +681,14 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     }
   };
 
-  const fetchSubjects = async (classId?: string) => {
+  const fetchSubjects = async (_classId?: string) => {
     try {
-      let subjectsList: any[] = [];
+      // Always fetch all subjects from the database so newly added subjects are visible in filters
+      const { data, error } = await supabase
+        .from('subjects')
+        .select('id, name, description');
 
-      if (classId) {
-        // Fetch only subjects assigned to the selected class's curriculum
-        const { data: currSubjects, error: currErr } = await supabase
-          .from('curriculum')
-          .select('subject_id, subjects:subject_id(id, name, description)')
-          .eq('class_id', classId);
-
-        if (!currErr && currSubjects && currSubjects.length > 0) {
-          const subMap = new Map<string, any>();
-          currSubjects.forEach((item: any) => {
-            if (item.subjects && item.subjects.id) {
-              subMap.set(item.subjects.id, item.subjects);
-            }
-          });
-          subjectsList = Array.from(subMap.values());
-        }
-      }
-
-      // Fallback if no classId or no curriculum records for classId
-      if (subjectsList.length === 0) {
-        const { data, error } = await supabase
-          .from('subjects')
-          .select('id, name, description');
-        if (!error && data) {
-          subjectsList = data;
-        }
-      }
+      let subjectsList: any[] = data || [];
 
       // Sort by custom subject sequence
       subjectsList.sort((a, b) => getSubjectSortOrder(a.name) - getSubjectSortOrder(b.name));
