@@ -264,11 +264,17 @@ export default function AdminStudentEarnings() {
           classes (name),
           student_earnings (
             amount, 
-            earned_at
+            earned_at,
+            description
           )
         `);
 
       if (studentError) throw studentError;
+
+      const today = new Date();
+      const currentMonthIdx = today.getMonth();
+      const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const isCurrentMonthEnded = today.getDate() === lastDayOfMonth;
 
       const { startDate, endDate } = getDateRange();
       const aggregated = (students || []).map((s: any) => {
@@ -276,7 +282,14 @@ export default function AdminStudentEarnings() {
           const earnedAt = new Date(e.earned_at);
           const matchesAcademicYear = earnedAt >= startDate && earnedAt <= endDate;
           const matchesMonth = selectedMonth === 'all' || earnedAt.getMonth().toString() === selectedMonth;
-          return matchesAcademicYear && matchesMonth;
+          if (!matchesAcademicYear || !matchesMonth) return false;
+
+          const desc = (e.description || '').toLowerCase();
+          if (desc.includes('attendance')) {
+            const isCurrentMonth = earnedAt.getMonth() === currentMonthIdx && earnedAt.getFullYear() === today.getFullYear();
+            if (isCurrentMonth && !isCurrentMonthEnded) return false;
+          }
+          return true;
         });
         
         const total = filteredEarnings.reduce((sum: number, e: any) => sum + parseFloat(e.amount), 0);

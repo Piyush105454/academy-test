@@ -139,7 +139,7 @@ export default function StudentAttendance() {
           bad_behaviour_points,
           created_at,
           session_id,
-          sessions!inner (
+          sessions (
             id,
             session_id_code,
             title,
@@ -153,21 +153,29 @@ export default function StudentAttendance() {
             volunteer_name,
             facilitator_name
           )
-        `)
-        .gte('sessions.session_date', startDate.toISOString().split('T')[0])
-        .lte('sessions.session_date', endDate.toISOString().split('T')[0]);
+        `);
 
       if (error) throw error;
 
-      // Filter to only this student (by student_id match OR student_name match)
+      // Filter to only this student (by student_id match OR student_name match) AND by date range
       const studentNameLower = normalizedName.toLowerCase();
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+
       const filtered = (data || []).filter((item: any) => {
-        if (item.student_id && studentIds.includes(item.student_id)) return true;
-        const itemRecordName = (item.student_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
-        if (itemRecordName === studentNameLower) return true;
-        if (studentNameLower.includes('puspa lodhi') && itemRecordName.includes('puspa')) return true;
-        if (studentNameLower.includes('nausheen') && itemRecordName.includes('naaj')) return true;
-        return false;
+        const isStudentMatch = 
+          (item.student_id && studentIds.includes(item.student_id)) ||
+          ((item.student_name || '').trim().replace(/\s+/g, ' ').toLowerCase() === studentNameLower) ||
+          (studentNameLower.includes('puspa lodhi') && (item.student_name || '').toLowerCase().includes('puspa')) ||
+          (studentNameLower.includes('nausheen') && (item.student_name || '').toLowerCase().includes('naaj'));
+
+        if (!isStudentMatch) return false;
+
+        const sessionDate = item.sessions?.session_date || (item.created_at ? item.created_at.split('T')[0] : null);
+        if (sessionDate) {
+          if (sessionDate < startDateStr || sessionDate > endDateStr) return false;
+        }
+        return true;
       });
 
       // Map properly into AttendanceRecord format

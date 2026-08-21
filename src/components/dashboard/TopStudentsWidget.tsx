@@ -81,7 +81,9 @@ export function TopStudentsWidget({
           .select(`
             amount,
             student_id,
-            task_id
+            task_id,
+            description,
+            earned_at
           `);
         
         if (startDate) {
@@ -160,11 +162,22 @@ export function TopStudentsWidget({
 
         // Aggregate
         const statsMap = new Map<string, StudentStat>();
+        const today = new Date();
+        const currentMonthIdx = today.getMonth();
+        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        const isCurrentMonthEnded = today.getDate() === lastDayOfMonth;
 
         // Process Earnings
         earningsData?.forEach((record: any) => {
           if (sessionType && sessionType !== 'all' && (!record.task_id || !matchingTaskIds.has(record.task_id))) return;
           
+          const desc = (record.description || '').toLowerCase();
+          if (desc.includes('attendance')) {
+            const earnedDate = new Date(record.earned_at || new Date());
+            const isCurrentMonth = earnedDate.getMonth() === currentMonthIdx && earnedDate.getFullYear() === today.getFullYear();
+            if (isCurrentMonth && !isCurrentMonthEnded) return;
+          }
+
           const s = studentIdMap.get(record.student_id);
           if (!s) return;
           if (academicYear && academicYear !== 'All' && s.academic_year && s.academic_year !== academicYear) return;
@@ -274,9 +287,8 @@ export function TopStudentsWidget({
                     )}
                     <span className="font-medium text-sm group-hover:text-primary transition-colors truncate" title={student.name}>{student.name}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-amber-600 font-bold text-xs bg-amber-50/85 px-2.5 py-0.5 rounded-full border border-amber-100 shrink-0">
-                    <span>{student.earnings}</span>
-                    <span className="text-[9px] uppercase tracking-wider text-amber-700/80">Units</span>
+                  <div className="flex items-center gap-1 text-emerald-700 font-bold text-xs bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                    <span>₹{student.earnings.toLocaleString()}</span>
                   </div>
                 </div>
               )) : <p className="text-sm text-muted-foreground text-center py-4">No earnings found.</p>}

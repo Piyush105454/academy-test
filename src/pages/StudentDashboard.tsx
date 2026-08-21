@@ -519,14 +519,19 @@ export default function StudentDashboard() {
         }
       }
 
-      if (studentIds.length > 0 && ownSessionsList.length > 0) {
+      if (studentIds.length > 0 || studentName) {
         const { data: perfData } = await supabase
           .from('student_performance')
-          .select('session_id, attendance_status')
-          .in('student_id', studentIds);
+          .select('session_id, attendance_status, student_id, student_name');
         
         if (perfData) {
-          setStudentPerformances(perfData);
+          const sNameLower = (studentName || '').trim().toLowerCase();
+          const filtered = perfData.filter((p: any) => {
+            if (p.student_id && studentIds.includes(p.student_id)) return true;
+            const pName = (p.student_name || '').trim().toLowerCase();
+            return pName === sNameLower;
+          });
+          setStudentPerformances(filtered);
         }
       }
     } catch (error) {

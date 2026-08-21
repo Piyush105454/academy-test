@@ -137,12 +137,11 @@ export default function AdminStudentAttendance() {
             student_name,
             attendance_status,
             session_id,
-            sessions!inner (
+            created_at,
+            sessions (
               session_date
             )
           `)
-          .gte('sessions.session_date', startDate.toISOString().split('T')[0])
-          .lte('sessions.session_date', endDate.toISOString().split('T')[0])
           .order('id')
           .range(offset, offset + limit - 1);
 
@@ -161,7 +160,7 @@ export default function AdminStudentAttendance() {
 
       // Filter by selected month locally
       const filteredPerformance = (allPerformance || []).filter((p: any) => {
-        const sessionDateStr = p.sessions?.session_date;
+        const sessionDateStr = p.sessions?.session_date || p.created_at;
         if (!sessionDateStr) return false;
         
         const sessionDate = new Date(sessionDateStr);
