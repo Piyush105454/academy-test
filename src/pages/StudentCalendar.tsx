@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 
 interface Session {
   id: string;
@@ -33,6 +34,8 @@ interface Session {
   centre_id: string | null;
   centre_time_slot_id: string | null;
   class_batch: string | null;
+  designation?: string | null;
+  designations?: string[] | null;
   centre_name?: string | null;
   centre_location?: string | null;
   slot_day?: string | null;
@@ -779,6 +782,24 @@ export default function StudentCalendar() {
                     <div>
                       <p className="text-xs text-muted-foreground">Class</p>
                       <p className="font-medium">{selectedSession.class_batch}</p>
+                    </div>
+                  )}
+                  {((Array.isArray(selectedSession.designations) && selectedSession.designations.length > 0) || selectedSession.designation) && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Designation</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {Array.isArray(selectedSession.designations) && selectedSession.designations.length > 0 ? (
+                          selectedSession.designations.map((d: string) => (
+                            <Badge key={d} variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200 font-semibold">
+                              {d}
+                            </Badge>
+                          ))
+                        ) : (
+                          <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200 font-semibold">
+                            {selectedSession.designation}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   )}
                   <div>

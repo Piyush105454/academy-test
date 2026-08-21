@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { AddSessionDialog } from '@/components/sessions/AddSessionDialog';
 import { EditSessionDialog } from '@/components/sessions/EditSessionDialog';
 import { SessionTypeDialog } from '@/components/sessions/SessionTypeDialog';
+import { Badge } from '@/components/ui/badge';
 
 interface Facilitator {
   id: string;
@@ -83,6 +84,8 @@ interface Session {
   slot_start_time?: string;
   slot_end_time?: string;
   class_batch?: string;
+  designation?: string;
+  designations?: string[];
   subject_id?: string;
   subject_name?: string;
 }
@@ -102,6 +105,7 @@ export default function Calendar() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [selectedFacilitator, setSelectedFacilitator] = useState<string>('all');
   const [selectedClass, setSelectedClass] = useState<string>('all');
+  const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [loading, setLoading] = useState(true);
@@ -177,7 +181,7 @@ export default function Calendar() {
 
   useEffect(() => {
     generateCalendar();
-  }, [currentDate, sessions, selectedFacilitator, selectedClass, sessionTypeFilter, selectedSubject, calendarView]);
+  }, [currentDate, sessions, selectedFacilitator, selectedClass, sessionTypeFilter, selectedSubject, selectedDesignation, calendarView]);
 
   const fetchFacilitators = async () => {
     try {
@@ -310,6 +314,13 @@ export default function Calendar() {
 
     if (selectedSubject !== 'all') {
       filteredSessions = filteredSessions.filter(s => s.subject_name === selectedSubject);
+    }
+
+    if (selectedDesignation !== 'all') {
+      filteredSessions = filteredSessions.filter(s => {
+        if (!s.designations || s.designations.length === 0) return true;
+        return s.designations.includes(selectedDesignation);
+      });
     }
 
     const days: CalendarDay[] = [];
@@ -714,7 +725,7 @@ export default function Calendar() {
             {/* Volunteer and Class Filters - Only show for non-students */}
             {userRole !== 5 && (
               <div className="border-b border-border/80 pb-4 mb-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
                   {/* Facilitator Filter */}
                   <div>
                     <label className="text-[10px] md:text-xs font-semibold text-muted-foreground uppercase block mb-1.5">
@@ -754,6 +765,26 @@ export default function Calendar() {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* Designation Filter */}
+                  {(selectedClass === 'all' || selectedClass === 'CCC EMP Fellow') && (
+                    <div>
+                      <label className="text-[10px] md:text-xs font-semibold text-muted-foreground uppercase block mb-1.5">
+                        Designation
+                      </label>
+                      <Select value={selectedDesignation} onValueChange={setSelectedDesignation}>
+                        <SelectTrigger className="w-full h-8 md:h-9 text-xs">
+                          <SelectValue placeholder="All Designations" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Designations</SelectItem>
+                          <SelectItem value="1. CCC">1. CCC</SelectItem>
+                          <SelectItem value="2. Junior Fellow">2. Junior Fellow</SelectItem>
+                          <SelectItem value="3. Senior Fellow">3. Senior Fellow</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
                   {/* Session Type Filter */}
                   <div>
@@ -1024,7 +1055,22 @@ export default function Calendar() {
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-3 text-xs text-muted-foreground">
                             <div>
                               <span className="font-medium text-foreground block text-[10px] uppercase text-muted-foreground/80">Class</span>
-                              {session.class_batch || '-'}
+                              <div>{session.class_batch || '-'}</div>
+                              {((Array.isArray(session.designations) && session.designations.length > 0) || session.designation) && (
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {Array.isArray(session.designations) && session.designations.length > 0 ? (
+                                    session.designations.map(d => (
+                                      <Badge key={d} variant="outline" className="text-[9px] px-1 py-0 bg-purple-50 text-purple-700 border-purple-200">
+                                        {d}
+                                      </Badge>
+                                    ))
+                                  ) : (
+                                    <Badge variant="outline" className="text-[9px] px-1 py-0 bg-purple-50 text-purple-700 border-purple-200">
+                                      {session.designation}
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             <div>
                               <span className="font-medium text-foreground block text-[10px] uppercase text-muted-foreground/80">Volunteer</span>
@@ -1120,6 +1166,24 @@ export default function Calendar() {
                     <div>
                       <p className="text-xs text-muted-foreground">Class</p>
                       <p className="font-medium">{selectedSession.class_batch}</p>
+                    </div>
+                  )}
+                  {((Array.isArray(selectedSession.designations) && selectedSession.designations.length > 0) || selectedSession.designation) && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Designation</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {Array.isArray(selectedSession.designations) && selectedSession.designations.length > 0 ? (
+                          selectedSession.designations.map((d: string) => (
+                            <Badge key={d} variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200 font-semibold">
+                              {d}
+                            </Badge>
+                          ))
+                        ) : (
+                          <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200 font-semibold">
+                            {selectedSession.designation}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   )}
                   <div>
