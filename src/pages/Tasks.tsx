@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, ExternalLink, ClipboardList, ChevronRight, MoreHorizontal, Eye, Trash2, BookOpen, Calendar, ArrowUpDown } from 'lucide-react';
+import { Search, Plus, ExternalLink, ClipboardList, ChevronRight, MoreHorizontal, Eye, Trash2, BookOpen, Calendar, ArrowUpDown, Zap } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { logActivity } from '@/utils/activityLogger';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
+import { BulkAssignTasksDialog } from '@/components/tasks/BulkAssignTasksDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
@@ -126,6 +127,7 @@ export default function Tasks() {
     const currentMonthIndex = new Date().getMonth(); // 0 to 11
     return String(currentMonthIndex + 1); // "1" to "12"
   });
+  const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
 
   const monthsList = [
     { value: 'all', label: 'All Months' },
@@ -790,10 +792,21 @@ export default function Tasks() {
               Manage student tasks and track submissions
             </p>
           </div>
-          <Button onClick={() => navigate('/tasks/add')} className="gap-2 w-full sm:w-auto">
-            <Plus className="h-4 w-4" />
-            Create Task
-          </Button>
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            <Button 
+              onClick={() => setIsBulkAssignOpen(true)} 
+              variant="outline"
+              className="gap-2 border-amber-300 bg-amber-50/80 hover:bg-amber-100 text-amber-900 font-bold shadow-sm"
+            >
+              <Zap className="h-4 w-4 text-amber-600 fill-amber-500" />
+              <span>Bulk Assign Tasks</span>
+            </Button>
+
+            <Button onClick={() => navigate('/tasks/add')} className="gap-2">
+              <Plus className="h-4 w-4" />
+              <span>Create Task</span>
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -1138,6 +1151,12 @@ export default function Tasks() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <BulkAssignTasksDialog 
+        open={isBulkAssignOpen} 
+        onOpenChange={setIsBulkAssignOpen} 
+        onSuccess={fetchTasks} 
+      />
     </DashboardLayout>
   );
 }
