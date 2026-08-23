@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, ExternalLink, ClipboardList, ChevronRight, MoreHorizontal, Eye, Trash2, BookOpen, Calendar, ArrowUpDown, Zap } from 'lucide-react';
+import { Search, Plus, ExternalLink, ClipboardList, ChevronRight, MoreHorizontal, Eye, Trash2, BookOpen, Calendar, ArrowUpDown } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { logActivity } from '@/utils/activityLogger';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
-import { BulkAssignTasksDialog } from '@/components/tasks/BulkAssignTasksDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
@@ -68,7 +67,6 @@ interface TaskItem {
   facilitator_name?: string;
   incharge_name?: string;
   created_by_name?: string;
-  student_designation?: string;
   task_id?: string;
 }
 
@@ -117,7 +115,6 @@ export default function Tasks() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterClass, setFilterClass] = useState('all');
-  const [filterDesignation, setFilterDesignation] = useState('all');
   const [filterSession, setFilterSession] = useState('all');
   const [filterSubject, setFilterSubject] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -129,7 +126,6 @@ export default function Tasks() {
     const currentMonthIndex = new Date().getMonth(); // 0 to 11
     return String(currentMonthIndex + 1); // "1" to "12"
   });
-  const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
 
   const monthsList = [
     { value: 'all', label: 'All Months' },
@@ -233,9 +229,6 @@ export default function Tasks() {
       if (cls) {
         filtered = filtered.filter((t) => t.class_name === cls.name);
       }
-    }
-    if (filterDesignation !== 'all') {
-      filtered = filtered.filter((t) => t.student_designation === filterDesignation);
     }
     if (filterSession !== 'all') {
       filtered = filtered.filter((t) => t.session_id === filterSession);
@@ -443,7 +436,7 @@ export default function Tasks() {
     }
 
     setTaskGroups(finalGroups);
-  }, [tasks, filterClass, filterDesignation, filterSession, filterSubject, filterStatus, filterIncharge, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName]);
+  }, [tasks, filterClass, filterSession, filterSubject, filterStatus, filterIncharge, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName]);
 
   const fetchClasses = async () => {
     try {
@@ -540,7 +533,6 @@ export default function Tasks() {
             created_by,
             students:student_id(
               name,
-              designation,
               classes(name)
             ),
             sessions:session_id(
@@ -612,7 +604,6 @@ export default function Tasks() {
           facilitator_name: task.sessions?.facilitator_name || '-',
           incharge_name: inchargeName,
           created_by_name: creatorName || '-',
-          student_designation: task.students?.designation || '',
           class_name: task.sessions?.class_batch || 
                      (task.students?.classes && !Array.isArray(task.students.classes) ? task.students.classes.name : 
                       Array.isArray(task.students?.classes) && task.students.classes.length > 0 ? task.students.classes[0].name : '-'),
@@ -799,21 +790,10 @@ export default function Tasks() {
               Manage student tasks and track submissions
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-            <Button 
-              onClick={() => setIsBulkAssignOpen(true)} 
-              variant="outline"
-              className="gap-2 border-amber-300 bg-amber-50/80 hover:bg-amber-100 text-amber-900 font-bold shadow-sm"
-            >
-              <Zap className="h-4 w-4 text-amber-600 fill-amber-500" />
-              <span>Bulk Assign Tasks</span>
-            </Button>
-
-            <Button onClick={() => navigate('/tasks/add')} className="gap-2">
-              <Plus className="h-4 w-4" />
-              <span>Create Task</span>
-            </Button>
-          </div>
+          <Button onClick={() => navigate('/tasks/add')} className="gap-2 w-full sm:w-auto">
+            <Plus className="h-4 w-4" />
+            Create Task
+          </Button>
         </div>
 
         {/* Filters */}
@@ -878,21 +858,6 @@ export default function Tasks() {
                 {classes.map((cls) => (
                   <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="w-full sm:w-48">
-            <label className="text-sm font-medium text-foreground mb-2 block">Filter by Designation</label>
-            <Select value={filterDesignation} onValueChange={setFilterDesignation}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Designations" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Designations</SelectItem>
-                <SelectItem value="1. CCC">1. CCC</SelectItem>
-                <SelectItem value="2. Junior Fellow">2. Junior Fellow</SelectItem>
-                <SelectItem value="3. Senior Fellow">3. Senior Fellow</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1173,12 +1138,6 @@ export default function Tasks() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <BulkAssignTasksDialog 
-        open={isBulkAssignOpen} 
-        onOpenChange={setIsBulkAssignOpen} 
-        onSuccess={fetchTasks} 
-      />
     </DashboardLayout>
   );
 }
