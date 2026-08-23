@@ -280,7 +280,7 @@ export default function StudentDashboard() {
           // Earnings for all filtered students
           const { data: earningsData } = await supabase
             .from('student_earnings')
-            .select('student_id, amount, earned_at')
+            .select('student_id, amount, earned_at, description')
             .in('student_id', studentIds)
             .gte('earned_at', earningStart.toISOString())
             .lte('earned_at', earningEnd.toISOString());
@@ -318,10 +318,23 @@ export default function StudentDashboard() {
             studentNameMap[s.name.toLowerCase().trim().replace(/\s+/g, ' ')] = s.id;
           });
 
+          const today = new Date();
+          const currentMonthIdx = today.getMonth();
+          const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+          const isCurrentMonthEnded = today.getDate() === lastDayOfMonth;
+
           // Apply earnings filter
           earningsData?.forEach(item => {
             if (customStartDate && new Date(item.earned_at) < customStartDate) return;
             if (customEndDate && new Date(item.earned_at) > customEndDate) return;
+
+            const desc = (item.description || '').toLowerCase();
+            if (desc.includes('attendance')) {
+              const earnedDate = new Date(item.earned_at || new Date());
+              const isCurrentMonth = earnedDate.getMonth() === currentMonthIdx && earnedDate.getFullYear() === today.getFullYear();
+              if (isCurrentMonth && !isCurrentMonthEnded) return;
+            }
+
             const amount = parseFloat(item.amount as any) || 0;
             if (statsMap[item.student_id]) {
               statsMap[item.student_id].earnings += amount;
@@ -801,9 +814,8 @@ export default function StudentDashboard() {
                                 )}
                                 <span className="font-medium text-sm group-hover:text-primary transition-colors truncate" title={student.name}>{student.name}</span>
                               </div>
-                              <div className="flex items-center gap-1.5 text-amber-600 font-bold text-xs bg-amber-50/85 px-2.5 py-0.5 rounded-full border border-amber-100 shrink-0">
-                                <span>{student.earnings}</span>
-                                <span className="text-[9px] uppercase tracking-wider text-amber-700/80">Units</span>
+                              <div className="flex items-center gap-1 text-emerald-700 font-bold text-xs bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                                <span>₹{student.earnings.toLocaleString()}</span>
                               </div>
                             </div>
                           ))}
