@@ -104,10 +104,10 @@ export default function StudentAttendance() {
     try {
       setLoading(true);
 
-      // 1. Fetch student info
+      // 1. Fetch student info with class details
       const { data: students, error: studentError } = await supabase
         .from('students')
-        .select('id, name, email')
+        .select('id, name, email, designation, class_id, classes(id, name)')
         .ilike('email', user?.email || '');
 
       if (studentError) throw studentError;
@@ -121,12 +121,53 @@ export default function StudentAttendance() {
       const primaryStudent = students[0];
       setStudentName(primaryStudent.name);
       const studentIds = students.map(s => s.id);
+      const className = primaryStudent.classes?.name || '';
+      const designation = primaryStudent.designation || '';
 
-      // 2. Query student_performance joined with sessions
       const { startDate, endDate } = getDateRange();
-      const normalizedName = primaryStudent.name.trim().replace(/\s+/g, ' ');
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
 
-      const { data, error } = await supabase
+      // 2. Fetch all sessions conducted for student's class batch in date range
+      let sessionQuery = supabase
+        .from('sessions')
+        .select(`
+          id,
+          session_id_code,
+          title,
+          session_date,
+          session_time,
+          session_type,
+          topics_covered,
+          class_batch,
+          module_name,
+          content_category,
+          volunteer_name,
+          facilitator_name,
+          designations
+        `)
+        .gte('session_date', startDateStr)
+        .lte('session_date', endDateStr)
+        .order('session_date', { ascending: false });
+
+      if (className) {
+        sessionQuery = sessionQuery.ilike('class_batch', `%${className}%`);
+      }
+
+      const { data: rawSessions } = await sessionQuery;
+
+      // Filter sessions by student designation if specified
+      const relevantSessions = (rawSessions || []).filter((sess: any) => {
+        if (!designation || designation === '-') return true;
+        if (!sess.designations || sess.designations.length === 0) return true;
+        return sess.designations.includes(designation);
+      });
+
+      // 3. Query student_performance for explicit records
+      const normalizedName = primaryStudent.name.trim().replace(/\s+/g, ' ');
+      const studentNameLower = normalizedName.toLowerCase();
+
+      const { data: perfData } = await supabase
         .from('student_performance')
         .select(`
           id,
@@ -138,86 +179,118 @@ export default function StudentAttendance() {
           questions_asked,
           bad_behaviour_points,
           created_at,
-          session_id,
-          sessions (
-            id,
-            session_id_code,
-            title,
-            session_date,
-            session_time,
-            session_type,
-            topics_covered,
-            class_batch,
-            module_name,
-            content_category,
-            volunteer_name,
-            facilitator_name
-          )
+          session_id
         `);
 
-      if (error) throw error;
-
-      // Filter to only this student (by student_id match OR student_name match) AND by date range
-      const studentNameLower = normalizedName.toLowerCase();
-      const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
-
-      const filtered = (data || []).filter((item: any) => {
+      const filteredPerf = (perfData || []).filter((item: any) => {
         const isStudentMatch = 
           (item.student_id && studentIds.includes(item.student_id)) ||
           ((item.student_name || '').trim().replace(/\s+/g, ' ').toLowerCase() === studentNameLower) ||
           (studentNameLower.includes('puspa lodhi') && (item.student_name || '').toLowerCase().includes('puspa')) ||
           (studentNameLower.includes('nausheen') && (item.student_name || '').toLowerCase().includes('naaj'));
 
-        if (!isStudentMatch) return false;
-
-        const sessionDate = item.sessions?.session_date || (item.created_at ? item.created_at.split('T')[0] : null);
-        if (sessionDate) {
-          if (sessionDate < startDateStr || sessionDate > endDateStr) return false;
-        }
-        return true;
+        return isStudentMatch;
       });
 
-      // Map properly into AttendanceRecord format
-      const formatted: AttendanceRecord[] = filtered.map((item: any) => ({
-        id: item.id,
-        student_id: item.student_id,
-        student_name: item.student_name,
-        attendance_status: item.attendance_status === 'Absent' ? 'Absent' : 'Present',
-        performance_rating: item.performance_rating,
-        performance_comment: item.performance_comment,
-        questions_asked: item.questions_asked,
-        bad_behaviour_points: item.bad_behaviour_points,
-        created_at: item.created_at,
-        session: {
-          id: item.sessions?.id || item.session_id,
-          session_id_code: item.sessions?.session_id_code,
-          title: item.sessions?.title || 'Session',
-          session_date: item.sessions?.session_date || item.created_at,
-          session_time: item.sessions?.session_time || '',
-          session_type: item.sessions?.session_type,
-          topics_covered: item.sessions?.topics_covered,
-          class_batch: item.sessions?.class_batch,
-          module_name: item.sessions?.module_name,
-          content_category: item.sessions?.content_category,
-          volunteer_name: item.sessions?.volunteer_name,
-          facilitator_name: item.sessions?.facilitator_name,
+      const perfMapBySessionId = new Map<string, any>();
+      filteredPerf.forEach((p: any) => {
+        if (p.session_id) {
+          perfMapBySessionId.set(p.session_id, p);
         }
-      }));
+      });
+
+      // 4. Combine sessions with student performance to build complete records (Present + Absent + Upcoming)
+      const combinedRecords: AttendanceRecord[] = [];
+      const processedSessionIds = new Set<string>();
+      const todayYMD = new Date().toISOString().split('T')[0];
+
+      relevantSessions.forEach((sess: any) => {
+        processedSessionIds.add(sess.id);
+        const existingPerf = perfMapBySessionId.get(sess.id);
+
+        let status: 'Present' | 'Absent' | 'Upcoming' = 'Absent';
+        if (existingPerf) {
+          status = existingPerf.attendance_status === 'Absent' ? 'Absent' : 'Present';
+        } else if (sess.session_date > todayYMD) {
+          status = 'Upcoming';
+        } else {
+          status = 'Absent';
+        }
+
+        combinedRecords.push({
+          id: existingPerf?.id || `session-${sess.id}`,
+          student_id: primaryStudent.id,
+          student_name: primaryStudent.name,
+          attendance_status: status as any,
+          performance_rating: existingPerf?.performance_rating || null,
+          performance_comment: existingPerf?.performance_comment || null,
+          questions_asked: existingPerf?.questions_asked || 0,
+          bad_behaviour_points: existingPerf?.bad_behaviour_points || 0,
+          created_at: existingPerf?.created_at || sess.session_date,
+          session: {
+            id: sess.id,
+            session_id_code: sess.session_id_code,
+            title: sess.title || 'Session',
+            session_date: sess.session_date,
+            session_time: sess.session_time || '',
+            session_type: sess.session_type,
+            topics_covered: sess.topics_covered,
+            class_batch: sess.class_batch,
+            module_name: sess.module_name,
+            content_category: sess.content_category,
+            volunteer_name: sess.volunteer_name,
+            facilitator_name: sess.facilitator_name,
+          }
+        });
+      });
+
+      // Include any additional performance records not matched to relevantSessions
+      filteredPerf.forEach((item: any) => {
+        if (item.session_id && !processedSessionIds.has(item.session_id)) {
+          const sDate = item.created_at ? item.created_at.split('T')[0] : null;
+          if (!sDate || (sDate >= startDateStr && sDate <= endDateStr)) {
+            combinedRecords.push({
+              id: item.id,
+              student_id: item.student_id,
+              student_name: item.student_name,
+              attendance_status: item.attendance_status === 'Absent' ? 'Absent' : 'Present',
+              performance_rating: item.performance_rating,
+              performance_comment: item.performance_comment,
+              questions_asked: item.questions_asked,
+              bad_behaviour_points: item.bad_behaviour_points,
+              created_at: item.created_at,
+              session: {
+                id: item.session_id,
+                session_id_code: null,
+                title: 'Session',
+                session_date: sDate || startDateStr,
+                session_time: '',
+                session_type: null,
+                topics_covered: null,
+                class_batch: className,
+                module_name: null,
+                content_category: null,
+                volunteer_name: null,
+                facilitator_name: null,
+              }
+            });
+          }
+        }
+      });
 
       // Extract unique sessions, compute sequential session_id_codes
-      const sessionList = formatted.map(r => r.session);
+      const sessionList = combinedRecords.map(r => r.session);
       const sessionWithCodes = attachSessionIdCodes(sessionList);
       const codeBySessionId = new Map(sessionWithCodes.map(s => [s.id, s.session_id_code]));
 
-      formatted.forEach(r => {
+      combinedRecords.forEach(r => {
         r.session.session_id_code = codeBySessionId.get(r.session.id) || r.session.session_id_code;
       });
 
       // Sort descending by session date
-      formatted.sort((a, b) => new Date(b.session.session_date).getTime() - new Date(a.session.session_date).getTime());
+      combinedRecords.sort((a, b) => new Date(b.session.session_date).getTime() - new Date(a.session.session_date).getTime());
 
-      setRecords(formatted);
+      setRecords(combinedRecords);
     } catch (err) {
       console.error('Error loading student attendance:', err);
     } finally {
@@ -278,12 +351,15 @@ export default function StudentAttendance() {
     });
   }, [records, filterPeriod, selectedMonth, statusFilter, searchQuery]);
 
-  // Statistics calculation based on filtered records
+  // Statistics calculation based on past & today's filtered records (excluding future sessions)
   const stats = useMemo(() => {
-    const total = filteredRecords.length;
-    const present = filteredRecords.filter(r => r.attendance_status === 'Present').length;
-    const absent = filteredRecords.filter(r => r.attendance_status === 'Absent').length;
-    const rate = total > 0 ? Math.round((present / total) * 100) : 100;
+    const todayYMD = new Date().toISOString().split('T')[0];
+    const pastRecords = filteredRecords.filter(r => (r.session.session_date || '') <= todayYMD && (r.attendance_status as string) !== 'Upcoming');
+
+    const total = pastRecords.length;
+    const present = pastRecords.filter(r => r.attendance_status === 'Present').length;
+    const absent = pastRecords.filter(r => r.attendance_status === 'Absent').length;
+    const rate = total > 0 ? Math.round((present / total) * 100) : 0;
 
     return { total, present, absent, rate };
   }, [filteredRecords]);
@@ -600,10 +676,15 @@ export default function StudentAttendance() {
 
                           {/* Attendance Status */}
                           <TableCell className="align-top py-4 text-center">
-                            {isPresent ? (
+                            {record.attendance_status === 'Present' ? (
                               <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/20 border-emerald-300 font-bold px-3 py-1 gap-1 text-xs">
                                 <CheckCircle2 className="h-3.5 w-3.5" />
                                 Present
+                              </Badge>
+                            ) : record.attendance_status === 'Upcoming' ? (
+                              <Badge className="bg-blue-500/15 text-blue-700 hover:bg-blue-500/20 border-blue-300 font-bold px-3 py-1 gap-1 text-xs">
+                                <Clock className="h-3.5 w-3.5" />
+                                Scheduled
                               </Badge>
                             ) : (
                               <Badge className="bg-rose-500/15 text-rose-700 hover:bg-rose-500/20 border-rose-300 font-bold px-3 py-1 gap-1 text-xs">

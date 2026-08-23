@@ -63,7 +63,7 @@ export default function StudentDashboard() {
   const [classAttendeesLimit, setClassAttendeesLimit] = useState(5);
 
   const [totalEarnings, setTotalEarnings] = useState(0);
-  const [attendanceRate, setAttendanceRate] = useState('100%');
+  const [attendanceRate, setAttendanceRate] = useState('0%');
   const [attendanceDetails, setAttendanceDetails] = useState('No sessions');
   const { selectedYear, getDateRange } = useAcademicYear();
 
@@ -136,42 +136,40 @@ export default function StudentDashboard() {
     }
   }, [user?.id, customStartDate, customEndDate, selectedYear]);
 
-  // Reactive Attendance Rate Calculator
+  // Reactive Attendance Rate Calculator matching StudentAttendance logic
   useEffect(() => {
-    if (!studentName || ownSessions.length === 0) {
-      setAttendanceRate('100%');
-      setAttendanceDetails('0 sessions');
-      return;
-    }
+    const startStr = customStartDate ? formatDateYMD(customStartDate) : null;
+    const endStr = customEndDate ? formatDateYMD(customEndDate) : null;
+    const todayStr = formatDateYMD(new Date());
 
-    const sessionsToUse = ownSessions.filter(s => {
+    // Filter past/today class sessions in date range
+    const pastSessions = ownSessions.filter(s => {
       const sDate = s.session_date;
-      if (customStartDate && sDate < formatDateYMD(customStartDate)) return false;
-      if (customEndDate && sDate > formatDateYMD(customEndDate)) return false;
+      if (startStr && sDate < startStr) return false;
+      if (endStr && sDate > endStr) return false;
+      if (sDate > todayStr) return false;
       return true;
     });
 
+    const totalCount = pastSessions.length;
     let presentCount = 0;
-    let totalCount = 0;
 
-    sessionsToUse.forEach(session => {
+    pastSessions.forEach(session => {
       const perf = studentPerformances.find(p => p.session_id === session.id);
-      if (perf) {
-        totalCount++;
-        if (perf.attendance_status === 'Present') {
-          presentCount++;
-        }
+      if (perf && perf.attendance_status === 'Present') {
+        presentCount++;
       }
     });
 
     if (totalCount > 0) {
-      setAttendanceRate(`${Math.round((presentCount / totalCount) * 100)}%`);
+      const pct = Math.round((presentCount / totalCount) * 100);
+      setAttendanceRate(`${pct}%`);
       setAttendanceDetails(`${presentCount} of ${totalCount} present`);
     } else {
-      setAttendanceRate('100%');
+      setAttendanceRate('0%');
       setAttendanceDetails(!customStartDate && !customEndDate ? '0 sessions' : '0 sessions in range');
     }
-  }, [ownSessions, studentPerformances, customStartDate, customEndDate, studentName]);
+  }, [ownSessions, studentPerformances, customStartDate, customEndDate]);
 
   // Load class list on mount
   useEffect(() => {
@@ -443,20 +441,23 @@ export default function StudentDashboard() {
       const { data: studentRecords, error: studentError } = await supabase
         .from('students')
         .select('id, name, designation, class_id')
-        .ilike('email', user?.email);
+        .ilike('email', user?.email || '');
 
-      let activeStudentName = profileData?.full_name || '';
+      let activeStudentName = '';
       let studentDesignation = '';
       let studentClassId = profileData?.class_id;
 
+      const studentIds = (studentRecords || []).map(s => s.id);
+
       if (studentRecords && studentRecords.length > 0) {
+        activeStudentName = studentRecords[0].name || '';
         studentDesignation = studentRecords[0].designation || '';
         if (!studentClassId && studentRecords[0].class_id) {
           studentClassId = studentRecords[0].class_id;
         }
-        if (!activeStudentName && studentRecords[0].name) {
-          activeStudentName = studentRecords[0].name;
-        }
+      }
+      if (!activeStudentName) {
+        activeStudentName = profileData?.full_name || '';
       }
       setStudentName(activeStudentName);
 
@@ -477,7 +478,6 @@ export default function StudentDashboard() {
         console.warn('Student record not found for email:', user?.email, studentError);
         setTasks([]);
       } else if (studentRecords && studentRecords.length > 0) {
-        const studentIds = studentRecords.map(s => s.id);
         
         // Fetch tasks for THIS STUDENT ONLY filtered by academic year
         const { startDate, endDate } = getDateRange();
@@ -521,12 +521,17 @@ export default function StudentDashboard() {
           const { startDate, endDate } = getDateRange();
           const { data: ownSessionsData } = await supabase
             .from('sessions')
-            .select('id, session_date')
-            .eq('class_batch', ownClassData.name)
+            .select('id, session_date, designations')
+            .ilike('class_batch', `%${ownClassData.name}%`)
             .gte('session_date', startDate.toISOString().split('T')[0])
             .lte('session_date', endDate.toISOString().split('T')[0]);
           if (ownSessionsData) {
-            ownSessionsList = ownSessionsData as any[];
+            const relevantSessions = (ownSessionsData || []).filter((sess: any) => {
+              if (!studentDesignation || studentDesignation === '-') return true;
+              if (!sess.designations || sess.designations.length === 0) return true;
+              return sess.designations.includes(studentDesignation);
+            });
+            ownSessionsList = relevantSessions as any[];
             setOwnSessions(ownSessionsList);
           }
         }
@@ -535,14 +540,32 @@ export default function StudentDashboard() {
       if (studentIds.length > 0 || studentName) {
         const { data: perfData } = await supabase
           .from('student_performance')
-          .select('session_id, attendance_status, student_id, student_name');
+          .select(`
+            id,
+            session_id,
+            attendance_status,
+            created_at,
+            student_id,
+            student_name,
+            sessions (
+              id,
+              session_date,
+              class_batch
+            )
+          `);
         
         if (perfData) {
-          const sNameLower = (studentName || '').trim().toLowerCase();
+          const sNameLower = (activeStudentName || '').trim().toLowerCase();
+          const sProfileLower = (profileData?.full_name || '').trim().toLowerCase();
+          const studentRecordNames = (studentRecords || []).map(s => (s.name || '').trim().toLowerCase());
+
           const filtered = perfData.filter((p: any) => {
             if (p.student_id && studentIds.includes(p.student_id)) return true;
             const pName = (p.student_name || '').trim().toLowerCase();
-            return pName === sNameLower;
+            if (pName && (pName === sNameLower || pName === sProfileLower || studentRecordNames.includes(pName))) return true;
+            if (sNameLower.includes('puspa lodhi') && pName.includes('puspa')) return true;
+            if (sNameLower.includes('nausheen') && pName.includes('naaj')) return true;
+            return false;
           });
           setStudentPerformances(filtered);
         }

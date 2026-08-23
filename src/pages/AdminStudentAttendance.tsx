@@ -172,21 +172,24 @@ export default function AdminStudentAttendance() {
         return true;
       });
 
-      // Track session IDs held for each class + designation group
-      const groupSessionsMap = new Map<string, Set<string>>();
+      // Fetch all class sessions from database for the academic year range
+      const { startDate: sessionRangeStart, endDate: sessionRangeEnd } = getDateRange();
+      const todayYMD = new Date().toISOString().split('T')[0];
 
-      filteredPerformance.forEach((p: any) => {
-        const studentObj = (students || []).find((s: any) => s.id === p.student_id || (s.name || '').trim().toLowerCase() === (p.student_name || '').trim().toLowerCase());
-        const className = studentObj?.classes?.name || 'Unassigned';
-        const desig = studentObj?.designation || '-';
-        const groupKey = `${className}__${desig}`.toLowerCase();
+      const { data: allClassSessions } = await supabase
+        .from('sessions')
+        .select('id, session_date, class_batch, designations')
+        .gte('session_date', sessionRangeStart.toISOString().split('T')[0])
+        .lte('session_date', sessionRangeEnd.toISOString().split('T')[0]);
 
-        if (!groupSessionsMap.has(groupKey)) {
-          groupSessionsMap.set(groupKey, new Set());
+      // Filter past/today class sessions for the selected month
+      const monthClassSessions = (allClassSessions || []).filter((sess: any) => {
+        if (sess.session_date > todayYMD) return false;
+        if (selectedMonth !== 'all') {
+          const sessMonth = new Date(sess.session_date).getMonth().toString();
+          if (sessMonth !== selectedMonth) return false;
         }
-        if (p.session_id) {
-          groupSessionsMap.get(groupKey)!.add(p.session_id);
-        }
+        return true;
       });
 
       // Group student attendance counts
@@ -211,17 +214,28 @@ export default function AdminStudentAttendance() {
       });
 
       const aggregated = (students || []).map((s: any) => {
+        const className = s.classes?.name || 'Unassigned';
+        const desig = s.designation || '-';
+
+        // Filter sessions relevant to this student's class batch & designation
+        const studentSessions = monthClassSessions.filter((sess: any) => {
+          if (className && className !== 'Unassigned') {
+            if (!sess.class_batch || !sess.class_batch.toLowerCase().includes(className.toLowerCase())) {
+              return false;
+            }
+          }
+          if (desig && desig !== '-') {
+            if (sess.designations && sess.designations.length > 0 && !sess.designations.includes(desig)) {
+              return false;
+            }
+          }
+          return true;
+        });
+
         const nameKey = (s.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
         const counts = attendanceMap.get(s.id) || attendanceMap.get(nameKey) || { present: 0, absent: 0 };
         
-        const className = s.classes?.name || 'Unassigned';
-        const desig = s.designation || '-';
-        const groupKey = `${className}__${desig}`.toLowerCase();
-        const groupSessionsSet = groupSessionsMap.get(groupKey);
-
-        const groupTotalSessions = groupSessionsSet ? groupSessionsSet.size : 0;
-        const totalExpectedSessions = Math.max(groupTotalSessions, counts.present + counts.absent);
-        
+        const totalExpectedSessions = Math.max(studentSessions.length, counts.present + counts.absent);
         const totalAbsent = totalExpectedSessions > counts.present ? (totalExpectedSessions - counts.present) : counts.absent;
         const percentage = totalExpectedSessions > 0 ? Math.round((counts.present / totalExpectedSessions) * 100) : 0;
 
@@ -280,12 +294,12 @@ export default function AdminStudentAttendance() {
     }
   };
 
-  const fetchStudentRecords = async (studentName: string) => {
+  const fetchStudentRecords = async (student: StudentAttendance) => {
     try {
       setLoadingRecords(true);
       const { startDate, endDate } = getDateRange();
       
-      const normalizedName = studentName.trim().replace(/\s+/g, ' ');
+      const normalizedName = student.student_name.trim().replace(/\s+/g, ' ');
       const doubleSpacedName = normalizedName.replace(' ', '  ');
       
       let aliases = `student_name.ilike."${normalizedName}",student_name.ilike."${doubleSpacedName}"`;
@@ -293,36 +307,119 @@ export default function AdminStudentAttendance() {
       if (normalizedName.toLowerCase() === 'nausheen naaz') aliases += `,student_name.ilike."%nausheen%naaj%"`;
       if (normalizedName.toLowerCase() === 'tauseef') aliases += `,student_name.ilike."%mohammad%tauseef%"`;
 
-      const { data, error } = await supabase
+      let perfOrQuery = aliases;
+      if (student.student_id) {
+        perfOrQuery = `student_id.eq.${student.student_id},${aliases}`;
+      }
+
+      // 1. Fetch explicit student performance records
+      const { data: perfData, error: perfError } = await supabase
         .from('student_performance')
         .select(`
           id,
+          session_id,
+          student_id,
           student_name,
           attendance_status,
           created_at,
-          sessions!inner (
+          sessions (
+            id,
             title,
             session_date,
-            session_type
+            session_type,
+            class_batch,
+            designations
           )
         `)
-        .or(aliases)
-        .gte('sessions.session_date', startDate.toISOString().split('T')[0])
-        .lte('sessions.session_date', endDate.toISOString().split('T')[0]);
+        .or(perfOrQuery);
 
-      if (error) throw error;
-      
-      // Also filter by month if needed
-      let records = data || [];
+      if (perfError) throw perfError;
+
+      // 2. Fetch all sessions conducted for this student's class batch
+      let sessionQuery = supabase
+        .from('sessions')
+        .select('id, title, session_date, session_type, class_batch, designations')
+        .gte('session_date', startDate.toISOString().split('T')[0])
+        .lte('session_date', endDate.toISOString().split('T')[0]);
+
+      if (student.class_name && student.class_name !== 'Unassigned') {
+        sessionQuery = sessionQuery.ilike('class_batch', `%${student.class_name}%`);
+      }
+
+      const { data: rawSessions } = await sessionQuery;
+
+      // Filter sessions matching student's designation if set
+      const relevantSessions = (rawSessions || []).filter((sess: any) => {
+        if (!student.designation || student.designation === '-') return true;
+        if (!sess.designations || sess.designations.length === 0) return true;
+        return sess.designations.includes(student.designation);
+      });
+
+      // Map session_id to student performance entry
+      const perfMapBySessionId = new Map<string, any>();
+      (perfData || []).forEach((p: any) => {
+        if (p.session_id) {
+          perfMapBySessionId.set(p.session_id, p);
+        }
+      });
+
+      // Build complete record list combining Present, Absent, and Upcoming sessions
+      const combinedRecords: any[] = [];
+      const processedSessionIds = new Set<string>();
+      const todayYMD = new Date().toISOString().split('T')[0];
+
+      relevantSessions.forEach((sess: any) => {
+        processedSessionIds.add(sess.id);
+        const existingPerf = perfMapBySessionId.get(sess.id);
+
+        let status = 'Absent';
+        if (existingPerf) {
+          status = existingPerf.attendance_status === 'Absent' ? 'Absent' : 'Present';
+        } else if (sess.session_date > todayYMD) {
+          status = 'Upcoming';
+        } else {
+          status = 'Absent';
+        }
+
+        combinedRecords.push({
+          id: existingPerf?.id || `session-${sess.id}`,
+          sessions: {
+            id: sess.id,
+            title: sess.title,
+            session_date: sess.session_date,
+            session_type: sess.session_type
+          },
+          attendance_status: status
+        });
+      });
+
+      // Add any additional performance records that weren't in relevantSessions
+      (perfData || []).forEach((p: any) => {
+        if (p.session_id && !processedSessionIds.has(p.session_id) && p.sessions) {
+          combinedRecords.push({
+            id: p.id,
+            sessions: p.sessions,
+            attendance_status: p.attendance_status || 'Present'
+          });
+        }
+      });
+
+      // Filter by selectedMonth if needed
+      let records = combinedRecords;
       if (selectedMonth !== 'all') {
         records = records.filter((r: any) => {
+          if (!r.sessions?.session_date) return false;
           const d = new Date(r.sessions.session_date);
           return d.getMonth().toString() === selectedMonth;
         });
       }
       
-      // Sort by date descending
-      records.sort((a: any, b: any) => new Date(b.sessions.session_date).getTime() - new Date(a.sessions.session_date).getTime());
+      // Sort by session_date descending
+      records.sort((a: any, b: any) => {
+        const dateA = new Date(a.sessions?.session_date || 0).getTime();
+        const dateB = new Date(b.sessions?.session_date || 0).getTime();
+        return dateB - dateA;
+      });
 
       setStudentRecords(records as AttendanceRecord[]);
     } catch (error) {
@@ -496,7 +593,7 @@ export default function AdminStudentAttendance() {
                           size="sm"
                           onClick={() => {
                             setSelectedStudent(s);
-                            fetchStudentRecords(s.student_name);
+                            fetchStudentRecords(s);
                           }}
                         >
                           View Details
@@ -560,11 +657,17 @@ export default function AdminStudentAttendance() {
                           </TableCell>
                           <TableCell className="text-right font-bold">
                             {r.attendance_status === 'Present' ? (
-                              <span className="text-green-600">Present</span>
-                            ) : r.attendance_status === 'Absent' ? (
-                              <span className="text-red-500">Absent</span>
+                              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold hover:bg-emerald-50">
+                                Present
+                              </Badge>
+                            ) : r.attendance_status === 'Upcoming' ? (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-bold hover:bg-blue-50">
+                                Scheduled
+                              </Badge>
                             ) : (
-                              <span className="text-muted-foreground">{r.attendance_status}</span>
+                              <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 font-bold hover:bg-rose-50">
+                                Absent
+                              </Badge>
                             )}
                           </TableCell>
                         </TableRow>

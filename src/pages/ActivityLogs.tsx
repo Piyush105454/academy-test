@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ClipboardList, Search, RefreshCw, AlertTriangle, Terminal, Info } from 'lucide-react';
+import { ClipboardList, Search, RefreshCw, AlertTriangle, Terminal, Info, FileSpreadsheet, Download, Calendar as CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -24,9 +24,12 @@ interface ActivityLog {
 export default function ActivityLogs() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterModule, setFilterModule] = useState('all');
   const [filterAction, setFilterAction] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [errorNotice, setErrorNotice] = useState(false);
   const [limit, setLimit] = useState(50);
 
@@ -35,11 +38,19 @@ export default function ActivityLogs() {
       setLoading(true);
       setErrorNotice(false);
       
-      const { data, error } = await supabase
+      let query = supabase
         .from('activity_logs')
         .select('*')
-        .order('created_at', { ascending: false })
-        .limit(limit);
+        .order('created_at', { ascending: false });
+
+      if (startDate) {
+        query = query.gte('created_at', `${startDate}T00:00:00`);
+      }
+      if (endDate) {
+        query = query.lte('created_at', `${endDate}T23:59:59`);
+      }
+
+      const { data, error } = await query.limit(limit);
 
       if (error) {
         if (error.code === 'PGRST205' || error.message.includes('relation "public.activity_logs" does not exist')) {
@@ -58,9 +69,118 @@ export default function ActivityLogs() {
     }
   };
 
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      toast.loading('Exporting Activity Logs to Excel...', { id: 'export-excel' });
+
+      // Fetch all logs matching active filters and date range without small page limits
+      let query = supabase
+        .from('activity_logs')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (filterModule !== 'all') {
+        query = query.eq('module', filterModule);
+      }
+      if (filterAction !== 'all') {
+        query = query.eq('action', filterAction);
+      }
+      if (startDate) {
+        query = query.gte('created_at', `${startDate}T00:00:00`);
+      }
+      if (endDate) {
+        query = query.lte('created_at', `${endDate}T23:59:59`);
+      }
+
+      let allRecords: any[] = [];
+      let page = 0;
+      let pageSize = 1000;
+      let done = false;
+
+      while (!done) {
+        const { data, error } = await query.range(page * pageSize, (page + 1) * pageSize - 1);
+        if (error) throw error;
+        if (data && data.length > 0) {
+          allRecords = allRecords.concat(data);
+          if (data.length < pageSize) done = true;
+          else page++;
+        } else {
+          done = true;
+        }
+      }
+
+      if (allRecords.length === 0) {
+        toast.error('No activity logs available for the selected date range.', { id: 'export-excel' });
+        return;
+      }
+
+      // Filter locally by search query if set
+      const finalData = allRecords.filter(log => {
+        if (!searchQuery.trim()) return true;
+        const q = searchQuery.toLowerCase();
+        return (
+          (log.user_name || '').toLowerCase().includes(q) ||
+          (log.user_email || '').toLowerCase().includes(q) ||
+          (log.details || '').toLowerCase().includes(q)
+        );
+      });
+
+      if (finalData.length === 0) {
+        toast.error('No activity logs match the search query.', { id: 'export-excel' });
+        return;
+      }
+
+      // Format data rows for Excel sheet
+      const excelRows = finalData.map((log, index) => ({
+        'S.No': index + 1,
+        'Date & Time': new Date(log.created_at).toLocaleString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true
+        }),
+        'User Name': log.user_name || 'System User',
+        'User Email': log.user_email || '',
+        'Action': log.action || '',
+        'Module': log.module || '',
+        'Details': log.details || '-'
+      }));
+
+      // Import XLSX dynamically
+      const XLSX = await import('xlsx');
+      const worksheet = XLSX.utils.json_to_sheet(excelRows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Activity Logs');
+
+      // Adjust column widths
+      worksheet['!cols'] = [
+        { wch: 6 },  // S.No
+        { wch: 24 }, // Date & Time
+        { wch: 22 }, // User Name
+        { wch: 30 }, // User Email
+        { wch: 12 }, // Action
+        { wch: 16 }, // Module
+        { wch: 70 }, // Details
+      ];
+
+      const rangeTag = startDate || endDate ? `_${startDate || 'Start'}_to_${endDate || 'End'}` : `_AllTime_${new Date().toISOString().split('T')[0]}`;
+      XLSX.writeFile(workbook, `Activity_Logs${rangeTag}.xlsx`);
+      toast.success(`Exported ${excelRows.length} activity log records to Excel!`, { id: 'export-excel' });
+    } catch (err: any) {
+      console.error('Error exporting logs:', err);
+      toast.error('Failed to export Excel file: ' + (err.message || 'Unknown error'), { id: 'export-excel' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   useEffect(() => {
     fetchLogs();
-  }, [limit]);
+  }, [limit, startDate, endDate]);
 
   // Unique modules and actions for filter dropdowns
   const modules = ['Classes', 'Students', 'Tasks', 'Sessions', 'Earnings'];
@@ -130,16 +250,27 @@ export default function ActivityLogs() {
               Audit trails of all administrator actions across the platform
             </p>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={fetchLogs} 
-            disabled={loading}
-            className="self-start md:self-auto gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh Logs
-          </Button>
+          <div className="flex items-center gap-2 self-start md:self-auto">
+            <Button 
+              size="sm" 
+              onClick={handleExportExcel} 
+              disabled={exporting || loading}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-9 shadow-sm"
+            >
+              <FileSpreadsheet className={`h-4 w-4 ${exporting ? 'animate-spin' : ''}`} />
+              <span>{exporting ? 'Exporting...' : 'Export Excel'}</span>
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={fetchLogs} 
+              disabled={loading}
+              className="gap-2 text-xs font-semibold h-9"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              <span>Refresh Logs</span>
+            </Button>
+          </div>
         </div>
 
         {/* Database Migration Alert Notice if Table doesn't exist */}
@@ -218,20 +349,52 @@ CREATE POLICY "Allow authenticated users to select activity logs" ON public.acti
         <Card className="shadow-sm border-border/50">
           <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
             {/* Search Input */}
-            <div className="w-full md:w-1/3 relative">
+            <div className="w-full md:w-1/4 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by user or details..."
+                placeholder="Search user or details..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 text-sm border-border h-9"
               />
             </div>
 
-            {/* Dropdown Filters */}
-            <div className="flex flex-wrap w-full md:w-auto items-center gap-3 justify-end">
+            {/* Date Pickers & Dropdown Filters */}
+            <div className="flex flex-wrap w-full md:w-auto items-center gap-2.5 justify-end">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="font-medium">From:</span>
+                <Input 
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="h-8 text-xs w-[130px] border-border"
+                />
+              </div>
+
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <span className="font-medium">To:</span>
+                <Input 
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="h-8 text-xs w-[130px] border-border"
+                />
+              </div>
+
+              {(startDate || endDate) && (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => { setStartDate(''); setEndDate(''); }}
+                  className="h-8 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 px-2"
+                >
+                  Clear Dates
+                </Button>
+              )}
+
               <Select value={filterModule} onValueChange={setFilterModule}>
-                <SelectTrigger className="w-[150px] text-sm h-9 border-border">
+                <SelectTrigger className="w-[130px] text-xs h-8 border-border">
                   <SelectValue placeholder="All Modules" />
                 </SelectTrigger>
                 <SelectContent>
@@ -243,7 +406,7 @@ CREATE POLICY "Allow authenticated users to select activity logs" ON public.acti
               </Select>
 
               <Select value={filterAction} onValueChange={setFilterAction}>
-                <SelectTrigger className="w-[150px] text-sm h-9 border-border">
+                <SelectTrigger className="w-[130px] text-xs h-8 border-border">
                   <SelectValue placeholder="All Actions" />
                 </SelectTrigger>
                 <SelectContent>
