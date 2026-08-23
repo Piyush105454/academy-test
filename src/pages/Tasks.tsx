@@ -497,85 +497,51 @@ export default function Tasks() {
     try {
       setLoading(true);
       const { startDate, endDate } = getDateRange();
-      
-      // Fetch user profiles first to map created_by to name
+      const isoStart = startDate.toISOString();
+
+      // Parallelize task fetching directly filtering for selected academic year in DB
+      const { data: allData, error: taskError } = await supabase
+        .from('student_task_feedback')
+        .select(`
+          id,
+          task_name,
+          task_id,
+          task_description,
+          deadline,
+          submission_link,
+          status,
+          student_id,
+          session_id,
+          created_at,
+          updated_at,
+          academic_year,
+          earning_amount,
+          created_by,
+          students:student_id(
+            name,
+            classes(name)
+          ),
+          sessions:session_id(
+            title, 
+            class_batch,
+            volunteer_name,
+            facilitator_name,
+            subjects:subject_id(name)
+          )
+        `)
+        .or(`academic_year.eq."${selectedYear}",created_at.gte."${isoStart}"`)
+        .order('created_at', { ascending: false })
+        .limit(1000);
+
+      if (taskError) throw taskError;
+
+      // Fetch user profiles for creator names
       const { data: profilesData } = await supabase
         .from('user_profiles')
         .select('id, full_name');
       const profilesMap = new Map((profilesData || []).map(p => [p.id, p.full_name]));
 
-      // Fetch all tasks using pagination (Supabase caps individual queries at 1000 rows max)
-      let allData: any[] = [];
-      let page = 0;
-      const pageSize = 1000;
-      let hasMore = true;
-
-      while (hasMore) {
-        const from = page * pageSize;
-        const to = from + pageSize - 1;
-
-        const { data: pageData, error: pageError } = await supabase
-          .from('student_task_feedback')
-          .select(`
-            id,
-            task_name,
-            task_id,
-            task_description,
-            deadline,
-            submission_link,
-            status,
-            student_id,
-            session_id,
-            created_at,
-            updated_at,
-            academic_year,
-            earning_amount,
-            created_by,
-            students:student_id(
-              name,
-              classes(name)
-            ),
-            sessions:session_id(
-              title, 
-              class_batch,
-              volunteer_name,
-              facilitator_name,
-              subjects:subject_id(name)
-            )
-          `)
-          .order('created_at', { ascending: false })
-          .range(from, to);
-
-        if (pageError) throw pageError;
-
-        if (pageData && pageData.length > 0) {
-          allData = allData.concat(pageData);
-          if (pageData.length < pageSize) {
-            hasMore = false;
-          } else {
-            page++;
-          }
-        } else {
-          hasMore = false;
-        }
-      }
-
-      // Client-side filter: keep tasks that belong to the selected academic year
-      // A task belongs to the year if:
-      //   1. Its academic_year field exactly matches selectedYear, OR
-      //   2. Its academic_year is null/empty AND its created_at falls within the academic year date range
-      const data = (allData || []).filter((task: any) => {
-        const ay = task.academic_year;
-        if (ay && ay.trim() !== '') {
-          return ay === selectedYear;
-        }
-        // null or empty academic_year — use created_at date range
-        if (!task.created_at) return false;
-        const created = new Date(task.created_at);
-        return created >= startDate && created <= endDate;
-      });
-
-      if (!data) throw new Error('No data returned');
+      const data = allData || [];
 
       const enriched: TaskItem[] = (data || []).map((task: any) => {
         const creatorName = profilesMap.get(task.created_by) || '';
@@ -947,8 +913,8 @@ export default function Tasks() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <div className="flex justify-center py-12 text-sm text-muted-foreground font-medium">
+                Loading tasks...
               </div>
             ) : taskGroups.length === 0 ? (
               <div className="text-center py-12">

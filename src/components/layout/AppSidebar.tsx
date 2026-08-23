@@ -1,10 +1,12 @@
-import { Home, Users, LogOut, CalendarDays, BookOpen, Menu, X, Users2, MapPin, FileText, GraduationCap, Shield, ClipboardList, ChevronDown, MessageCircle, Clock } from 'lucide-react';
+import { Home, Users, LogOut, CalendarDays, BookOpen, Menu, X, Users2, MapPin, FileText, GraduationCap, Shield, ClipboardList, ChevronDown, MessageCircle, Clock, Wrench } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDeveloperMode } from '@/contexts/DeveloperModeContext';
 import { cn } from '@/lib/utils';
 import wesLogo from '@/assets/wes-logo.jpg';
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { Switch } from '@/components/ui/switch';
 
 interface NavItem {
   title: string;
@@ -20,6 +22,7 @@ interface NavGroup {
   items: NavItem[];
   studentVisible: boolean;
   hiddenRoles?: number[];
+  requiredRole?: number | null;
 }
 
 const navGroups: NavGroup[] = [
@@ -77,9 +80,16 @@ const navGroups: NavGroup[] = [
     label: 'Admin Panel',
     studentVisible: false,
     items: [
-
       { title: 'Admin Action', url: '/admin', icon: Shield, requiredRole: 1, studentVisible: false },
       { title: 'Activity Logs', url: '/activity-logs', icon: FileText, requiredRole: 1, studentVisible: false },
+    ],
+  },
+  {
+    label: 'Dev Section',
+    studentVisible: false,
+    requiredRole: 1,
+    items: [
+      { title: 'Dev Mode & Management', url: '/dev-mode', icon: Wrench, requiredRole: 1, studentVisible: false },
     ],
   },
   {
@@ -93,6 +103,7 @@ const navGroups: NavGroup[] = [
 
 export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const { signOut, user } = useAuth();
+  const { isDevMode, toggleDevMode } = useDeveloperMode();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [userRole, setUserRole] = useState<number | null>(null);
@@ -169,6 +180,7 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
             if (userRole === 5 && !group.studentVisible) return null;
             if (userRole !== 5 && group.studentVisible) return null;
             if (group.hiddenRoles && userRole !== null && group.hiddenRoles.includes(userRole)) return null;
+            if (group.requiredRole !== undefined && group.requiredRole !== null && userRole !== group.requiredRole) return null;
 
             const visibleItems = group.items.filter((item) => {
               if (item.requiredRole !== null && userRole !== item.requiredRole) return false;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ListTodo, Search, Clock, CheckCircle2, History, ArrowRight, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -32,7 +32,7 @@ export default function StudentTasks() {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<StudentTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'pending' | 'submitted' | 'completed' | 'overdue'>('pending');
+  const [filter, setFilter] = useState<'pending' | 'submitted' | 'completed' | 'overdue' | 'rejected'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const currentMonthIndex = new Date().getMonth(); // 0 to 11
@@ -67,7 +67,6 @@ export default function StudentTasks() {
     try {
       setLoading(true);
 
-      // Get all student records for this user (they might have multiple if mapped to different classes)
       const { data: students, error: studentError } = await supabase
         .from('students')
         .select('id')
@@ -86,7 +85,7 @@ export default function StudentTasks() {
 
       const { data, error } = await supabase
         .from('student_task_feedback')
-        .select('*')
+        .select('id, task_name, task_description, deadline, feedback_type, status, feedback_notes, submission_link, created_at, earning_amount, rejection_comment')
         .in('student_id', studentIds)
         .or(`academic_year.eq."${selectedYear}",and(academic_year.is.null,created_at.gte."${startDate.toISOString()}",created_at.lte."${endDate.toISOString()}")`)
         .order('created_at', { ascending: false });
@@ -101,31 +100,33 @@ export default function StudentTasks() {
     }
   };
 
-  const filteredTasks = tasks.filter(task => {
-    const matchesSearch = task.task_name.toLowerCase().includes(searchQuery.toLowerCase());
-    if (!matchesSearch) return false;
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(task => {
+      const matchesSearch = task.task_name?.toLowerCase().includes(searchQuery.toLowerCase());
+      if (!matchesSearch) return false;
 
-    if (selectedMonth !== 'all') {
-      const dateToUse = task.deadline ? new Date(task.deadline) : new Date(task.created_at);
-      const monthOfDate = dateToUse.getMonth() + 1; // 1 to 12
-      if (String(monthOfDate) !== selectedMonth) return false;
-    }
+      if (selectedMonth !== 'all') {
+        const dateToUse = task.deadline ? new Date(task.deadline) : new Date(task.created_at);
+        const monthOfDate = dateToUse.getMonth() + 1;
+        if (String(monthOfDate) !== selectedMonth) return false;
+      }
 
-    if (filter === 'submitted') return task.status === 'submitted';
-    if (filter === 'completed') return task.status === 'completed' || task.status === 'approved';
-    if (filter === 'rejected') return task.status === 'rejected';
-    if (filter === 'pending') {
-      const isPending = task.status === 'pending' || task.status === 'rejected';
-      const isUpcoming = !task.deadline || new Date(task.deadline) >= new Date();
-      return isPending && isUpcoming;
-    }
-    if (filter === 'overdue') {
-      const isPending = task.status === 'pending' || task.status === 'rejected';
-      const isOverdue = task.deadline && new Date(task.deadline) < new Date();
-      return isPending && isOverdue;
-    }
-    return true;
-  });
+      if (filter === 'submitted') return task.status === 'submitted';
+      if (filter === 'completed') return task.status === 'completed' || task.status === 'approved';
+      if (filter === 'rejected') return task.status === 'rejected';
+      if (filter === 'pending') {
+        const isPending = task.status === 'pending' || task.status === 'rejected';
+        const isUpcoming = !task.deadline || new Date(task.deadline) >= new Date();
+        return isPending && isUpcoming;
+      }
+      if (filter === 'overdue') {
+        const isPending = task.status === 'pending' || task.status === 'rejected';
+        const isOverdue = task.deadline && new Date(task.deadline) < new Date();
+        return isPending && isOverdue;
+      }
+      return true;
+    });
+  }, [tasks, searchQuery, selectedMonth, filter]);
 
   const statusBadgeVariant = (status: string) => {
     if (status === 'submitted') return 'secondary';
@@ -194,8 +195,8 @@ export default function StudentTasks() {
 
         {/* Task Grid */}
         {loading ? (
-          <div className="flex justify-center py-20">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+          <div className="flex justify-center py-12 text-sm text-muted-foreground font-medium">
+            Loading tasks...
           </div>
         ) : filteredTasks.length === 0 ? (
           <Card className="border-dashed py-20">
