@@ -270,25 +270,31 @@ export function BulkAssignTasksDialog({ open, onOpenChange, onSuccess }: BulkAss
         const jsonRows: any[] = XLSX.utils.sheet_to_json(worksheet);
 
         const parsed: TaskTemplate[] = jsonRows.map((row, idx) => {
-          // Extract title (check Task Title, Topic, Title, Name, column 1)
-          const title = row['Task Title'] || row['Topic'] || row['Title'] || row['Task'] || row['Task Name'] || `Task ${idx + 1}`;
+          const rowKeys = Object.keys(row);
+          
+          // Positional fallbacks: Column 1 = Description, Column 2 = Title
+          const posDesc = rowKeys.length > 0 ? String(row[rowKeys[0]] || '') : '';
+          const posTitle = rowKeys.length > 1 ? String(row[rowKeys[1]] || '') : '';
+
+          // Extract title (check Task Title, Topic, Title, Name, or Column 2)
+          const title = row['Task Title'] || row['Topic'] || row['Title'] || row['Task'] || row['Task Name'] || posTitle || `Task ${idx + 1}`;
           const category = row['Category'] || '';
           const difficulty = row['Difficulty'] || '';
           const topic = row['Topic'] || '';
 
-          // Extract article / description
+          // Extract article / description (check Article, Description, Final Task, or Column 1)
           const article = row['Article'] || row['Article (English + Hindi Summary)'] || row['Description'] || row['Task Description'] || '';
           const keyTerms = row['Technical Terms and Simple Meanings'] || row['Key Terms and Meanings'] || row['Key Terms'] || '';
           const finalTask = row['Final Technical English Daily Task'] || row['Final Soft Skills Daily Task'] || row['Daily Task'] || row['Final Task'] || '';
 
-          const fullDesc = [article, keyTerms ? `--- KEY TERMS ---\n${keyTerms}` : '', finalTask ? `--- DAILY TASK ---\n${finalTask}` : ''].filter(Boolean).join('\n\n');
+          const fullDesc = [article, keyTerms ? `--- KEY TERMS ---\n${keyTerms}` : '', finalTask ? `--- DAILY TASK ---\n${finalTask}` : ''].filter(Boolean).join('\n\n') || posDesc;
 
-          // Extract Prepare Date / Release Date column
-          const prepDateVal = row['Prepare Date'] || row['Prep Date'] || row['PrepareDate'] || row['Release Date'] || row['Start Date'] || row['Date'];
+          // Extract Prepare Date / Release Date / Assigned Date column (Column I in Excel)
+          const prepDateVal = row['Assigned Date'] || row['AssignedDate'] || row['Prepare Date'] || row['Prep Date'] || row['PrepareDate'] || row['Release Date'] || row['Start Date'] || row['Date'];
           const excelReleaseDate = parseExcelDate(prepDateVal);
 
-          // Extract Deadline Date / Due Date column
-          const deadlineDateVal = row['Deadline Date'] || row['Deadline'] || row['Due Date'] || row['Submission Date'];
+          // Extract Deadline Date / Due Date / Submission Date column (Column J in Excel)
+          const deadlineDateVal = row['Submission Date'] || row['SubmissionDate'] || row['Deadline Date'] || row['Deadline'] || row['Due Date'] || row['Submission'];
           const excelDeadlineDate = parseExcelDate(deadlineDateVal);
 
           return {
@@ -383,9 +389,6 @@ export function BulkAssignTasksDialog({ open, onOpenChange, onSuccess }: BulkAss
 
       const selectedClass = classes.find(c => c.id === selectedClassId);
       const classNameStr = selectedClass ? selectedClass.name.replace(/[\s\/]+/g, '') : 'Class';
-      const yearStr = new Date().getFullYear();
-      const monthStr = String(new Date().getMonth() + 1).padStart(2, '0');
-      const prefix = `${yearStr}-${monthStr}-${classNameStr}-`;
 
       const submissionTypesJson = getSubmissionTypes();
       const taskTypeLabel = sourceType === 'preloaded_te' ? 'Technical English Daily Task' :
@@ -400,6 +403,13 @@ export function BulkAssignTasksDialog({ open, onOpenChange, onSuccess }: BulkAss
 
         setProgressText(`Creating task ${tIdx + 1} of ${totalTasksToCreate}: "${task.title.slice(0, 30)}..."`);
 
+        // Compute release date timestamp and release year/month for Task ID
+        const releaseDateObj = dates.releaseDateStr ? new Date(`${dates.releaseDateStr}T09:00:00.000Z`) : new Date();
+        const releaseIsoStr = !isNaN(releaseDateObj.getTime()) ? releaseDateObj.toISOString() : new Date().toISOString();
+        const relYear = !isNaN(releaseDateObj.getTime()) ? releaseDateObj.getFullYear() : new Date().getFullYear();
+        const relMonth = !isNaN(releaseDateObj.getTime()) ? String(releaseDateObj.getMonth() + 1).padStart(2, '0') : String(new Date().getMonth() + 1).padStart(2, '0');
+        const prefix = `${relYear}-${relMonth}-${classNameStr}-`;
+
         const seqStr = String(tIdx + 1).padStart(3, '0');
         const generatedTaskId = `${prefix}${seqStr}-${Date.now().toString().slice(-4)}`;
 
@@ -413,7 +423,7 @@ export function BulkAssignTasksDialog({ open, onOpenChange, onSuccess }: BulkAss
           deadline: dates.deadlineIsoStr,
           submission_link: null,
           status: 'pending',
-          created_at: dates.releaseDateStr + 'T09:00:00.000Z',
+          created_at: releaseIsoStr,
           academic_year: selectedYear,
           subject_id: selectedSubjectId || null,
           earning_amount: earningAmount,
@@ -630,54 +640,68 @@ export function BulkAssignTasksDialog({ open, onOpenChange, onSuccess }: BulkAss
                 3. Pacing, Deadlines & Rewards
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* Start Date */}
-                <div>
-                  <Label className="text-xs font-semibold">Start Release Date</Label>
-                  <Input 
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="h-9 text-xs mt-1"
-                  />
+              {sourceType === 'excel_upload' ? (
+                <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-lg flex items-center justify-between text-xs text-emerald-800">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <span>Dates loaded directly from Excel columns: <strong>"Assigned Date"</strong> & <strong>"Submission Date"</strong></span>
+                  </div>
+                  <Badge variant="outline" className="bg-emerald-100 text-emerald-900 border-emerald-300 font-bold">
+                    Excel Auto-Dates Active
+                  </Badge>
                 </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Start Date */}
+                  <div>
+                    <Label className="text-xs font-semibold">Start Release Date</Label>
+                    <Input 
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="h-9 text-xs mt-1"
+                    />
+                  </div>
 
-                {/* Frequency */}
-                <div>
-                  <Label className="text-xs font-semibold">Release Pacing</Label>
-                  <Select value={frequency} onValueChange={(val: any) => setFrequency(val)}>
-                    <SelectTrigger className="h-9 text-xs mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="daily">Every Day (1 task/day)</SelectItem>
-                      <SelectItem value="weekdays">Weekdays Only (Mon-Fri)</SelectItem>
-                      <SelectItem value="every_2_days">Every 2 Days</SelectItem>
-                      <SelectItem value="same_day">All Same Release Date</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {/* Frequency */}
+                  <div>
+                    <Label className="text-xs font-semibold">Release Pacing</Label>
+                    <Select value={frequency} onValueChange={(val: any) => setFrequency(val)}>
+                      <SelectTrigger className="h-9 text-xs mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Every Day (1 task/day)</SelectItem>
+                        <SelectItem value="weekdays">Weekdays Only (Mon-Fri)</SelectItem>
+                        <SelectItem value="every_2_days">Every 2 Days</SelectItem>
+                        <SelectItem value="same_day">All Same Release Date</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Deadline Duration */}
+                  <div>
+                    <Label className="text-xs font-semibold">Deadline Offset</Label>
+                    <Select 
+                      value={deadlineOffsetDays.toString()} 
+                      onValueChange={(val) => setDeadlineOffsetDays(parseInt(val))}
+                    >
+                      <SelectTrigger className="h-9 text-xs mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Same Day (11:59 PM)</SelectItem>
+                        <SelectItem value="1">1 Day After (11:59 PM)</SelectItem>
+                        <SelectItem value="2">2 Days After (11:59 PM)</SelectItem>
+                        <SelectItem value="3">3 Days After (11:59 PM)</SelectItem>
+                        <SelectItem value="7">7 Days After (11:59 PM)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
+              )}
 
-                {/* Deadline Duration */}
-                <div>
-                  <Label className="text-xs font-semibold">Deadline Offset</Label>
-                  <Select 
-                    value={deadlineOffsetDays.toString()} 
-                    onValueChange={(val) => setDeadlineOffsetDays(parseInt(val))}
-                  >
-                    <SelectTrigger className="h-9 text-xs mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">Same Day (11:59 PM)</SelectItem>
-                      <SelectItem value="1">1 Day After (11:59 PM)</SelectItem>
-                      <SelectItem value="2">2 Days After (11:59 PM)</SelectItem>
-                      <SelectItem value="3">3 Days After (11:59 PM)</SelectItem>
-                      <SelectItem value="7">7 Days After (11:59 PM)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
                 {/* Earning Reward */}
                 <div>
                   <Label className="text-xs font-semibold">Reward per Task (₹)</Label>
