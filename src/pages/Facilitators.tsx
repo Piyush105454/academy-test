@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, MoreVertical, BookOpen, Link } from 'lucide-react';
+import { Plus, Trash2, MoreVertical, BookOpen, Link, KeyRound, Edit, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { SessionTypeDialog } from '@/components/sessions/SessionTypeDialog';
@@ -73,6 +74,79 @@ export default function Facilitators() {
   const [allClasses, setAllClasses] = useState<{ id: string, name: string }[]>([]);
   const [assignedClasses, setAssignedClasses] = useState<Record<string, { assigned: boolean, link: string }>>({});
   const [savingAssign, setSavingAssign] = useState(false);
+
+  // Reset Password States
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [resetTarget, setResetTarget] = useState<Facilitator | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
+
+  const handleOpenResetPassword = (facilitator: Facilitator) => {
+    setResetTarget(facilitator);
+    setNewPassword('');
+    setResetPasswordOpen(true);
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetTarget || !newPassword) return;
+    if (newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+
+    try {
+      setResettingPassword(true);
+      const normalizedEmail = resetTarget.email.trim().toLowerCase();
+
+      // Check if user profile exists
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .ilike('email', normalizedEmail)
+        .maybeSingle();
+
+      if (profile?.id) {
+        // User profile exists, reset password via RPC
+        const { error: rpcError } = await supabase.rpc('admin_reset_user_password', {
+          target_user_id: profile.id,
+          new_password: newPassword,
+        });
+
+        if (rpcError) throw rpcError;
+      } else {
+        // User profile does not exist in auth.users yet. Register auth user & profile!
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password: newPassword,
+          options: {
+            data: { full_name: resetTarget.name }
+          }
+        });
+
+        if (signUpError) throw signUpError;
+
+        if (signUpData.user?.id) {
+          await supabase.from('user_profiles').upsert({
+            id: signUpData.user.id,
+            email: normalizedEmail,
+            full_name: resetTarget.name,
+            role_id: 4, // Facilitator
+            is_active: true
+          });
+        }
+      }
+
+      toast.success(`Password set successfully for ${resetTarget.name}. User can now log in.`);
+      setResetPasswordOpen(false);
+      setNewPassword('');
+      setResetTarget(null);
+    } catch (err: any) {
+      console.error('Error in handleResetPassword:', err);
+      toast.error('Failed to set password: ' + (err.message || 'Error occurred'));
+    } finally {
+      setResettingPassword(false);
+    }
+  };
 
   useEffect(() => {
     fetchFacilitators();
@@ -127,10 +201,41 @@ export default function Facilitators() {
     }
 
     try {
+      const normalizedEmail = formData.email.trim().toLowerCase();
+
+      if (!editingId) {
+        // Check if email already exists in coordinators
+        const { data: existingCoord } = await (supabase as any)
+          .from('coordinators')
+          .select('id, name')
+          .ilike('email', normalizedEmail)
+          .maybeSingle();
+
+        if (existingCoord) {
+          toast.error(`This email is already registered as a Coordinator (${existingCoord.name}). Cannot register duplicate user.`);
+          return;
+        }
+
+        // Check if email already exists in user_profiles
+        const { data: existingProfile } = await (supabase as any)
+          .from('user_profiles')
+          .select('id')
+          .ilike('email', normalizedEmail)
+          .maybeSingle();
+
+        if (existingProfile) {
+          toast.error('This email is already registered to an existing user in the system.');
+          return;
+        }
+      }
+
       if (editingId) {
         const { error } = await supabase
           .from('facilitators')
-          .update(formData)
+          .update({
+            ...formData,
+            email: normalizedEmail
+          })
           .eq('id', editingId);
 
         if (error) throw error;
@@ -138,7 +243,10 @@ export default function Facilitators() {
       } else {
         const { error } = await supabase
           .from('facilitators')
-          .insert([formData]);
+          .insert([{
+            ...formData,
+            email: normalizedEmail
+          }]);
 
         if (error) throw error;
         toast.success('Facilitator created successfully');
@@ -448,7 +556,14 @@ export default function Facilitators() {
                                 <DropdownMenuItem
                                   onClick={() => handleEdit(facilitator)}
                                 >
-                                  Edit
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit Details
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleOpenResetPassword(facilitator)}
+                                >
+                                  <KeyRound className="h-4 w-4 mr-2 text-amber-500" />
+                                  Reset Password
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={handleAddSession}
@@ -698,6 +813,46 @@ export default function Facilitators() {
               className="rounded-xl bg-primary hover:bg-primary/95 text-white"
             >
               {savingAssign ? 'Saving...' : 'Save Assignments'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={resetPasswordOpen} onOpenChange={setResetPasswordOpen}>
+        <DialogContent className="sm:max-w-md bg-card border border-border">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2 text-foreground">
+              <KeyRound className="h-5 w-5 text-amber-500" />
+              Reset Password for {resetTarget?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-3">
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-foreground">New Password</Label>
+              <Input
+                type="password"
+                placeholder="Enter new password (min 6 characters)"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                Account Email: <strong className="text-foreground">{resetTarget?.email}</strong>
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="outline" size="sm" onClick={() => setResetPasswordOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleResetPassword}
+              disabled={resettingPassword}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold"
+            >
+              {resettingPassword ? 'Setting Password...' : 'Update Password'}
             </Button>
           </div>
         </DialogContent>

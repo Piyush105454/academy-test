@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Mail, Shield } from 'lucide-react';
+import { Plus, Edit2, Trash2, Mail, Shield, KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -81,6 +81,47 @@ export default function AdminPanel() {
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
+  // Standalone Reset Password State
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [resetTargetUser, setResetTargetUser] = useState<UserProfile | null>(null);
+  const [resetPasswordInput, setResetPasswordInput] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
+
+  const handleOpenResetPassword = (u: UserProfile) => {
+    setResetTargetUser(u);
+    setResetPasswordInput('');
+    setResetPasswordOpen(true);
+  };
+
+  const handleStandaloneResetPassword = async () => {
+    if (!resetTargetUser || !resetPasswordInput) return;
+    if (resetPasswordInput.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+
+    try {
+      setResettingPassword(true);
+      const { error } = await supabase.rpc('admin_reset_user_password', {
+        target_user_id: resetTargetUser.id,
+        new_password: resetPasswordInput,
+      });
+
+      if (error) {
+        toast.error(`Reset password failed: ${error.message}`);
+      } else {
+        toast.success(`Password updated successfully for ${resetTargetUser.full_name || resetTargetUser.email}`);
+        setResetPasswordOpen(false);
+        setResetPasswordInput('');
+        setResetTargetUser(null);
+      }
+    } catch (err: any) {
+      toast.error('Failed to reset password: ' + (err.message || 'Error'));
+    } finally {
+      setResettingPassword(false);
+    }
+  };
+
   useEffect(() => {
     if (user?.id) {
       checkAdminAccess();
@@ -139,6 +180,7 @@ export default function AdminPanel() {
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
+        .in('role_id', [1, 2]) // Admin and Supervisor accounts only
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -198,6 +240,7 @@ export default function AdminPanel() {
         const { error } = await supabase
           .from('user_profiles')
           .update({
+            email: formData.email,
             full_name: formData.full_name,
             role_id: parseInt(formData.role_id),
             updated_at: new Date().toISOString(),
@@ -362,26 +405,26 @@ export default function AdminPanel() {
           <div>
             <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
               <Shield className="h-8 w-8" />
-              Admin Panel
+              Admin & Supervisor Management
             </h1>
-            <p className="text-muted-foreground mt-1">Manage users and assign roles</p>
+            <p className="text-muted-foreground mt-1">Manage system administrators and supervisors</p>
           </div>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => handleOpenDialog()} className="gap-2">
                 <Plus className="h-4 w-4" />
-                Add User
+                Add Admin / Supervisor
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
-                  {editingUser ? 'Edit User' : 'Add New User'}
+                  {editingUser ? 'Edit Admin / Supervisor' : 'Add New Admin / Supervisor'}
                 </DialogTitle>
                 <DialogDescription>
                   {editingUser
-                    ? 'Update user information and role assignment'
-                    : 'Add a new user and assign a role'}
+                    ? 'Update administrator or supervisor account details'
+                    : 'Add a new administrator or supervisor'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
@@ -395,12 +438,8 @@ export default function AdminPanel() {
                     onChange={(e) =>
                       setFormData({ ...formData, email: e.target.value })
                     }
-                    disabled={!!editingUser}
                     className="mt-1"
                   />
-                  {editingUser && (
-                    <p className="text-xs text-muted-foreground mt-1">Email cannot be changed</p>
-                  )}
                 </div>
                 <div>
                   <Label htmlFor="full_name">Full Name</Label>
@@ -427,7 +466,7 @@ export default function AdminPanel() {
                       <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
                     <SelectContent>
-                      {roles.map((role) => (
+                      {roles.filter(r => r.id === 1 || r.id === 2).map((role) => (
                         <SelectItem key={role.id} value={role.id.toString()}>
                           {role.name}
                         </SelectItem>
@@ -488,9 +527,9 @@ export default function AdminPanel() {
           <CardHeader>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <CardTitle>Users</CardTitle>
+                <CardTitle>Admin & Supervisor Accounts</CardTitle>
                 <CardDescription>
-                  Manage all users and their role assignments
+                  Manage system administrators and supervisors
                 </CardDescription>
               </div>
               <div className="flex flex-col sm:flex-row items-center gap-2">
@@ -515,8 +554,8 @@ export default function AdminPanel() {
                     <SelectValue placeholder="Filter by Role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Roles</SelectItem>
-                    {roles.map((role) => (
+                    <SelectItem value="all">All Admin/Supervisor Roles</SelectItem>
+                    {roles.filter(r => r.id === 1 || r.id === 2).map((role) => (
                       <SelectItem key={role.id} value={role.id.toString()}>
                         {role.name}
                       </SelectItem>
@@ -593,6 +632,7 @@ export default function AdminPanel() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              title="Edit Details"
                               onClick={() => handleOpenDialog(user)}
                             >
                               <Edit2 className="h-4 w-4" />
@@ -600,6 +640,16 @@ export default function AdminPanel() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              title="Reset Password"
+                              onClick={() => handleOpenResetPassword(user)}
+                              className="text-amber-500 hover:text-amber-600"
+                            >
+                              <KeyRound className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Delete User"
                               onClick={() => {
                                 setUserToDelete(user);
                                 setDeleteDialogOpen(true);
@@ -694,6 +744,46 @@ export default function AdminPanel() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={resetPasswordOpen} onOpenChange={setResetPasswordOpen}>
+        <DialogContent className="sm:max-w-md bg-card border border-border">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2 text-foreground">
+              <KeyRound className="h-5 w-5 text-amber-500" />
+              Reset Password for {resetTargetUser?.full_name || resetTargetUser?.email}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-3">
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-foreground">New Password</Label>
+              <Input
+                type="password"
+                placeholder="Enter new password (min 6 characters)"
+                value={resetPasswordInput}
+                onChange={e => setResetPasswordInput(e.target.value)}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                Account Email: <strong className="text-foreground">{resetTargetUser?.email}</strong>
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="outline" size="sm" onClick={() => setResetPasswordOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleStandaloneResetPassword}
+              disabled={resettingPassword}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold"
+            >
+              {resettingPassword ? 'Setting Password...' : 'Update Password'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

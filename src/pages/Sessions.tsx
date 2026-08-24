@@ -48,6 +48,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { TruncatedText } from '@/components/ui/truncated-text';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { SessionTypeDialog } from '@/components/sessions/SessionTypeDialog';
@@ -105,7 +106,24 @@ const getLocalDateString = (date: Date) => {
 
 export default function Sessions() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [userRole, setUserRole] = useState<number | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
+
+  useEffect(() => {
+    if (user?.id) {
+      supabase
+        .from('user_profiles')
+        .select('role_id')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.role_id) {
+            setUserRole(data.role_id);
+          }
+        });
+    }
+  }, [user?.id]);
   const [loading, setLoading] = useState(true);
   const [isTypeDialogOpen, setIsTypeDialogOpen] = useState(false);
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
@@ -970,16 +988,18 @@ export default function Sessions() {
                                   <FileText className="h-3 w-3 mr-1" />
                                   Record
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => {
-                                    setSelectedSession(session);
-                                    setDeleteDialogOpen(true);
-                                  }}
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  <Trash2 className="h-3 w-3 mr-1" />
-                                  Delete
-                                </DropdownMenuItem>
+                                {userRole === 1 && (
+                                  <DropdownMenuItem 
+                                    onClick={() => {
+                                      setSelectedSession(session);
+                                      setDeleteDialogOpen(true);
+                                    }}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="h-3 w-3 mr-1" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -1183,18 +1203,20 @@ export default function Sessions() {
                           <FileText className="h-4 w-4 mr-1" />
                           Record
                         </Button>
-                        <Button 
-                          size="sm" 
-                          variant="destructive"
-                          onClick={() => {
-                            setSelectedSession(session);
-                            setDeleteDialogOpen(true);
-                          }}
-                          className="flex-1"
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Delete
-                        </Button>
+                        {userRole === 1 && (
+                          <Button 
+                            size="sm" 
+                            variant="destructive"
+                            onClick={() => {
+                              setSelectedSession(session);
+                              setDeleteDialogOpen(true);
+                            }}
+                            className="flex-1"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </div>
                     );

@@ -156,6 +156,7 @@ export default function Tasks() {
   const [userRole, setUserRole] = useState<number | null>(null);
   const [isFacilitator, setIsFacilitator] = useState<boolean>(false);
   const [currentFacilitatorName, setCurrentFacilitatorName] = useState<string | null>(null);
+  const [coordinatorAssignedClasses, setCoordinatorAssignedClasses] = useState<string[]>([]);
 
   useEffect(() => {
     async function checkUserIdentity() {
@@ -185,10 +186,26 @@ export default function Tasks() {
           }
         }
 
+        let isCoord = false;
+        let coordId = '';
+        if (userEmail) {
+          const { data: coordData } = await supabase
+            .from('coordinators')
+            .select('id, name')
+            .ilike('email', userEmail)
+            .maybeSingle();
+
+          if (coordData) {
+            isCoord = true;
+            coordId = coordData.id;
+            roleId = 3; // Enforce Coordinator Role
+          }
+        }
+
         setUserRole(roleId);
 
         let facName = '';
-        if (userEmail) {
+        if (userEmail && !isCoord && roleId !== 1) {
           const { data: facData } = await supabase
             .from('facilitators')
             .select('name')
@@ -199,7 +216,8 @@ export default function Tasks() {
           }
         }
 
-        if (roleId === 4 || facName) {
+        // Only set isFacilitator if user is strictly a Facilitator and NOT Coordinator or Admin
+        if (roleId === 4 && !isCoord && roleId !== 1) {
           const resolvedName = facName || fullName;
           setIsFacilitator(true);
           setCurrentFacilitatorName(resolvedName);
@@ -207,6 +225,21 @@ export default function Tasks() {
         } else {
           setIsFacilitator(false);
           setCurrentFacilitatorName(null);
+          setFilterIncharge('all');
+        }
+
+        // Load Coordinator assigned classes if user is a coordinator
+        if (isCoord || roleId === 3 || userEmail) {
+          try {
+            const stored = localStorage.getItem('coordinator_assigned_classes');
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              const classes = (coordId ? parsed[coordId] : null) || parsed[user.id] || (userEmail ? parsed[userEmail.toLowerCase().trim()] : []) || [];
+              if (classes.length > 0) {
+                setCoordinatorAssignedClasses(classes);
+              }
+            }
+          } catch (e) {}
         }
       } catch (err) {
         console.error('Error checking user identity in Tasks:', err);
@@ -220,7 +253,7 @@ export default function Tasks() {
     fetchClasses();
     fetchTasks();
     fetchSubjects();
-  }, [selectedYear]);
+  }, [selectedYear, filterMonth]);
 
   useEffect(() => {
     let filtered = tasks;
@@ -235,6 +268,14 @@ export default function Tasks() {
     }
     if (filterSubject !== 'all') {
       filtered = filtered.filter((t) => t.subject_name === filterSubject);
+    }
+
+    // Role-based Class filtering: Coordinators see tasks for their assigned classes if specified
+    if (coordinatorAssignedClasses.length > 0 && userRole !== 1) {
+      const allowedClasses = new Set(coordinatorAssignedClasses.map(c => c.toLowerCase().trim()));
+      filtered = filtered.filter((t) => 
+        t.class_name && allowedClasses.has(t.class_name.toLowerCase().trim())
+      );
     }
 
     // Role-based Incharge filtering: Facilitators see only their own tasks
@@ -436,7 +477,7 @@ export default function Tasks() {
     }
 
     setTaskGroups(finalGroups);
-  }, [tasks, filterClass, filterSession, filterSubject, filterStatus, filterIncharge, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName]);
+  }, [tasks, filterClass, filterSession, filterSubject, filterStatus, filterIncharge, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName, coordinatorAssignedClasses, userRole]);
 
   const fetchClasses = async () => {
     try {
@@ -499,8 +540,7 @@ export default function Tasks() {
       const { startDate, endDate } = getDateRange();
       const isoStart = startDate.toISOString();
 
-      // Parallelize task fetching directly filtering for selected academic year in DB
-      const { data: allData, error: taskError } = await supabase
+      let query = supabase
         .from('student_task_feedback')
         .select(`
           id,
@@ -528,8 +568,22 @@ export default function Tasks() {
             facilitator_name,
             subjects:subject_id(name)
           )
-        `)
-        .or(`academic_year.eq."${selectedYear}",created_at.gte."${isoStart}"`)
+        `);
+
+      if (filterMonth !== 'all') {
+        const m = Number(filterMonth);
+        const yearNum = m >= 4 ? 2026 : 2027;
+        const monthStart = new Date(Date.UTC(yearNum, m - 1, 1, 0, 0, 0)).toISOString();
+        const monthEnd = new Date(Date.UTC(yearNum, m, 0, 23, 59, 59, 999)).toISOString();
+
+        query = query
+          .gte('created_at', monthStart)
+          .lte('created_at', monthEnd);
+      } else {
+        query = query.or(`academic_year.eq."${selectedYear}",created_at.gte."${isoStart}"`);
+      }
+
+      const { data: allData, error: taskError } = await query
         .order('created_at', { ascending: false })
         .limit(1000);
 
@@ -895,12 +949,6 @@ export default function Tasks() {
               </SelectContent>
             </Select>
           </div>
-
-          {(filterClass !== 'all' || filterSession !== 'all' || filterStatus !== 'all' || filterIncharge !== 'all' || searchQuery.trim() || filterDateFrom || filterDateTo || filterMonth !== 'all') && (
-            <div className="text-sm text-muted-foreground">
-              Showing {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}
-            </div>
-          )}
         </div>
 
         {/* Task List */}
