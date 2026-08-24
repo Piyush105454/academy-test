@@ -56,70 +56,6 @@ export default function MaintenancePage() {
             <p className="text-xs text-slate-400">Management Platform</p>
           </div>
         </div>
-
-        {/* Emergency Admin Login Button */}
-        <Dialog open={openLogin} onOpenChange={setOpenLogin}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm" className="bg-slate-900/80 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 gap-2">
-              <Lock className="h-4 w-4 text-amber-400" />
-              <span className="hidden sm:inline">Admin / Developer Access</span>
-              <span className="sm:hidden">Dev Login</span>
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-lg text-amber-400">
-                <Lock className="h-5 w-5" />
-                Developer Access Sign-In
-              </DialogTitle>
-              <DialogDescription className="text-slate-400 text-xs md:text-sm">
-                Authorized administrators and developers can sign in here to bypass maintenance mode and access the full platform.
-              </DialogDescription>
-            </DialogHeader>
-
-            <form onSubmit={handleAdminSignIn} className="space-y-4 py-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="admin-email" className="text-slate-300 text-xs font-semibold">Admin Email</Label>
-                <Input
-                  id="admin-email"
-                  type="email"
-                  placeholder="admin@wesfoundation.org"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="bg-slate-950 border-slate-800 text-white placeholder:text-slate-600 focus-visible:ring-amber-500"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="admin-pass" className="text-slate-300 text-xs font-semibold">Password</Label>
-                <Input
-                  id="admin-pass"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="bg-slate-950 border-slate-800 text-white placeholder:text-slate-600 focus-visible:ring-amber-500"
-                  required
-                />
-              </div>
-
-              <Button type="submit" disabled={loggingIn} className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold gap-2">
-                {loggingIn ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    Authenticating...
-                  </>
-                ) : (
-                  <>
-                    <LogIn className="h-4 w-4" />
-                    Sign In & Bypass Maintenance
-                  </>
-                )}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
       </header>
 
       {/* Main Content */}
@@ -170,16 +106,6 @@ export default function MaintenancePage() {
           >
             <RefreshCw className="h-4 w-4" />
             Refresh Status
-          </Button>
-
-          <Button
-            onClick={() => setOpenLogin(true)}
-            variant="outline"
-            size="lg"
-            className="bg-slate-900 border-slate-800 text-slate-200 hover:bg-slate-800 px-6 gap-2"
-          >
-            <Lock className="h-4 w-4 text-amber-400" />
-            Developer Sign-In
           </Button>
         </div>
       </main>

@@ -54,8 +54,8 @@ export function MaintenanceGuard({ children }: { children: ReactNode }) {
 
   // If Maintenance Mode is ON:
   if (isDevMode && !isAuthPage) {
-    // If user is not authenticated or not an admin, show Maintenance Page
-    if (isAdmin === false || (!user && isAdmin === null)) {
+    // If user is not verified as Admin, show Maintenance Page UI to all users
+    if (isAdmin !== true) {
       return <MaintenancePage />;
     }
   }

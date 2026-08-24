@@ -92,6 +92,8 @@ export default function Classes() {
       const { data, error } = await supabase
         .from('classes')
         .select('id, name, description, email, allow_profile_edit, created_at, updated_at')
+        .neq('id', '00000000-0000-0000-0000-000000000000')
+        .neq('name', '__SYSTEM_DEV_MODE__')
         .order('name', { ascending: true });
 
       if (error) throw error;
