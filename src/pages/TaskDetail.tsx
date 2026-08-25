@@ -23,6 +23,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { parseSubmissionRequirements, parseSubmissionLinks, serializeSubmissionLinks } from "../utils/submissionUtils";
+import { getCleanTaskId, getScheduledTasks } from '@/utils/scheduledTasksStore';
 import {
   Select,
   SelectContent,
@@ -76,6 +77,46 @@ interface TaskGroup {
   task_id?: string;
   tasks: TaskItem[];
 }
+
+const cleanClassName = (raw?: string): string => {
+  if (!raw || raw === '-') return '-';
+  const trimmed = raw.trim();
+  if (trimmed.includes('Senior FellowSenior Fellow')) return 'Senior Fellow';
+  if (trimmed.includes('CCC EMP FellowCCC EMP Fellow')) return 'CCC EMP Fellow';
+  const half = Math.floor(trimmed.length / 2);
+  if (trimmed.length > 2 && trimmed.slice(0, half) === trimmed.slice(half)) return trimmed.slice(0, half);
+  return trimmed;
+};
+
+const getClassAbbr = (name?: string): string => {
+  if (!name || name === '-') return 'TASK';
+  const clean = cleanClassName(name);
+  if (clean.includes('Senior Fellow')) return 'SF';
+  if (clean.includes('CCC EMP Fellow')) return 'EMP';
+  if (clean.includes('Class 9')) return 'C9';
+  if (clean.includes('Class 10')) return 'C10';
+  if (clean.includes('Class 8')) return 'C8';
+  return clean.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 4);
+};
+
+const formatDescriptionText = (desc?: string): string => {
+  if (!desc) return '';
+  let formatted = desc
+    .replace(/\s*CATEGORY:\s*/gi, '<br/><br/><strong>📌 CATEGORY:</strong> ')
+    .replace(/\s*DIFFICULTY:\s*/gi, '<br/><strong>🎯 DIFFICULTY:</strong> ')
+    .replace(/\s*TOPIC:\s*/gi, '<br/><strong>📚 TOPIC:</strong> ')
+    .replace(/\s*ARTICLE:\s*/gi, '<br/><br/><strong>📖 ARTICLE:</strong><br/>')
+    .replace(/\s*TECHNICAL TERMS AND SIMPLE MEANINGS:\s*/gi, '<br/><br/><strong>🔤 TECHNICAL TERMS AND SIMPLE MEANINGS:</strong><br/>')
+    .replace(/\s*KEY TERMS AND HINDI MEANINGS:\s*/gi, '<br/><br/><strong>🔤 KEY TERMS AND HINDI MEANINGS:</strong><br/>')
+    .replace(/\s*WORD COUNT:\s*/gi, '<br/><br/><strong>📊 WORD COUNT:</strong> ')
+    .replace(/\s*Word Power Practice:\s*/gi, '<br/><br/><strong>💡 Word Power Practice:</strong><br/>')
+    .replace(/\s*आसान Hinglish Summary:\s*/gi, '<br/><br/><strong>📝 आसान Hinglish Summary:</strong><br/>');
+
+  if (!formatted.includes('<p>') && !formatted.includes('<br/>')) {
+    formatted = formatted.replace(/\n\n/g, '<br/><br/>').replace(/\n/g, '<br/>');
+  }
+  return formatted;
+};
 
 export default function TaskDetail() {
   const navigate = useNavigate();
@@ -143,26 +184,40 @@ export default function TaskDetail() {
 
       if (error) throw error;
 
+      let classTargetName = 'Senior Fellow';
+      let taskTitleFound = decodeURIComponent(taskTitle || '').trim();
+      let taskDescFound = '';
+      let taskCreatedAtFound = new Date().toISOString();
+      let taskDueDateFound = '';
+      let taskAcademicYearFound = selectedYear;
+      let taskVolunteerFound = '-';
+      let taskFacilitatorFound = '-';
+      let taskIdFound = '-';
+      let dbTasksList: TaskItem[] = [];
+
       if (data && data.length > 0) {
-        // Calculate the oldest created_at timestamp as the original creation date
         let oldestCreatedAt = data[0].created_at;
+        let earliestDeadline = null;
         data.forEach((task: any) => {
           if (task.created_at && (!oldestCreatedAt || new Date(task.created_at) < new Date(oldestCreatedAt))) {
             oldestCreatedAt = task.created_at;
           }
-        });
-
-        // Calculate the minimum (original) deadline across all assigned students
-        let earliestDeadline = null;
-        data.forEach((task: any) => {
-          if (task.deadline) {
-            if (!earliestDeadline || new Date(task.deadline) < new Date(earliestDeadline)) {
-              earliestDeadline = task.deadline;
-            }
+          if (task.deadline && (!earliestDeadline || new Date(task.deadline) < new Date(earliestDeadline))) {
+            earliestDeadline = task.deadline;
           }
         });
 
-        const enriched: TaskItem[] = data.map((task: any) => ({
+        taskTitleFound = data[0].task_name;
+        taskDescFound = data[0].task_description || '';
+        taskCreatedAtFound = oldestCreatedAt || new Date().toISOString();
+        taskDueDateFound = earliestDeadline || data[0].deadline || '';
+        taskAcademicYearFound = data[0].academic_year || selectedYear;
+        taskVolunteerFound = data[0].sessions?.volunteer_name || '-';
+        taskFacilitatorFound = data[0].sessions?.facilitator_name || '-';
+        taskIdFound = data.find((t: any) => t.task_id && t.task_id !== '-')?.task_id || '-';
+        classTargetName = cleanClassName(data[0].sessions?.class_batch || data[0].students?.classes?.name || 'Senior Fellow');
+
+        dbTasksList = data.map((task: any) => ({
           id: task.id,
           title: task.task_name || '',
           description: task.task_description || '',
@@ -175,7 +230,7 @@ export default function TaskDetail() {
           created_at: task.created_at || '',
           student_name: task.students?.name || '-',
           session_title: task.sessions?.title || '-',
-          class_name: task.sessions?.class_batch || '-',
+          class_name: cleanClassName(task.sessions?.class_batch),
           earning_amount: task.earning_amount || 0,
           feedback_type: task.feedback_type,
           rejection_comment: task.rejection_comment,
@@ -184,22 +239,74 @@ export default function TaskDetail() {
           volunteer_name: task.sessions?.volunteer_name || undefined,
           facilitator_name: task.sessions?.facilitator_name || '-',
         }));
-
-        const firstValidTaskId = data.find((t: any) => t.task_id && t.task_id !== '-')?.task_id || '-';
-
-        setTaskGroup({
-          title: data[0].task_name,
-          description: data[0].task_description || '',
-          created_at: oldestCreatedAt || new Date().toISOString(),
-          due_date: earliestDeadline || data[0].deadline || '',
-          academic_year: data[0].academic_year || '-',
-          class_name: data[0].sessions?.class_batch || '-',
-          volunteer_name: data[0].sessions?.volunteer_name || '-',
-          facilitator_name: data[0].sessions?.facilitator_name || '-',
-          task_id: firstValidTaskId,
-          tasks: enriched,
-        });
       }
+
+
+
+      // Fetch enrolled students for classTargetName (e.g. Senior Fellow)
+      let enrolledClassStudents: any[] = [];
+      try {
+        const { data: clsData } = await supabase
+          .from('classes')
+          .select('id, name')
+          .ilike('name', `%${classTargetName.trim()}%`)
+          .maybeSingle();
+
+        if (clsData?.id) {
+          const { data: stData } = await supabase
+            .from('students')
+            .select('id, name, email')
+            .eq('class_id', clsData.id)
+            .order('name');
+          if (stData) enrolledClassStudents = stData;
+        }
+      } catch (e) {
+        console.error('Error loading enrolled class students:', e);
+      }
+
+      // Combine existing DB submissions with enrolled class students
+      const mergedStudentsMap = new Map<string, TaskItem>();
+      dbTasksList.forEach(t => {
+        if (t.student_id) mergedStudentsMap.set(t.student_id, t);
+      });
+
+      enrolledClassStudents.forEach(st => {
+        if (!mergedStudentsMap.has(st.id)) {
+          mergedStudentsMap.set(st.id, {
+            id: `enrolled_${st.id}`,
+            title: taskTitleFound,
+            description: taskDescFound,
+            class_id: '',
+            session_id: '',
+            student_id: st.id,
+            status: 'pending',
+            submission_link: '',
+            due_date: taskDueDateFound,
+            created_at: taskCreatedAtFound,
+            student_name: st.name,
+            class_name: classTargetName,
+            earning_amount: 0,
+            submission_types: ['video', 'pdf', 'text', 'link'],
+            volunteer_name: taskVolunteerFound,
+            facilitator_name: taskFacilitatorFound,
+          });
+        }
+      });
+
+      const finalTasksList = Array.from(mergedStudentsMap.values());
+
+      setTaskGroup({
+        title: taskTitleFound,
+        description: taskDescFound,
+        created_at: taskCreatedAtFound,
+        due_date: taskDueDateFound,
+        academic_year: taskAcademicYearFound,
+        class_name: classTargetName,
+        volunteer_name: taskVolunteerFound,
+        facilitator_name: taskFacilitatorFound,
+        task_id: taskIdFound,
+        tasks: finalTasksList
+      });
     } catch (error) {
       console.error('Error fetching task detail:', error);
       toast.error('Failed to load task details');
@@ -803,8 +910,8 @@ export default function TaskDetail() {
               <div className="mt-4 pt-4 border-t border-border">
                 <span className="text-sm text-muted-foreground">Description</span>
                 <div 
-                  className="prose prose-sm max-w-none text-muted-foreground task-description-content"
-                  dangerouslySetInnerHTML={{ __html: taskGroup.description }}
+                  className="prose prose-sm max-w-none text-muted-foreground task-description-content whitespace-pre-wrap leading-relaxed mt-2"
+                  dangerouslySetInnerHTML={{ __html: formatDescriptionText(taskGroup.description) }}
                   onClick={(e) => {
                     const target = e.target as HTMLElement;
                     if (target.tagName === 'IMG') {

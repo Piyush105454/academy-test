@@ -314,6 +314,8 @@ export function AddSessionDialog({
       const { data, error } = await supabase
         .from('classes')
         .select('id, name,email')
+        .neq('name', '__SYSTEM_DEV_MODE__')
+        .neq('id', '00000000-0000-0000-0000-000000000000')
         .order('name', { ascending: true });
 
       if (error) throw error;

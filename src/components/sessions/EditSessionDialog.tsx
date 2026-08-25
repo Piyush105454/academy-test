@@ -179,7 +179,7 @@ export function EditSessionDialog({
     try {
       const [centresRes, classesRes, volunteersRes, facilitatorsRes, coordinatorsRes] = await Promise.all([
         supabase.from('centres').select('id, name, location, email').eq('status', 'active'),
-        supabase.from('classes').select('id, name, email').order('name', { ascending: true }),
+        supabase.from('classes').select('id, name, email').neq('name', '__SYSTEM_DEV_MODE__').neq('id', '00000000-0000-0000-0000-000000000000').order('name', { ascending: true }),
         supabase.from('volunteers').select('id, name, personal_email, work_email, phone_number, organization_name').eq('is_active', true).order('name', { ascending: true }),
         supabase.from('facilitators').select('id, name, email, phone, location, status').eq('status', 'active').order('name', { ascending: true }),
         supabase.from('coordinators').select('id, name, email, phone, location, status').eq('status', 'active').order('name', { ascending: true }),

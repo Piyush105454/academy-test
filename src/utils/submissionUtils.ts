@@ -9,7 +9,14 @@ export interface SubmissionRequirement {
  * Handles backwards compatibility for old tasks that just had strings like ["pdf", "ppt"].
  */
 export function parseSubmissionRequirements(rawTypes: string[] | null | undefined): SubmissionRequirement[] {
-  if (!rawTypes || !Array.isArray(rawTypes)) return [];
+  if (!rawTypes || !Array.isArray(rawTypes) || rawTypes.length === 0) {
+    return [
+      { id: 'req-video', title: 'Video Recording Submission', type: 'video' },
+      { id: 'req-pdf', title: 'PDF / File Submission', type: 'pdf' },
+      { id: 'req-text', title: 'Notes / Text Summary', type: 'text' },
+      { id: 'req-link', title: 'Resource / Project Link', type: 'link' },
+    ];
+  }
 
   return rawTypes.map((item, index) => {
     if (item.startsWith('{') && item.endsWith('}')) {

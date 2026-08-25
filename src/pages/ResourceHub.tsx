@@ -82,7 +82,7 @@ export default function ResourceHub({ isStudent = false }: { isStudent?: boolean
 
   const fetchClasses = async () => {
     try {
-      const { data } = await supabase.from('classes').select('id, name').order('name');
+      const { data } = await supabase.from('classes').select('id, name').neq('name', '__SYSTEM_DEV_MODE__').neq('id', '00000000-0000-0000-0000-000000000000').order('name');
       if (data) setClasses(data);
     } catch (e) {
       console.error(e);

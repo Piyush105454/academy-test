@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getScheduledTasks } from '@/utils/scheduledTasksStore';
 
 interface StudentTask {
   id: string;
@@ -67,31 +68,39 @@ export default function StudentTasks() {
     try {
       setLoading(true);
 
-      const { data: students, error: studentError } = await supabase
+      // 1. Check if user is linked to a student profile
+      const { data: students } = await supabase
         .from('students')
-        .select('id')
-        .ilike('email', user?.email);
+        .select('id, name, class_id, classes(name)')
+        .ilike('email', user?.email || '');
 
-      if (studentError) throw studentError;
+      let studentIds: string[] = [];
+      let studentClassName = 'senior fellow';
 
-      if (!students || students.length === 0) {
-        setTasks([]);
-        setLoading(false);
-        return;
+      if (students && students.length > 0) {
+        studentIds = students.map(s => s.id);
+        const rawClassName = students[0]?.classes?.name || (Array.isArray(students[0]?.classes) && (students[0]?.classes as any)[0]?.name) || '';
+        if (rawClassName) studentClassName = String(rawClassName).trim().toLowerCase();
       }
 
-      const studentIds = students.map(s => s.id);
       const { startDate, endDate } = getDateRange();
 
-      const { data, error } = await supabase
-        .from('student_task_feedback')
-        .select('id, task_name, task_description, deadline, feedback_type, status, feedback_notes, submission_link, created_at, earning_amount, rejection_comment')
-        .in('student_id', studentIds)
-        .or(`academic_year.eq."${selectedYear}",and(academic_year.is.null,created_at.gte."${startDate.toISOString()}",created_at.lte."${endDate.toISOString()}")`)
-        .order('created_at', { ascending: false });
+      // 2. Load DB task submissions if student record exists
+      let loadedTasks: StudentTask[] = [];
+      if (studentIds.length > 0) {
+        const { data: existingDbTasks } = await supabase
+          .from('student_task_feedback')
+          .select('id, task_name, task_description, deadline, feedback_type, status, feedback_notes, submission_link, created_at, earning_amount, rejection_comment')
+          .in('student_id', studentIds)
+          .or(`academic_year.eq."${selectedYear}",and(academic_year.is.null,created_at.gte."${startDate.toISOString()}",created_at.lte."${endDate.toISOString()}")`)
+          .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setTasks(data || []);
+        if (existingDbTasks) {
+          loadedTasks = [...existingDbTasks];
+        }
+      }
+
+      setTasks(loadedTasks);
     } catch (error) {
       console.error('Error loading tasks:', error);
       toast.error('Failed to load your tasks');

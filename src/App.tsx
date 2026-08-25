@@ -57,6 +57,7 @@ const ActivityLogs = lazy(() => import("./pages/ActivityLogs"));
 const ResourceHub = lazy(() => import("./pages/ResourceHub"));
 const StudentSupport = lazy(() => import("./pages/StudentSupport"));
 const SupportManagement = lazy(() => import("./pages/SupportManagement"));
+const ScheduledTasks = lazy(() => import("./pages/ScheduledTasks"));
 const DeveloperModePage = lazy(() => import("./pages/DeveloperModePage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -100,6 +101,7 @@ const App = () => (
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/profile/edit" element={<EditProfile />} />
                     <Route path="/tasks" element={<Tasks />} />
+                    <Route path="/scheduled-tasks" element={<ScheduledTasks />} />
                     <Route path="/tasks/:taskTitle" element={<TaskDetail />} />
                     <Route path="/tasks/:taskTitle/edit" element={<TaskEdit />} />
                     <Route path="/student-tasks" element={<StudentTasks />} />

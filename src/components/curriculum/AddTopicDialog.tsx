@@ -76,6 +76,8 @@ export function AddTopicDialog({ open, onOpenChange, onSuccess }: AddTopicDialog
       const { data, error } = await (supabase as any)
         .from('classes')
         .select('id, name')
+        .neq('name', '__SYSTEM_DEV_MODE__')
+        .neq('id', '00000000-0000-0000-0000-000000000000')
         .order('name', { ascending: true });
 
       if (error) throw error;

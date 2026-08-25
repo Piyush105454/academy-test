@@ -47,6 +47,8 @@ interface Subject {
   name: string;
 }
 
+import { runScheduledTaskWorker } from '@/utils/scheduledTaskWorker';
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -76,11 +78,16 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function fetchClasses() {
-      const { data } = await supabase.from('classes').select('id, name').order('name');
+      const { data } = await supabase.from('classes').select('id, name').neq('name', '__SYSTEM_DEV_MODE__').neq('id', '00000000-0000-0000-0000-000000000000').order('name');
       if (data) setClasses(data);
     }
     fetchClasses();
   }, []);
+
+  // Background worker: auto-assign scheduled tasks whose creation_date <= today
+  useEffect(() => {
+    runScheduledTaskWorker(selectedYear);
+  }, [selectedYear]);
 
   const getAcademicYearMonths = (yearStr: string) => {
     const startYear = parseInt(yearStr.split('-')[0]);

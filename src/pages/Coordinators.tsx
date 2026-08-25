@@ -223,7 +223,7 @@ export function Coordinators() {
     setAssigningCoordinator(c);
     setIsAssignDialogOpen(true);
     // Fetch all classes
-    const { data } = await supabase.from('classes').select('id, name').order('name');
+    const { data } = await supabase.from('classes').select('id, name').neq('name', '__SYSTEM_DEV_MODE__').neq('id', '00000000-0000-0000-0000-000000000000').order('name');
     if (data) {
       setAllClasses(data);
       const existingMap: Record<string, boolean> = {};

@@ -1,0 +1,945 @@
+import { useState, useEffect } from 'react';
+import { runScheduledTaskWorker } from '@/utils/scheduledTaskWorker';
+import { 
+  Clock, 
+  Upload, 
+  Search, 
+  Filter, 
+  Calendar, 
+  CheckCircle2, 
+  AlertCircle, 
+  Plus, 
+  Trash2, 
+  Eye, 
+  FileSpreadsheet,
+  ArrowRight,
+  BookOpen,
+  GraduationCap,
+  Layers
+} from 'lucide-react';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { supabase } from '@/integrations/supabase/client';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
+import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
+import { getCleanTaskId, getScheduledTasks, saveScheduledTasks as persistScheduledTasks } from '@/utils/scheduledTasksStore';
+
+export interface ScheduledTask {
+  id: string;
+  title: string;
+  description: string;
+  class_name: string;
+  subject_name: string;
+  creation_date: string;
+  deadline: string;
+  academic_year: string;
+  status: 'scheduled' | 'published';
+  created_at: string;
+  sheet_name?: string;
+}
+
+const STORAGE_KEY = 'wes_scheduled_tasks_v2';
+
+export default function ScheduledTasks() {
+  const { selectedYear } = useAcademicYear();
+  const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+
+  // Filter States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterClass, setFilterClass] = useState('all');
+  const [filterSubject, setFilterSubject] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+
+  // Bulk Import Modal States
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [targetClass, setTargetClass] = useState('Senior Fellow');
+  const [availableSheets, setAvailableSheets] = useState<string[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState('all');
+  const [customSubjectOverride, setCustomSubjectOverride] = useState('auto');
+  const [rawParsedTasks, setRawParsedTasks] = useState<ScheduledTask[]>([]);
+  const [previewTasks, setPreviewTasks] = useState<ScheduledTask[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importFileName, setImportFileName] = useState<string>('');
+  const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['video', 'pdf']);
+  
+  // Dashboard Metricsk View Modal
+  const [selectedTask, setSelectedTask] = useState<ScheduledTask | null>(null);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+
+  // Helper date formatter
+  const formatExcelDate = (excelDate: any): string => {
+    if (typeof excelDate === 'number') {
+      const date = XLSX.SSF.parse_date_code(excelDate);
+      if (date) {
+        const yyyy = date.y;
+        const mm = String(date.m).padStart(2, '0');
+        const dd = String(date.d).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      }
+    }
+    if (typeof excelDate === 'string' && excelDate.includes('-')) {
+      return excelDate.trim();
+    }
+    return String(excelDate || '').trim();
+  };
+
+  // Load Classes for dropdown
+  useEffect(() => {
+    const fetchClasses = async () => {
+      try {
+        const { data } = await supabase
+          .from('classes')
+          .select('id, name')
+          .neq('name', '__SYSTEM_DEV_MODE__')
+          .order('name');
+        if (data) setClasses(data);
+      } catch (e) {
+        console.error('Error loading classes:', e);
+      }
+    };
+    fetchClasses();
+  }, []);
+
+  // Load Scheduled Tasks
+  useEffect(() => {
+    loadScheduledTasks();
+  }, [selectedYear]);
+
+  const loadScheduledTasks = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await (supabase as any)
+        .from('wes_scheduled_tasks')
+        .select('*')
+        .order('creation_date', { ascending: true });
+
+      if (error) {
+        console.error('Error loading from DB:', error.message);
+        // Fallback to localStorage cache
+        try {
+          const cached = localStorage.getItem('wes_scheduled_tasks_v2');
+          if (cached) setScheduledTasks(JSON.parse(cached));
+        } catch { /* ignore */ }
+      } else {
+        setScheduledTasks(data || []);
+        // Keep localStorage in sync as cache
+        try { localStorage.setItem('wes_scheduled_tasks_v2', JSON.stringify(data || [])); } catch { /* ignore */ }
+      }
+    } catch (e) {
+      console.error('Error loading scheduled tasks:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // No longer needed but kept to avoid breaking references
+  const saveScheduledTasks = (tasks: ScheduledTask[]) => {
+    setScheduledTasks(tasks);
+    try { localStorage.setItem('wes_scheduled_tasks_v2', JSON.stringify(tasks)); } catch { /* ignore */ }
+  };
+
+  // Update preview whenever selectedSheet or customSubjectOverride changes
+  useEffect(() => {
+    if (rawParsedTasks.length === 0) {
+      setPreviewTasks([]);
+      return;
+    }
+
+    let filtered = rawParsedTasks;
+    if (selectedSheet !== 'all') {
+      filtered = rawParsedTasks.filter(t => t.sheet_name === selectedSheet);
+    }
+
+    // Apply subject override if set
+    if (customSubjectOverride !== 'auto') {
+      filtered = filtered.map(t => ({ ...t, subject_name: customSubjectOverride }));
+    }
+
+    // Apply class name
+    filtered = filtered.map(t => ({ ...t, class_name: targetClass }));
+
+    setPreviewTasks(filtered);
+  }, [rawParsedTasks, selectedSheet, customSubjectOverride, targetClass]);
+
+  // Handle Excel File Select & Parse
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportFileName(file.name);
+    const reader = new FileReader();
+
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const workbook = XLSX.read(bstr, { type: 'binary' });
+
+        setAvailableSheets(workbook.SheetNames);
+        setSelectedSheet('all');
+        setCustomSubjectOverride('auto');
+
+        const parsedList: ScheduledTask[] = [];
+
+        workbook.SheetNames.forEach((sheetName, sIdx) => {
+          const sheet = workbook.Sheets[sheetName];
+          const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+          // Determine Subject from sheet name
+          let subjectName = (sheetName.toLowerCase().includes('soft') || sIdx === 1)
+            ? 'English Comm & Soft Skills'
+            : 'Azure Specialisation';
+
+          for (let i = 1; i < rows.length; i++) {
+            const r = rows[i];
+            if (!r || r.length < 5) continue;
+
+            const title = r[7] || r[2] || r[0];
+            const desc = r[6] || r[3] || r[0];
+            const assignDate = formatExcelDate(r[8]);
+            const deadlineDate = formatExcelDate(r[9]);
+
+            if (title && assignDate) {
+              parsedList.push({
+                id: `sched_${sIdx}_${parsedList.length + 1}`,
+                title: String(title).trim(),
+                description: String(desc).trim(),
+                class_name: targetClass,
+                subject_name: subjectName,
+                creation_date: assignDate,
+                deadline: deadlineDate || assignDate,
+                academic_year: selectedYear,
+                status: 'scheduled',
+                created_at: new Date().toISOString(),
+                sheet_name: sheetName
+              });
+            }
+          }
+        });
+
+        if (parsedList.length === 0) {
+          toast.error('No valid scheduled tasks found in file');
+        } else {
+          setRawParsedTasks(parsedList);
+          toast.success(`Successfully loaded ${parsedList.length} tasks across ${workbook.SheetNames.length} sheets!`);
+        }
+      } catch (err: any) {
+        console.error('Error parsing Excel file:', err);
+        toast.error('Failed to parse Excel file: ' + (err.message || ''));
+      }
+    };
+
+    reader.readAsBinaryString(file);
+  };
+
+  // Save Bulk Import Tasks → directly to Supabase DB
+  const handleConfirmImport = async () => {
+    if (previewTasks.length === 0) return;
+    setIsImporting(true);
+
+    try {
+      const { error } = await (supabase as any)
+        .from('wes_scheduled_tasks')
+        .insert(previewTasks.map(t => ({
+          title: t.title,
+          description: t.description + (importSubmissionTypes.length > 0 ? `\n\n__REQ[${importSubmissionTypes.join(',')}]__` : ''),
+          class_name: t.class_name,
+          subject_name: t.subject_name,
+          creation_date: t.creation_date,
+          deadline: t.deadline || t.creation_date,
+          academic_year: t.academic_year || selectedYear,
+          status: 'scheduled',
+        })));
+
+      if (error) {
+        toast.error(`Import failed: ${error.message}`);
+        return;
+      }
+
+      toast.success(`✅ Imported ${previewTasks.length} tasks for ${targetClass} to database!`);
+      setImportDialogOpen(false);
+      setPreviewTasks([]);
+      setRawParsedTasks([]);
+      setImportFileName('');
+      await loadScheduledTasks();
+      
+      // Auto-assign any tasks that are due today immediately after import
+      await runScheduledTaskWorker(selectedYear);
+      await loadScheduledTasks(); // Reload again in case statuses changed to 'published'
+    } catch (e: any) {
+      toast.error('Error saving imported tasks');
+      console.error('Import error:', e);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // Delete Single Scheduled Task from DB
+  const handleDeleteTask = async (id: string) => {
+    try {
+      const { error } = await (supabase as any)
+        .from('wes_scheduled_tasks')
+        .delete()
+        .eq('id', id);
+      if (error) { toast.error(`Delete failed: ${error.message}`); return; }
+      setScheduledTasks(prev => prev.filter(t => t.id !== id));
+      toast.success('Scheduled task deleted');
+    } catch (e) {
+      toast.error('Failed to delete task');
+    }
+  };
+
+  // Publish Task to ALL students in the class (same as AddTask — one row per student)
+  const handlePublishNow = async (task: ScheduledTask) => {
+    try {
+      // 1. Find the class record by name
+      const { data: classData } = await (supabase as any)
+        .from('classes')
+        .select('id, name')
+        .ilike('name', task.class_name.trim())
+        .limit(1);
+
+      const classId = classData?.[0]?.id;
+      if (!classId) {
+        toast.error(`Class "${task.class_name}" not found in database`);
+        return;
+      }
+
+      // 2. Fetch all students enrolled in that class
+      const { data: studentsData } = await (supabase as any)
+        .from('students')
+        .select('id, name')
+        .eq('class_id', classId);
+
+      if (!studentsData || studentsData.length === 0) {
+        toast.error(`No students found in class "${task.class_name}"`);
+        return;
+      }
+
+      // 3. Generate task_id matching AddTask.tsx format exactly
+      const d = new Date();
+      const yearStr = d.getFullYear();
+      const monthStr = String(d.getMonth() + 1).padStart(2, '0');
+      const classNameStr = (task.class_name || 'SeniorFellow').replace(/[\s\/]+/g, '');
+      const prefix = `${yearStr}-${monthStr}-${classNameStr}-`;
+
+      const { data: existingTasks } = await (supabase as any)
+        .from('student_task_feedback')
+        .select('task_id')
+        .like('task_id', `${prefix}%`)
+        .order('task_id', { ascending: false })
+        .limit(1);
+
+      let nextSeq = 1;
+      if (existingTasks && existingTasks.length > 0 && existingTasks[0].task_id) {
+        const lastSeqStr = (existingTasks[0].task_id as string).split('-').pop();
+        if (lastSeqStr) {
+          const n = parseInt(lastSeqStr, 10);
+          if (!isNaN(n)) nextSeq = n + 1;
+        }
+      }
+
+      const generatedTaskId = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+
+      // 4. Insert one row per student (same as AddTask)
+      const taskRecords = studentsData.map((student: any) => ({
+        student_id: student.id,
+        task_name: task.title,
+        task_description: task.description,
+        task_id: generatedTaskId,
+        deadline: task.deadline ? `${task.deadline}T23:59:59Z` : new Date().toISOString(),
+        status: 'pending',
+        feedback_type: 'general',
+        academic_year: task.academic_year || selectedYear,
+        created_at: new Date().toISOString(),
+        submission_types: ['video', 'pdf'],
+      }));
+
+      const { error } = await (supabase as any)
+        .from('student_task_feedback')
+        .insert(taskRecords);
+
+      if (error) {
+        console.error('Insert error:', error.message);
+        toast.error(`DB error: ${error.message}`);
+        return;
+      }
+
+      // 5. Mark as published in Supabase DB
+      await (supabase as any)
+        .from('wes_scheduled_tasks')
+        .update({ status: 'published', updated_at: new Date().toISOString() })
+        .eq('id', task.id);
+
+      // Update local state
+      setScheduledTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'published' as const } : t));
+      toast.success(`✅ Published "${task.title}" to ${studentsData.length} students → Task ID: ${generatedTaskId}`);
+    } catch (e: any) {
+      toast.error('Failed to publish task');
+      console.error('handlePublishNow error:', e);
+    }
+  };
+
+  // Today Date for Status Check
+  const todayIso = new Date().toISOString().split('T')[0];
+
+  // Filter Tasks for Display
+  const filteredTasks = scheduledTasks.filter(t => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const matchTitle = t.title.toLowerCase().includes(q);
+      const matchDesc = t.description.toLowerCase().includes(q);
+      if (!matchTitle && !matchDesc) return false;
+    }
+    if (filterClass !== 'all' && t.class_name.toLowerCase() !== filterClass.toLowerCase()) {
+      return false;
+    }
+    if (filterSubject !== 'all' && t.subject_name.toLowerCase() !== filterSubject.toLowerCase()) {
+      return false;
+    }
+    if (filterStatus !== 'all') {
+      const isPast = t.creation_date <= todayIso;
+      if (filterStatus === 'scheduled' && (t.status === 'published' || isPast)) return false;
+      if (filterStatus === 'published' && (t.status !== 'published' && !isPast)) return false;
+    }
+    return true;
+  });
+
+  // Calculate Metrics
+  const totalTasks = scheduledTasks.length;
+  const pendingCount = scheduledTasks.filter(t => t.creation_date > todayIso && t.status !== 'published').length;
+  const publishedCount = scheduledTasks.filter(t => t.creation_date <= todayIso || t.status === 'published').length;
+  const uniqueClassesCount = new Set(scheduledTasks.map(t => t.class_name)).size;
+
+  // Deduplicated class list options
+  const classOptions = Array.from(
+    new Set(
+      ['Senior Fellow', 'CCC EMP Fellow', 'Class 10', 'Class 9', 'Class 8', ...classes.map(c => c.name)]
+        .filter(name => name && name !== '__SYSTEM_DEV_MODE__')
+    )
+  );
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6 pb-12">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground flex items-center gap-2">
+              <Clock className="h-7 w-7 text-primary" />
+              Scheduled Tasks & Projects
+            </h1>
+            <p className="text-muted-foreground mt-1 text-xs md:text-sm">
+              Manage bulk imported daily tasks and automated scheduled creation date releases
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {scheduledTasks.length > 0 && (
+              <Button
+                variant="destructive"
+                className="gap-2 font-semibold"
+                onClick={async () => {
+                  if (window.confirm(`⚠️ Delete ALL ${scheduledTasks.length} scheduled tasks from database?\n\nThis cannot be undone. Click OK to confirm.`)) {
+                    try {
+                      const { error } = await (supabase as any)
+                        .from('wes_scheduled_tasks')
+                        .delete()
+                        .neq('id', '00000000-0000-0000-0000-000000000000'); // delete all rows
+                      if (error) { toast.error(`Failed: ${error.message}`); return; }
+                      setScheduledTasks([]);
+                      localStorage.removeItem('wes_scheduled_tasks_v2');
+                      toast.success('All scheduled tasks cleared from database. You can now re-import.');
+                    } catch (e) {
+                      toast.error('Failed to clear tasks');
+                    }
+                  }
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Clear All ({scheduledTasks.length})
+              </Button>
+            )}
+
+            <Button 
+              variant="outline" 
+              className="gap-2"
+              onClick={async () => {
+                toast.info('Running auto-assignment worker...');
+                await runScheduledTaskWorker(selectedYear);
+                await loadScheduledTasks();
+                toast.success('Auto-assignment complete!');
+              }}
+            >
+              <Clock className="h-4 w-4" />
+              Run Auto-Assign
+            </Button>
+
+            <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
+                  <Upload className="h-4 w-4" />
+                  Bulk Import Excel Tasks
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-xl">
+                    <FileSpreadsheet className="h-6 w-6 text-primary" />
+                    Bulk Import Scheduled Tasks from Excel
+                  </DialogTitle>
+                  <DialogDescription>
+                    Upload an Excel file (`.xlsx`). You can choose to import all sheets together or import specific sheets separately.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="target-class">Target Class / Designation</Label>
+                      <Select value={targetClass} onValueChange={setTargetClass}>
+                        <SelectTrigger id="target-class">
+                          <SelectValue placeholder="Select Designation / Class" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {classOptions.map(name => (
+                            <SelectItem key={name} value={name}>{name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="excel-file">Upload Excel File (.xlsx / .csv)</Label>
+                      <Input
+                        id="excel-file"
+                        type="file"
+                        accept=".xlsx, .xls, .csv"
+                        onChange={handleFileUpload}
+                        className="cursor-pointer"
+                      />
+                      {importFileName && (
+                        <p className="text-xs text-emerald-600 font-medium mt-1">
+                          Loaded file: {importFileName}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {availableSheets.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border p-3 rounded-xl bg-slate-50">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold flex items-center gap-1.5">
+                          <Layers className="h-3.5 w-3.5 text-primary" />
+                          Select Sheet to Import
+                        </Label>
+                        <Select value={selectedSheet} onValueChange={setSelectedSheet}>
+                          <SelectTrigger className="h-9 text-xs bg-background">
+                            <SelectValue placeholder="Select Sheet" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Sheets ({rawParsedTasks.length} Total Tasks)</SelectItem>
+                            {availableSheets.map((sName, idx) => {
+                              const count = rawParsedTasks.filter(t => t.sheet_name === sName).length;
+                              return (
+                                <SelectItem key={sName} value={sName}>
+                                  Sheet {idx + 1}: {sName} ({count} Tasks)
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold flex items-center gap-1.5">
+                          <BookOpen className="h-3.5 w-3.5 text-primary" />
+                          Subject Mapping
+                        </Label>
+                        <Select value={customSubjectOverride} onValueChange={setCustomSubjectOverride}>
+                          <SelectTrigger className="h-9 text-xs bg-background">
+                            <SelectValue placeholder="Select Subject" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">Auto-detect Subject from Sheet</SelectItem>
+                            <SelectItem value="Azure Specialisation">Azure Specialisation</SelectItem>
+                            <SelectItem value="English Comm & Soft Skills">English Comm & Soft Skills</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-3 pt-3 border-t">
+                    <Label className="text-sm font-semibold flex items-center gap-1.5">
+                      <CheckCircle2 className="h-4 w-4 text-primary" />
+                      Required Submission Types (Applied to all imported tasks)
+                    </Label>
+                    <div className="flex flex-wrap gap-4 bg-slate-50 p-4 rounded-xl border">
+                      {[
+                        { id: 'video', label: 'Video Recording' },
+                        { id: 'pdf', label: 'PDF Document' },
+                        { id: 'text', label: 'Text Submission' },
+                        { id: 'link', label: 'Link / URL' },
+                      ].map((type) => (
+                        <label key={type.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 p-1.5 rounded-md transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={importSubmissionTypes.includes(type.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setImportSubmissionTypes(prev => [...prev, type.id]);
+                              } else {
+                                setImportSubmissionTypes(prev => prev.filter(t => t !== type.id));
+                              }
+                            }}
+                            className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                          />
+                          <span className="text-sm font-medium">{type.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {previewTasks.length > 0 && (
+                    <div className="space-y-2 border rounded-xl p-3 bg-muted/30">
+                      <div className="flex items-center justify-between text-xs font-bold">
+                        <span>Parsed Task Preview ({previewTasks.length} Tasks Ready)</span>
+                        <span className="text-primary">Target: {targetClass}</span>
+                      </div>
+
+                      <div className="max-h-48 overflow-y-auto rounded-md border bg-background text-xs">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Subject</TableHead>
+                              <TableHead>Task Title</TableHead>
+                              <TableHead>Assign Date</TableHead>
+                              <TableHead>Deadline</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {previewTasks.slice(0, 15).map((t, idx) => (
+                              <TableRow key={idx}>
+                                <TableCell className="font-semibold text-primary">{t.subject_name}</TableCell>
+                                <TableCell className="truncate max-w-[200px]">{t.title}</TableCell>
+                                <TableCell>{t.creation_date}</TableCell>
+                                <TableCell>{t.deadline}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                      {previewTasks.length > 15 && (
+                        <p className="text-[11px] text-muted-foreground text-center">
+                          + {previewTasks.length - 15} more daily tasks ready to import
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <DialogFooter className="gap-2">
+                  <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleConfirmImport}
+                    disabled={previewTasks.length === 0 || isImporting}
+                    className="gap-2 bg-primary"
+                  >
+                    {isImporting ? 'Importing Tasks...' : `Import & Schedule ${previewTasks.length} Tasks`}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+
+        {/* KPI Metric Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-l-4 border-l-primary">
+            <CardHeader className="py-3">
+              <CardDescription className="text-xs">Total Scheduled Tasks</CardDescription>
+              <CardTitle className="text-2xl font-bold">{totalTasks}</CardTitle>
+            </CardHeader>
+          </Card>
+
+          <Card className="border-l-4 border-l-amber-500">
+            <CardHeader className="py-3">
+              <CardDescription className="text-xs">Pending Scheduled Release</CardDescription>
+              <CardTitle className="text-2xl font-bold text-amber-600">{pendingCount}</CardTitle>
+            </CardHeader>
+          </Card>
+
+          <Card className="border-l-4 border-l-emerald-500">
+            <CardHeader className="py-3">
+              <CardDescription className="text-xs">Published / Active Tasks</CardDescription>
+              <CardTitle className="text-2xl font-bold text-emerald-600">{publishedCount}</CardTitle>
+            </CardHeader>
+          </Card>
+
+          <Card className="border-l-4 border-l-blue-500">
+            <CardHeader className="py-3">
+              <CardDescription className="text-xs">Designations Covered</CardDescription>
+              <CardTitle className="text-2xl font-bold text-blue-600">{uniqueClassesCount}</CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* Filters & Search */}
+        <Card>
+          <CardHeader className="py-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="relative w-full md:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search scheduled task title or description..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Filter Class */}
+                <div className="w-40">
+                  <Select value={filterClass} onValueChange={setFilterClass}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Filter by Class" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Classes / Designations</SelectItem>
+                      {classOptions.map(name => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Filter Subject */}
+                <div className="w-44">
+                  <Select value={filterSubject} onValueChange={setFilterSubject}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Filter by Subject" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Subjects</SelectItem>
+                      <SelectItem value="Azure Specialisation">Azure Specialisation</SelectItem>
+                      <SelectItem value="English Comm & Soft Skills">English Comm & Soft Skills</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Filter Status */}
+                <div className="w-40">
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Filter by Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Release Status</SelectItem>
+                      <SelectItem value="scheduled">Pending Scheduled</SelectItem>
+                      <SelectItem value="published">Published / Active</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent>
+            {loading ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                Loading scheduled tasks...
+              </div>
+            ) : filteredTasks.length === 0 ? (
+              <div className="py-12 text-center space-y-3">
+                <Clock className="h-10 w-10 text-muted-foreground mx-auto" />
+                <p className="font-semibold text-base">No scheduled tasks found</p>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  Click "Bulk Import Excel Tasks" above to upload daily task schedules from Excel spreadsheets.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Task ID</TableHead>
+                      <TableHead>Task Title</TableHead>
+                      <TableHead>Class / Designation</TableHead>
+                      <TableHead>Subject</TableHead>
+                      <TableHead>Assign Date</TableHead>
+                      <TableHead>Deadline</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTasks.slice(0, 100).map((t, idx) => {
+                      const isPastOrToday = t.creation_date <= todayIso;
+                      const isPublished = t.status === 'published' || isPastOrToday;
+
+                      return (
+                        <TableRow key={t.id}>
+                          <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                            {getCleanTaskId(t, idx)}
+                          </TableCell>
+                          <TableCell className="font-semibold max-w-[280px]">
+                            <div className="truncate" title={t.title}>
+                              {t.title}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="bg-slate-100 text-slate-800 text-[11px]">
+                              {t.class_name}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-primary font-medium">
+                            {t.subject_name}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono">
+                            {formatExcelDate(t.creation_date)}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-muted-foreground">
+                            {formatExcelDate(t.deadline)}
+                          </TableCell>
+                          <TableCell>
+                            {isPublished ? (
+                              <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-300 gap-1 text-[11px]">
+                                <CheckCircle2 className="h-3 w-3" />
+                                Published
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-amber-500/15 text-amber-700 border-amber-300 gap-1 text-[11px]">
+                                <Clock className="h-3 w-3" />
+                                Scheduled ({t.creation_date})
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setSelectedTask(t);
+                                  setViewDialogOpen(true);
+                                }}
+                                title="View Details"
+                                className="h-8 w-8 p-0"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+
+                              {!isPublished && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handlePublishNow(t)}
+                                  className="h-7 text-xs gap-1 border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+                                >
+                                  Publish Now
+                                </Button>
+                              )}
+
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDeleteTask(t.id)}
+                                title="Delete Task"
+                                className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+                {filteredTasks.length > 100 && (
+                  <p className="text-xs text-muted-foreground text-center py-2 bg-muted/20">
+                    Showing top 100 of {filteredTasks.length} scheduled tasks
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* View Task Dialog */}
+        <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+          <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold">
+                {selectedTask?.title}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground flex items-center gap-3 pt-1">
+                <span>Class: {selectedTask?.class_name}</span>
+                <span>•</span>
+                <span>Subject: {selectedTask?.subject_name}</span>
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3 text-xs bg-muted/40 p-3 rounded-lg border">
+                <div>
+                  <span className="text-muted-foreground">Assign Date:</span>
+                  <p className="font-bold text-foreground">{selectedTask?.creation_date}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Deadline:</span>
+                  <p className="font-bold text-foreground">{selectedTask?.deadline}</p>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs text-muted-foreground">Task Content / Description:</Label>
+                <div className="mt-1.5 p-3 rounded-lg border bg-background text-xs whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto font-mono">
+                  {selectedTask?.description}
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button onClick={() => setViewDialogOpen(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </DashboardLayout>
+  );
+}

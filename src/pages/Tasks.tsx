@@ -46,6 +46,26 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { getCleanTaskId, getScheduledTasks } from '@/utils/scheduledTasksStore';
+
+const formatDateDisplay = (dateStr?: string) => {
+  if (!dateStr || dateStr === '-') return '-';
+  const trimmed = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [yyyy, mm, dd] = trimmed.split('-');
+    return `${dd}/${mm}/${yyyy}`;
+  }
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  } catch (e) {
+    return dateStr;
+  }
+};
 
 interface TaskItem {
   id: string;
@@ -151,6 +171,7 @@ export default function Tasks() {
   const [subjects, setSubjects] = useState<{ id: string, name: string }[]>([]);
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [filterSessions, setFilterSessions] = useState<SessionOption[]>([]);
+  const [classStudentCounts, setClassStudentCounts] = useState<Record<string, number>>({});
 
   const { user } = useAuth();
   const [userRole, setUserRole] = useState<number | null>(null);
@@ -484,6 +505,8 @@ export default function Tasks() {
       const { data, error } = await (supabase as any)
         .from('classes')
         .select('id, name')
+        .neq('name', '__SYSTEM_DEV_MODE__')
+        .neq('id', '00000000-0000-0000-0000-000000000000')
         .order('name');
       if (error) throw error;
       setClasses(data || []);
@@ -585,7 +608,7 @@ export default function Tasks() {
 
       const { data: allData, error: taskError } = await query
         .order('created_at', { ascending: false })
-        .limit(1000);
+        .limit(10000);
 
       if (taskError) throw taskError;
 
@@ -594,6 +617,27 @@ export default function Tasks() {
         .from('user_profiles')
         .select('id, full_name');
       const profilesMap = new Map((profilesData || []).map(p => [p.id, p.full_name]));
+
+      // Fetch student counts by class name to populate accurate denominators
+      try {
+        const { data: studentsWithClass } = await supabase
+          .from('students')
+          .select('id, class_id, classes(name)');
+
+        const classCountMap: Record<string, number> = {};
+        if (studentsWithClass) {
+          studentsWithClass.forEach((st: any) => {
+            const cName = st.classes?.name || (Array.isArray(st.classes) && st.classes[0]?.name);
+            if (cName) {
+              const key = cName.trim().toLowerCase();
+              classCountMap[key] = (classCountMap[key] || 0) + 1;
+            }
+          });
+        }
+        setClassStudentCounts(classCountMap);
+      } catch (e) {
+        console.error('Error fetching student counts by class:', e);
+      }
 
       const data = allData || [];
 
@@ -1011,7 +1055,7 @@ export default function Tasks() {
                           </Link>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                          {new Date(group.created_at || new Date()).toLocaleDateString()}
+                          {formatDateDisplay(group.created_at)}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="font-normal whitespace-nowrap">
@@ -1040,31 +1084,52 @@ export default function Tasks() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs whitespace-nowrap">
-                          {group.due_date ? new Date(group.due_date).toLocaleDateString() : '-'}
+                          {formatDateDisplay(group.due_date)}
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <div className="flex justify-between text-[10px] text-muted-foreground">
-                              <span>Progress</span>
-                              <span>{group.completedCount}/{group.tasks.length}</span>
-                            </div>
-                            <div className="w-24 h-1 bg-muted rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-primary" 
-                                style={{ width: `${(group.completedCount / group.tasks.length) * 100}%` }}
-                              />
-                            </div>
-                          </div>
+                          {(() => {
+                            const classKey = (group.class_name || '').trim().toLowerCase();
+                            const classEnrolledCount = classStudentCounts[classKey] || 0;
+                            const totalClassStudents = Math.max(classEnrolledCount, group.tasks.length);
+                            return (
+                              <div className="flex flex-col gap-1">
+                                <div className="flex justify-between text-[10px] text-muted-foreground">
+                                  <span>Progress</span>
+                                  <span>{group.completedCount}/{totalClassStudents}</span>
+                                </div>
+                                <div className="w-24 h-1 bg-muted rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-primary" 
+                                    style={{ width: `${(group.completedCount / totalClassStudents) * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell className="text-sm font-medium text-center">
-                          <span className={group.submittedCount === group.tasks.length ? "text-blue-600 font-semibold" : "text-foreground"}>
-                            {group.submittedCount}/{group.tasks.length}
-                          </span>
+                          {(() => {
+                            const classKey = (group.class_name || '').trim().toLowerCase();
+                            const classEnrolledCount = classStudentCounts[classKey] || 0;
+                            const totalClassStudents = Math.max(classEnrolledCount, group.tasks.length);
+                            return (
+                              <span className={group.submittedCount === totalClassStudents ? "text-blue-600 font-semibold" : "text-foreground"}>
+                                {group.submittedCount}/{totalClassStudents}
+                              </span>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell className="text-sm font-medium text-center">
-                          <span className={group.completedCount === group.submittedCount && group.submittedCount > 0 ? "text-green-600 font-semibold" : "text-foreground"}>
-                            {group.completedCount}/{group.submittedCount}
-                          </span>
+                          {(() => {
+                            const classKey = (group.class_name || '').trim().toLowerCase();
+                            const classEnrolledCount = classStudentCounts[classKey] || 0;
+                            const totalClassStudents = Math.max(classEnrolledCount, group.tasks.length);
+                            return (
+                              <span className={group.completedCount === totalClassStudents && totalClassStudents > 0 ? "text-green-600 font-semibold" : "text-foreground"}>
+                                {group.completedCount}/{totalClassStudents}
+                              </span>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>

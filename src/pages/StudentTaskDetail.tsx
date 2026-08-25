@@ -51,6 +51,25 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
 };
 
 
+const formatDescriptionText = (desc?: string): string => {
+  if (!desc) return '';
+  let formatted = desc
+    .replace(/\s*CATEGORY:\s*/gi, '<br/><br/><strong>📌 CATEGORY:</strong> ')
+    .replace(/\s*DIFFICULTY:\s*/gi, '<br/><strong>🎯 DIFFICULTY:</strong> ')
+    .replace(/\s*TOPIC:\s*/gi, '<br/><strong>📚 TOPIC:</strong> ')
+    .replace(/\s*ARTICLE:\s*/gi, '<br/><br/><strong>📖 ARTICLE:</strong><br/>')
+    .replace(/\s*TECHNICAL TERMS AND SIMPLE MEANINGS:\s*/gi, '<br/><br/><strong>🔤 TECHNICAL TERMS AND SIMPLE MEANINGS:</strong><br/>')
+    .replace(/\s*KEY TERMS AND HINDI MEANINGS:\s*/gi, '<br/><br/><strong>🔤 KEY TERMS AND HINDI MEANINGS:</strong><br/>')
+    .replace(/\s*WORD COUNT:\s*/gi, '<br/><br/><strong>📊 WORD COUNT:</strong> ')
+    .replace(/\s*Word Power Practice:\s*/gi, '<br/><br/><strong>💡 Word Power Practice:</strong><br/>')
+    .replace(/\s*आसान Hinglish Summary:\s*/gi, '<br/><br/><strong>📝 आसान Hinglish Summary:</strong><br/>');
+
+  if (!formatted.includes('<p>') && !formatted.includes('<br/>')) {
+    formatted = formatted.replace(/\n\n/g, '<br/><br/>').replace(/\n/g, '<br/>');
+  }
+  return formatted;
+};
+
 export default function StudentTaskDetail() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
@@ -466,7 +485,7 @@ export default function StudentTaskDetail() {
             <div
               className="prose prose-sm max-w-none text-foreground/90 leading-relaxed task-description-content"
               style={{ lineHeight: '1.75' }}
-              dangerouslySetInnerHTML={{ __html: rawDesc }}
+              dangerouslySetInnerHTML={{ __html: formatDescriptionText(rawDesc) }}
               onClick={(e) => {
                 const target = e.target as HTMLElement;
                 if (target.tagName === 'IMG') {
