@@ -215,10 +215,9 @@ export default function ScheduledTasks() {
           const sheet = workbook.Sheets[sheetName];
           const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-          // Determine Subject from sheet name
-          let subjectName = (sheetName.toLowerCase().includes('soft') || sIdx === 1)
-            ? 'English Comm & Soft Skills'
-            : 'Azure Specialisation';
+          let subjectName = (sheetName.toLowerCase().includes('soft') || sheetName.toLowerCase().includes('english') || sIdx === 1)
+            ? 'English Com and Soft Skill'
+            : 'Azure (Specialization)';
 
           for (let i = 1; i < rows.length; i++) {
             const r = rows[i];
@@ -592,8 +591,10 @@ export default function ScheduledTasks() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="auto">Auto-detect Subject from Sheet</SelectItem>
-                            <SelectItem value="Azure Specialisation">Azure Specialisation</SelectItem>
-                            <SelectItem value="English Comm & Soft Skills">English Comm & Soft Skills</SelectItem>
+                            <SelectItem value="Azure (Specialization)">Azure (Specialization)</SelectItem>
+                            <SelectItem value="English Com and Soft Skill">English Com and Soft Skill</SelectItem>
+                            <SelectItem value="Artificial Intelligence">Artificial Intelligence</SelectItem>
+                            <SelectItem value="Certified Computer Course">Certified Computer Course</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -755,8 +756,9 @@ export default function ScheduledTasks() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Subjects</SelectItem>
-                      <SelectItem value="Azure Specialisation">Azure Specialisation</SelectItem>
-                      <SelectItem value="English Comm & Soft Skills">English Comm & Soft Skills</SelectItem>
+                      <SelectItem value="Azure (Specialization)">Azure (Specialization)</SelectItem>
+                      <SelectItem value="English Com and Soft Skill">English Com and Soft Skill</SelectItem>
+                      <SelectItem value="Artificial Intelligence">Artificial Intelligence</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

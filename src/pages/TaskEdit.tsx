@@ -180,9 +180,9 @@ export default function TaskEdit() {
         // Detect subject from task name prefix (SS = Soft Skills, TE = Azure)
         let detectedSubject = '';
         const tn = (firstRow.task_name || '').trim();
-        if (tn.match(/^SS\s/i)) detectedSubject = 'English Comm & Soft Skills';
-        else if (tn.match(/^SE\s/i)) detectedSubject = 'English Comm & Soft Skills';
-        else if (tn.match(/^TE\s/i)) detectedSubject = 'Azure Specialisation';
+        if (tn.match(/^SS\s/i)) detectedSubject = 'English Com and Soft Skill';
+        else if (tn.match(/^SE\s/i)) detectedSubject = 'English Com and Soft Skill';
+        else if (tn.match(/^TE\s/i)) detectedSubject = 'Azure (Specialization)';
         else if (tn.match(/^AI\s/i)) detectedSubject = 'Artificial Intelligence';
         else if (tn.match(/^PS\s/i)) detectedSubject = 'Problem Solving';
 
@@ -389,12 +389,12 @@ export default function TaskEdit() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="-">None / Not specified</SelectItem>
-                  <SelectItem value="Azure Specialisation">Azure Specialisation</SelectItem>
-                  <SelectItem value="English Comm & Soft Skills">English Comm &amp; Soft Skills</SelectItem>
+                  <SelectItem value="Azure (Specialization)">Azure (Specialization)</SelectItem>
+                  <SelectItem value="English Com and Soft Skill">English Com and Soft Skill</SelectItem>
                   <SelectItem value="Artificial Intelligence">Artificial Intelligence</SelectItem>
-                  <SelectItem value="Web Development">Web Development</SelectItem>
-                  <SelectItem value="Data Science">Data Science</SelectItem>
-                  <SelectItem value="Communication Skills">Communication Skills</SelectItem>
+                  <SelectItem value="Certified Computer Course">Certified Computer Course</SelectItem>
+                  <SelectItem value="Cybersecurity">Cybersecurity</SelectItem>
+                  <SelectItem value="Python">Python</SelectItem>
                   <SelectItem value="Problem Solving">Problem Solving</SelectItem>
                 </SelectContent>
               </Select>

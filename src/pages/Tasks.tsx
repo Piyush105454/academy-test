@@ -689,9 +689,9 @@ export default function Tasks() {
             if (fromSession) return fromSession;
             // 2. For scheduled tasks: detect from task name prefix
             const tn = (task.task_name || '').trim();
-            if (tn.match(/^SS\s/i)) return 'English Comm & Soft Skills';
-            if (tn.match(/^SE\s/i)) return 'English Comm & Soft Skills';
-            if (tn.match(/^TE\s/i)) return 'Azure Specialisation';
+            if (tn.match(/^SS\s/i)) return 'English Com and Soft Skill';
+            if (tn.match(/^SE\s/i)) return 'English Com and Soft Skill';
+            if (tn.match(/^TE\s/i)) return 'Azure (Specialization)';
             if (tn.match(/^AI\s/i)) return 'Artificial Intelligence';
             if (tn.match(/^PS\s/i)) return 'Problem Solving';
             return '-';
