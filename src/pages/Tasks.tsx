@@ -563,9 +563,7 @@ export default function Tasks() {
       const { startDate, endDate } = getDateRange();
       const isoStart = startDate.toISOString();
 
-      let query = supabase
-        .from('student_task_feedback')
-        .select(`
+      const selectFields = `
           id,
           task_name,
           task_id,
@@ -591,26 +589,36 @@ export default function Tasks() {
             facilitator_name,
             subjects:subject_id(name)
           )
-        `);
+        `;
 
-      if (filterMonth !== 'all') {
-        const m = Number(filterMonth);
-        const yearNum = m >= 4 ? 2026 : 2027;
-        const monthStart = new Date(Date.UTC(yearNum, m - 1, 1, 0, 0, 0)).toISOString();
-        const monthEnd = new Date(Date.UTC(yearNum, m, 0, 23, 59, 59, 999)).toISOString();
+      const buildQuery = () => {
+        let q = supabase.from('student_task_feedback').select(selectFields);
+        if (filterMonth !== 'all') {
+          const m = Number(filterMonth);
+          const yearNum = m >= 4 ? 2026 : 2027;
+          const monthStart = new Date(Date.UTC(yearNum, m - 1, 1, 0, 0, 0)).toISOString();
+          const monthEnd = new Date(Date.UTC(yearNum, m, 0, 23, 59, 59, 999)).toISOString();
+          q = q.gte('created_at', monthStart).lte('created_at', monthEnd);
+        } else {
+          q = q.or(`academic_year.eq.${selectedYear},created_at.gte.${isoStart}`);
+        }
+        return q.order('created_at', { ascending: false });
+      };
 
-        query = query
-          .gte('created_at', monthStart)
-          .lte('created_at', monthEnd);
-      } else {
-        query = query.or(`academic_year.eq."${selectedYear}",created_at.gte."${isoStart}"`);
+      // Paginated fetch — Supabase caps at 1000 rows per request by default
+      let allData: any[] = [];
+      let pageFrom = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: pageData, error: taskError } = await buildQuery()
+          .range(pageFrom, pageFrom + pageSize - 1);
+
+        if (taskError) throw taskError;
+        if (!pageData || pageData.length === 0) break;
+        allData = allData.concat(pageData);
+        if (pageData.length < pageSize) break; // last page
+        pageFrom += pageSize;
       }
-
-      const { data: allData, error: taskError } = await query
-        .order('created_at', { ascending: false })
-        .limit(10000);
-
-      if (taskError) throw taskError;
 
       // Fetch user profiles for creator names
       const { data: profilesData } = await supabase
@@ -671,10 +679,43 @@ export default function Tasks() {
           class_name: task.sessions?.class_batch || 
                      (task.students?.classes && !Array.isArray(task.students.classes) ? task.students.classes.name : 
                       Array.isArray(task.students?.classes) && task.students.classes.length > 0 ? task.students.classes[0].name : '-'),
-          subject_name: (task.sessions?.subjects && !Array.isArray(task.sessions.subjects) ? task.sessions.subjects.name : 
-                         Array.isArray(task.sessions?.subjects) && task.sessions.subjects.length > 0 ? task.sessions.subjects[0].name : '-'),
+          // For scheduled tasks (no session), extract subject from task_description or task_name prefix
+          subject_name: (() => {
+            // 1. Try from session join
+            const fromSession = task.sessions?.subjects && !Array.isArray(task.sessions.subjects)
+              ? task.sessions.subjects.name
+              : Array.isArray(task.sessions?.subjects) && task.sessions.subjects.length > 0
+              ? task.sessions.subjects[0].name : null;
+            if (fromSession) return fromSession;
+            // 2. For scheduled tasks: detect from task name prefix
+            const tn = (task.task_name || '').trim();
+            if (tn.match(/^SS\s/i)) return 'English Comm & Soft Skills';
+            if (tn.match(/^SE\s/i)) return 'English Comm & Soft Skills';
+            if (tn.match(/^TE\s/i)) return 'Azure Specialisation';
+            if (tn.match(/^AI\s/i)) return 'Artificial Intelligence';
+            if (tn.match(/^PS\s/i)) return 'Problem Solving';
+            return '-';
+          })(),
         };
       });
+
+      // Fetch subject_name overrides from wes_scheduled_tasks (allows manual subject editing)
+      try {
+        const { data: schedData } = await (supabase as any)
+          .from('wes_scheduled_tasks')
+          .select('title, subject_name')
+          .not('subject_name', 'is', null);
+        if (schedData) {
+          const schedSubjectMap = new Map<string, string>(
+            schedData.filter((s: any) => s.subject_name).map((s: any) => [s.title, s.subject_name])
+          );
+          enriched.forEach(item => {
+            if (item.subject_name === '-' && schedSubjectMap.has(item.title)) {
+              item.subject_name = schedSubjectMap.get(item.title)!;
+            }
+          });
+        }
+      } catch (_) { /* wes_scheduled_tasks may not have all tasks */ }
 
       // Heal missing task_ids for tasks that have no valid task_id set anywhere
       const taskTitleGroups = new Map<string, TaskItem[]>();

@@ -58,6 +58,7 @@ export default function TaskEdit() {
     academicYear: '',
     reward: 0,
     classId: '',
+    subjectName: '',
     submission_requirements: [] as SubmissionRequirement[],
   });
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
@@ -176,6 +177,15 @@ export default function TaskEdit() {
           }
         }
 
+        // Detect subject from task name prefix (SS = Soft Skills, TE = Azure)
+        let detectedSubject = '';
+        const tn = (firstRow.task_name || '').trim();
+        if (tn.match(/^SS\s/i)) detectedSubject = 'English Comm & Soft Skills';
+        else if (tn.match(/^SE\s/i)) detectedSubject = 'English Comm & Soft Skills';
+        else if (tn.match(/^TE\s/i)) detectedSubject = 'Azure Specialisation';
+        else if (tn.match(/^AI\s/i)) detectedSubject = 'Artificial Intelligence';
+        else if (tn.match(/^PS\s/i)) detectedSubject = 'Problem Solving';
+
         setFormData({
           title: firstRow.task_name || '',
           description: firstRow.task_description || '',
@@ -183,6 +193,7 @@ export default function TaskEdit() {
           academicYear: firstRow.academic_year || '',
           reward: firstRow.earning_amount || 0,
           classId: resolvedClassId || '',
+          subjectName: detectedSubject,
           submission_requirements: parseSubmissionRequirements(firstRow.submission_types),
         });
       }
@@ -240,6 +251,14 @@ export default function TaskEdit() {
         .eq('task_name', decodeURIComponent(taskTitle || ''));
 
       if (error) throw error;
+
+      // Also update subject_name in wes_scheduled_tasks if this task was scheduled
+      if (formData.subjectName && formData.subjectName !== '-') {
+        await (supabase as any)
+          .from('wes_scheduled_tasks')
+          .update({ subject_name: formData.subjectName })
+          .eq('title', decodeURIComponent(taskTitle || ''));
+      }
 
       const addedStudents = selectedStudents.filter(id => !originalStudents.includes(id));
       const removedStudents = originalStudents.filter(id => !selectedStudents.includes(id));
@@ -354,6 +373,31 @@ export default function TaskEdit() {
                 value={formData.description}
                 onChange={(value) => setFormData({ ...formData, description: value })}
               />
+            </div>
+
+            {/* Subject */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Subject
+              </label>
+              <Select
+                value={formData.subjectName}
+                onValueChange={(value) => setFormData({ ...formData, subjectName: value })}
+              >
+                <SelectTrigger className="w-full bg-background border-border">
+                  <SelectValue placeholder="Select Subject (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="-">None / Not specified</SelectItem>
+                  <SelectItem value="Azure Specialisation">Azure Specialisation</SelectItem>
+                  <SelectItem value="English Comm & Soft Skills">English Comm &amp; Soft Skills</SelectItem>
+                  <SelectItem value="Artificial Intelligence">Artificial Intelligence</SelectItem>
+                  <SelectItem value="Web Development">Web Development</SelectItem>
+                  <SelectItem value="Data Science">Data Science</SelectItem>
+                  <SelectItem value="Communication Skills">Communication Skills</SelectItem>
+                  <SelectItem value="Problem Solving">Problem Solving</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Academic Year */}
