@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Wallet, Search, Filter, ArrowUpDown, Pencil, Trash2, TrendingUp, Info, FileSpreadsheet, UploadCloud, ArrowLeft, History, Plus, CheckCircle2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -74,6 +75,10 @@ const DEFAULT_EARNING_POTENTIAL = [
 ];
 
 export default function AdminStudentEarnings() {
+  const { user } = useAuth();
+  const [userRole, setUserRole] = useState<number | null>(null);
+  const [facilitatorClassIds, setFacilitatorClassIds] = useState<string[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState<{ id: string, name: string }[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>('all');
@@ -204,11 +209,35 @@ export default function AdminStudentEarnings() {
   }, [categoryBreakdown]);
 
   useEffect(() => {
-    fetchClasses();
-    fetchStudentEarnings();
-    fetchRewardConfigs();
-    fetchSubjects();
-  }, [selectedYear, selectedMonth]);
+    async function init() {
+      let role = null;
+      let facClassIds: string[] = [];
+
+      if (user?.email) {
+        // Fetch role
+        const { data: profile } = await supabase.from('user_profiles').select('role_id').ilike('email', user.email).maybeSingle();
+        if (profile?.role_id) {
+          role = profile.role_id;
+          setUserRole(role);
+          
+          if (role === 4) {
+             const { data: facData } = await supabase.from('facilitators').select('id').ilike('email', user.email).maybeSingle();
+             if (facData?.id) {
+               const { data: fc } = await supabase.from('facilitator_classes').select('class_id').eq('facilitator_id', facData.id);
+               if (fc) facClassIds = fc.map(f => f.class_id);
+               setFacilitatorClassIds(facClassIds);
+             }
+          }
+        }
+      }
+
+      await fetchClasses(role, facClassIds);
+      await fetchStudentEarnings(role, facClassIds);
+      fetchRewardConfigs();
+      fetchSubjects();
+    }
+    init();
+  }, [selectedYear, selectedMonth, user?.email]);
 
   const fetchSubjects = async () => {
     const { data } = await supabase.from('subjects').select('id, name').order('name');
@@ -239,20 +268,26 @@ export default function AdminStudentEarnings() {
     }
   };
 
-  const fetchClasses = async () => {
-    const { data, error } = await supabase
-      .from('classes')
-      .select('id, name')
+  const fetchClasses = async (role: number | null, allowedClassIds: string[]) => {
+    let query = supabase.from('classes').select('id, name')
+      .neq('name', '__SYSTEM_DEV_MODE__')
+      .neq('id', '00000000-0000-0000-0000-000000000000')
       .order('name');
+      
+    if (role === 4 && allowedClassIds.length > 0) {
+      query = query.in('id', allowedClassIds);
+    }
+    
+    const { data } = await query;
     if (data) setClasses(data);
   };
 
-  const fetchStudentEarnings = async () => {
+  const fetchStudentEarnings = async (role: number | null, allowedClassIds: string[]) => {
     try {
       setLoading(true);
       
       // Fetch students and their earnings
-      const { data: students, error: studentError } = await supabase
+      let query = supabase
         .from('students')
         .select(`
           id,
@@ -268,6 +303,12 @@ export default function AdminStudentEarnings() {
             description
           )
         `);
+
+      if (role === 4 && allowedClassIds.length > 0) {
+        query = query.in('class_id', allowedClassIds);
+      }
+
+      const { data: students, error: studentError } = await query;
 
       if (studentError) throw studentError;
 
@@ -368,7 +409,7 @@ export default function AdminStudentEarnings() {
       toast.success('Record updated successfully');
       setIsEditModalOpen(false);
       if (selectedStudent) fetchStudentRecords(selectedStudent.student_id);
-      fetchStudentEarnings();
+      fetchStudentEarnings(userRole, facilitatorClassIds);
     } catch (error) {
       console.error('Error updating record:', error);
       toast.error('Failed to update record');
@@ -386,7 +427,7 @@ export default function AdminStudentEarnings() {
       if (error) throw error;
       toast.success('Record deleted successfully');
       if (selectedStudent) fetchStudentRecords(selectedStudent.student_id);
-      fetchStudentEarnings();
+      fetchStudentEarnings(userRole, facilitatorClassIds);
     } catch (error) {
       console.error('Error deleting record:', error);
       toast.error('Failed to delete record');
@@ -557,7 +598,7 @@ export default function AdminStudentEarnings() {
       toast.success(`Import complete. ${successCount} added. ${notFoundCount > 0 ? `${notFoundCount} not found.` : ''}`);
       setIsImportModalOpen(false);
       setImportFile(null);
-      fetchStudentEarnings();
+      fetchStudentEarnings(userRole, facilitatorClassIds);
     } catch (error) {
       console.error('Import error:', error);
       toast.error('Failed to import file');

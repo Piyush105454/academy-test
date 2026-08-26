@@ -88,15 +88,27 @@ export default function StudentTasks() {
       // 2. Load DB task submissions if student record exists
       let loadedTasks: StudentTask[] = [];
       if (studentIds.length > 0) {
-        const { data: existingDbTasks } = await supabase
-          .from('student_task_feedback')
-          .select('id, task_name, task_description, deadline, feedback_type, status, feedback_notes, submission_link, created_at, earning_amount, rejection_comment')
-          .in('student_id', studentIds)
-          .or(`academic_year.eq."${selectedYear}",and(academic_year.is.null,created_at.gte."${startDate.toISOString()}",created_at.lte."${endDate.toISOString()}")`)
-          .order('created_at', { ascending: false });
+        // Paginated fetch — load all tasks for this student (bypass 1000-row limit)
+        let allTasks: any[] = [];
+        let pageFrom = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data: pageData } = await supabase
+            .from('student_task_feedback')
+            .select('id, task_name, task_description, deadline, feedback_type, status, feedback_notes, submission_link, created_at, earning_amount, rejection_comment')
+            .in('student_id', studentIds)
+            .or(`academic_year.eq.${selectedYear},created_at.gte.${startDate.toISOString()}`)
+            .order('created_at', { ascending: false })
+            .range(pageFrom, pageFrom + pageSize - 1);
 
-        if (existingDbTasks) {
-          loadedTasks = [...existingDbTasks];
+          if (!pageData || pageData.length === 0) break;
+          allTasks = allTasks.concat(pageData);
+          if (pageData.length < pageSize) break;
+          pageFrom += pageSize;
+        }
+
+        if (allTasks.length > 0) {
+          loadedTasks = allTasks;
         }
       }
 

@@ -84,6 +84,20 @@ export default function Dashboard() {
     fetchClasses();
   }, []);
 
+  // Load current user's role
+  useEffect(() => {
+    if (!user?.id) return;
+    async function fetchRole() {
+      let { data } = await supabase.from('user_profiles').select('role_id').eq('id', user.id).maybeSingle();
+      if (!data) {
+        const res = await supabase.from('user_profiles').select('role_id').ilike('email', user.email || '').limit(1).maybeSingle();
+        data = res.data;
+      }
+      if (data?.role_id) setUserRole(data.role_id);
+    }
+    fetchRole();
+  }, [user?.id]);
+
   // Background worker: auto-assign scheduled tasks whose creation_date <= today
   useEffect(() => {
     runScheduledTaskWorker(selectedYear);
@@ -710,11 +724,13 @@ export default function Dashboard() {
             classes={classes}
           />
 
-          {/* 6.5 Top Volunteers */}
-          <TopVolunteersWidget 
-            startDate={customStartDate || getDateRange().startDate} 
-            endDate={customEndDate || getDateRange().endDate} 
-          />
+          {/* 6.5 Top Volunteers — hidden for Facilitators */}
+          {userRole !== 4 && (
+            <TopVolunteersWidget
+              startDate={customStartDate || getDateRange().startDate}
+              endDate={customEndDate || getDateRange().endDate}
+            />
+          )}
 
           {/* 7. Curriculum */}
           <div className="bg-card border border-border rounded-lg p-3 md:p-4 flex flex-col">

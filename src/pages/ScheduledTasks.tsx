@@ -370,7 +370,18 @@ export default function ScheduledTasks() {
 
       const generatedTaskId = `${prefix}${String(nextSeq).padStart(3, '0')}`;
 
-      // 4. Insert one row per student (same as AddTask)
+      // 4. Look up real subject_id from subjects table
+      let resolvedSubjectId: string | null = null;
+      if (task.subject_name) {
+        const { data: subjectData } = await (supabase as any)
+          .from('subjects')
+          .select('id')
+          .ilike('name', task.subject_name.trim())
+          .limit(1);
+        resolvedSubjectId = subjectData?.[0]?.id || null;
+      }
+
+      // 5. Insert one row per student (same as AddTask)
       const taskRecords = studentsData.map((student: any) => ({
         student_id: student.id,
         task_name: task.title,
@@ -382,6 +393,7 @@ export default function ScheduledTasks() {
         academic_year: task.academic_year || selectedYear,
         created_at: new Date().toISOString(),
         submission_types: ['video', 'pdf'],
+        subject_id: resolvedSubjectId,
       }));
 
       const { error } = await (supabase as any)

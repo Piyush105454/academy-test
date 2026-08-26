@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import { parseSubmissionRequirements, serializeSubmissionRequirements, type SubmissionRequirement } from "../utils/submissionUtils";
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -47,6 +48,10 @@ interface ClassOption {
 export default function TaskEdit() {
   const navigate = useNavigate();
   const { taskTitle } = useParams();
+  const { user } = useAuth();
+  const [userRole, setUserRole] = useState<number | null>(null);
+  const [inchargeOptions, setInchargeOptions] = useState<{id: string, name: string}[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [taskData, setTaskData] = useState<TaskData | null>(null);
@@ -60,6 +65,7 @@ export default function TaskEdit() {
     classId: '',
     subjectName: '',
     submission_requirements: [] as SubmissionRequirement[],
+    created_by: '',
   });
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [students, setStudents] = useState<{id: string, name: string}[]>([]);
@@ -75,6 +81,16 @@ export default function TaskEdit() {
   }, [formData.classId, formData.academicYear, originalStudents]);
 
   useEffect(() => {
+    const fetchUserRole = async () => {
+      if (user?.email) {
+        const { data: profile } = await supabase.from('user_profiles').select('role_id').ilike('email', user.email).maybeSingle();
+        if (profile) setUserRole(profile.role_id);
+      }
+    };
+    fetchUserRole();
+  }, [user?.email]);
+
+  useEffect(() => {
     if (taskTitle) {
       loadData();
     }
@@ -82,6 +98,10 @@ export default function TaskEdit() {
 
   const loadData = async () => {
     setLoading(true);
+    const { data: profiles } = await supabase.from('user_profiles').select('id, full_name').in('role_id', [1, 2, 3, 4]).order('full_name');
+    if (profiles) {
+      setInchargeOptions(profiles.map(p => ({ id: p.id, name: p.full_name || 'Unknown User' })));
+    }
     // Fetch classes first, then task data
     await fetchClasses();
     await fetchTaskData();
@@ -195,6 +215,7 @@ export default function TaskEdit() {
           classId: resolvedClassId || '',
           subjectName: detectedSubject,
           submission_requirements: parseSubmissionRequirements(firstRow.submission_types),
+          created_by: firstRow.created_by || '',
         });
       }
     } catch (error) {
@@ -247,6 +268,7 @@ export default function TaskEdit() {
           academic_year: formData.academicYear,
           earning_amount: formData.reward,
           submission_types: serializeSubmissionRequirements(formData.submission_requirements),
+          created_by: formData.created_by || null,
         })
         .eq('task_name', decodeURIComponent(taskTitle || ''));
 
@@ -286,6 +308,7 @@ export default function TaskEdit() {
             subject_id: taskData.subject_id || null,
             earning_amount: formData.reward,
             submission_types: serializeSubmissionRequirements(formData.submission_requirements),
+            created_by: formData.created_by || null,
         }));
         await supabase.from('student_task_feedback').insert(newRecords);
       }
@@ -515,6 +538,28 @@ export default function TaskEdit() {
             )}
 
 
+
+            {userRole === 1 && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Incharge (Admin Only)
+                </label>
+                <Select
+                  value={formData.created_by || "unassigned"}
+                  onValueChange={(value) => setFormData({ ...formData, created_by: value === "unassigned" ? "" : value })}
+                >
+                  <SelectTrigger className="w-full bg-background border-border">
+                    <SelectValue placeholder="Select Incharge" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">-- Original Creator --</SelectItem>
+                    {inchargeOptions.map((opt) => (
+                      <SelectItem key={opt.id} value={opt.id}>{opt.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Reward */}
             <div>

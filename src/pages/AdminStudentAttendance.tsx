@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Users, Search, ArrowUpDown, CalendarCheck, Gift, Sparkles, Award } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -54,6 +55,10 @@ interface AttendanceRecord {
 }
 
 export default function AdminStudentAttendance() {
+  const { user } = useAuth();
+  const [userRole, setUserRole] = useState<number | null>(null);
+  const [facilitatorClassIds, setFacilitatorClassIds] = useState<string[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState<{ id: string, name: string }[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>('all');
@@ -91,31 +96,68 @@ export default function AdminStudentAttendance() {
   }, [selectedMonth]);
 
   useEffect(() => {
-    fetchClasses();
-    fetchStudentAttendance();
-  }, [selectedYear, selectedMonth]);
+    async function init() {
+      let role = null;
+      let facClassIds: string[] = [];
 
-  const fetchClasses = async () => {
-    const { data } = await supabase
-      .from('classes')
-      .select('id, name')
+      if (user?.email) {
+        // Fetch role
+        const { data: profile } = await supabase.from('user_profiles').select('role_id').ilike('email', user.email).maybeSingle();
+        if (profile?.role_id) {
+          role = profile.role_id;
+          setUserRole(role);
+          
+          if (role === 4) {
+             const { data: facData } = await supabase.from('facilitators').select('id').ilike('email', user.email).maybeSingle();
+             if (facData?.id) {
+               const { data: fc } = await supabase.from('facilitator_classes').select('class_id').eq('facilitator_id', facData.id);
+               if (fc) facClassIds = fc.map(f => f.class_id);
+               setFacilitatorClassIds(facClassIds);
+             }
+          }
+        }
+      }
+
+      await fetchClasses(role, facClassIds);
+      await fetchStudentAttendance(role, facClassIds);
+    }
+    init();
+  }, [selectedYear, selectedMonth, user?.email]);
+
+  const fetchClasses = async (role: number | null, allowedClassIds: string[]) => {
+    let query = supabase.from('classes').select('id, name')
+      .neq('name', '__SYSTEM_DEV_MODE__')
+      .neq('id', '00000000-0000-0000-0000-000000000000')
       .order('name');
+      
+    if (role === 4 && allowedClassIds.length > 0) {
+      query = query.in('id', allowedClassIds);
+    }
+    
+    const { data } = await query;
     if (data) setClasses(data);
   };
 
-  const fetchStudentAttendance = async () => {
+  const fetchStudentAttendance = async (role: number | null, allowedClassIds: string[]) => {
     try {
       setLoading(true);
       
       // Fetch students
-      const { data: students, error: studentError } = await supabase
+      let query = supabase
         .from('students')
         .select(`
           id,
           name,
           designation,
+          class_id,
           classes (name)
         `);
+
+      if (role === 4 && allowedClassIds.length > 0) {
+        query = query.in('class_id', allowedClassIds);
+      }
+
+      const { data: students, error: studentError } = await query;
 
       if (studentError) throw studentError;
 

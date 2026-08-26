@@ -88,6 +88,7 @@ interface TaskItem {
   incharge_name?: string;
   created_by_name?: string;
   task_id?: string;
+  task_type?: string;
 }
 
 interface TaskGroup {
@@ -102,6 +103,7 @@ interface TaskGroup {
   facilitator_name: string;
   incharge_name: string;
   academic_year: string;
+  task_type: string;
   reward: number;
   latestCompletionDate: string | null;
   tasks: TaskItem[];
@@ -137,6 +139,8 @@ export default function Tasks() {
   const [filterClass, setFilterClass] = useState('all');
   const [filterSession, setFilterSession] = useState('all');
   const [filterSubject, setFilterSubject] = useState('all');
+  const [filterTaskType, setFilterTaskType] = useState('all');
+  const [taskTypeOptions, setTaskTypeOptions] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterIncharge, setFilterIncharge] = useState('all');
   const [inchargeOptions, setInchargeOptions] = useState<string[]>([]);
@@ -289,6 +293,9 @@ export default function Tasks() {
     }
     if (filterSubject !== 'all') {
       filtered = filtered.filter((t) => t.subject_name === filterSubject);
+    }
+    if (filterTaskType !== 'all') {
+      filtered = filtered.filter((t) => t.task_type === filterTaskType);
     }
 
     // Role-based Class filtering: Coordinators see tasks for their assigned classes if specified
@@ -498,7 +505,7 @@ export default function Tasks() {
     }
 
     setTaskGroups(finalGroups);
-  }, [tasks, filterClass, filterSession, filterSubject, filterStatus, filterIncharge, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName, coordinatorAssignedClasses, userRole]);
+  }, [tasks, filterClass, filterSession, filterSubject, filterTaskType, filterStatus, filterIncharge, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName, coordinatorAssignedClasses, userRole]);
 
   const fetchClasses = async () => {
     try {
@@ -571,6 +578,7 @@ export default function Tasks() {
           deadline,
           submission_link,
           status,
+          feedback_type,
           student_id,
           session_id,
           created_at,
@@ -578,6 +586,7 @@ export default function Tasks() {
           academic_year,
           earning_amount,
           created_by,
+          task_subject:subject_id(name),
           students:student_id(
             name,
             classes(name)
@@ -676,18 +685,22 @@ export default function Tasks() {
           facilitator_name: task.sessions?.facilitator_name || '-',
           incharge_name: inchargeName,
           created_by_name: creatorName || '-',
+          task_type: task.feedback_type || 'Task',
           class_name: task.sessions?.class_batch || 
                      (task.students?.classes && !Array.isArray(task.students.classes) ? task.students.classes.name : 
                       Array.isArray(task.students?.classes) && task.students.classes.length > 0 ? task.students.classes[0].name : '-'),
-          // For scheduled tasks (no session), extract subject from task_description or task_name prefix
+          // Subject: priority — direct subject_id on task > session subject > task name prefix
           subject_name: (() => {
-            // 1. Try from session join
+            // 1. Direct subject_id on the task itself (set during manual task creation)
+            const direct = task.task_subject?.name;
+            if (direct) return direct;
+            // 2. From linked session's subject
             const fromSession = task.sessions?.subjects && !Array.isArray(task.sessions.subjects)
               ? task.sessions.subjects.name
               : Array.isArray(task.sessions?.subjects) && task.sessions.subjects.length > 0
               ? task.sessions.subjects[0].name : null;
             if (fromSession) return fromSession;
-            // 2. For scheduled tasks: detect from task name prefix
+            // 3. For scheduled tasks: detect from task name prefix
             const tn = (task.task_name || '').trim();
             if (tn.match(/^SS\s/i)) return 'English Com and Soft Skill';
             if (tn.match(/^SE\s/i)) return 'English Com and Soft Skill';
@@ -787,11 +800,14 @@ export default function Tasks() {
 
   useEffect(() => {
     const names = new Set<string>();
+    const types = new Set<string>();
     tasks.forEach(t => {
       if (t.facilitator_name && t.facilitator_name !== '-') names.add(t.facilitator_name);
       if (t.created_by_name && t.created_by_name !== '-') names.add(t.created_by_name);
+      if (t.task_type) types.add(t.task_type);
     });
     setInchargeOptions(Array.from(names).sort());
+    setTaskTypeOptions(Array.from(types).sort());
   }, [tasks]);
 
 
@@ -997,6 +1013,21 @@ export default function Tasks() {
             </Select>
           </div>
 
+          <div className="w-full sm:w-48">
+            <label className="text-sm font-medium text-foreground mb-2 block">Task Type</label>
+            <Select value={filterTaskType} onValueChange={setFilterTaskType}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {taskTypeOptions.map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="w-full sm:w-72">
             <label className="text-sm font-medium text-foreground mb-2 block">Filter by Date</label>
             <div className="flex gap-2">
@@ -1072,6 +1103,7 @@ export default function Tasks() {
                       <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('session_title')}>Session <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                       <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('volunteer_name')}>Volunteer <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                       <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('facilitator_name')}>Facilitator <ArrowUpDown className="h-3 w-3" /></div></TableHead>
+                      <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('incharge_name')}>Incharge <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                       <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('academic_year')}>Year <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                       <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('reward')}>Reward <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                       <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('due_date')}>Deadline <ArrowUpDown className="h-3 w-3" /></div></TableHead>
@@ -1118,6 +1150,7 @@ export default function Tasks() {
                         </TableCell>
                         <TableCell className="text-xs whitespace-nowrap">{group.volunteer_name}</TableCell>
                         <TableCell className="text-xs whitespace-nowrap">{group.facilitator_name}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">{group.incharge_name}</TableCell>
                         <TableCell className="text-[10px] whitespace-nowrap">{group.academic_year}</TableCell>
                         <TableCell>
                           <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-100 text-[10px]">

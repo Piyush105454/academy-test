@@ -103,6 +103,17 @@ export async function runScheduledTaskWorker(selectedYear: string): Promise<void
           continue;
         }
 
+        // 6b. Look up real subject_id from subjects table using subject_name
+        let resolvedSubjectId: string | null = null;
+        if (task.subject_name) {
+          const { data: subjectData } = await (supabase as any)
+            .from('subjects')
+            .select('id')
+            .ilike('name', task.subject_name.trim())
+            .limit(1);
+          resolvedSubjectId = subjectData?.[0]?.id || null;
+        }
+
         // 7. Insert one row per student
         const taskRecords = students.map((student: any) => ({
           student_id: student.id,
@@ -115,6 +126,7 @@ export async function runScheduledTaskWorker(selectedYear: string): Promise<void
           academic_year: task.academic_year || selectedYear,
           created_at: new Date(task.creation_date).toISOString(),
           submission_types: dynamicSubmissionTypes,
+          subject_id: resolvedSubjectId,
         }));
 
         const { error: insertError } = await (supabase as any)
