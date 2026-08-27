@@ -362,8 +362,8 @@ export default function Tasks() {
     }>();
 
     tasks.forEach((t) => {
-      const key = t.title;
-      if (!key) return;
+      const key = t.title + '::' + t.class_name;
+      if (!t.title) return;
       
       const existing = metadataMap.get(key);
       if (!existing) {
@@ -414,7 +414,7 @@ export default function Tasks() {
     // Group filtered tasks by title
     const grouped = new Map<string, TaskGroup>();
     filtered.forEach((task) => {
-      const key = task.title;
+      const key = task.title + '::' + task.class_name;
       const meta = metadataMap.get(key);
 
       if (!grouped.has(key)) {
@@ -600,8 +600,11 @@ export default function Tasks() {
           )
         `;
 
-      const buildQuery = () => {
-        let q = supabase.from('student_task_feedback').select(selectFields);
+      const buildQuery = (isCount = false) => {
+        let q = isCount 
+          ? supabase.from('student_task_feedback').select('*', { count: 'exact', head: true })
+          : supabase.from('student_task_feedback').select(selectFields);
+
         if (filterMonth !== 'all') {
           const m = Number(filterMonth);
           const yearNum = m >= 4 ? 2026 : 2027;
@@ -611,39 +614,41 @@ export default function Tasks() {
         } else {
           q = q.or(`academic_year.eq.${selectedYear},created_at.gte.${isoStart}`);
         }
-        return q.order('created_at', { ascending: false });
+        return isCount ? q : q.order('created_at', { ascending: false });
       };
 
-      // Paginated fetch — Supabase caps at 1000 rows per request by default
-      let allData: any[] = [];
-      let pageFrom = 0;
+      // Fetch count first, then fetch pages in parallel
+      const { count, error: countErr } = await buildQuery(true);
+      if (countErr) throw countErr;
+      
+      const totalCount = count || 0;
       const pageSize = 1000;
-      while (true) {
-        const { data: pageData, error: taskError } = await buildQuery()
-          .range(pageFrom, pageFrom + pageSize - 1);
-
-        if (taskError) throw taskError;
-        if (!pageData || pageData.length === 0) break;
-        allData = allData.concat(pageData);
-        if (pageData.length < pageSize) break; // last page
-        pageFrom += pageSize;
+      const promises = [];
+      for (let i = 0; i < totalCount; i += pageSize) {
+        promises.push(buildQuery().range(i, i + pageSize - 1));
+      }
+      
+      const profilesPromise = supabase.from('user_profiles').select('id, full_name');
+      const studentsPromise = supabase.from('students').select('id, class_id, academic_year, classes(name)').eq('academic_year', selectedYear);
+      
+      const [results, profilesRes, studentsRes] = await Promise.all([
+        Promise.all(promises),
+        profilesPromise,
+        studentsPromise
+      ]);
+      
+      let allData: any[] = [];
+      for (const res of results) {
+        if (res.error) throw res.error;
+        allData = allData.concat(res.data || []);
       }
 
-      // Fetch user profiles for creator names
-      const { data: profilesData } = await supabase
-        .from('user_profiles')
-        .select('id, full_name');
-      const profilesMap = new Map((profilesData || []).map(p => [p.id, p.full_name]));
+      const profilesMap = new Map((profilesRes.data || []).map(p => [p.id, p.full_name]));
 
-      // Fetch student counts by class name to populate accurate denominators
       try {
-        const { data: studentsWithClass } = await supabase
-          .from('students')
-          .select('id, class_id, classes(name)');
-
         const classCountMap: Record<string, number> = {};
-        if (studentsWithClass) {
-          studentsWithClass.forEach((st: any) => {
+        if (studentsRes.data) {
+          studentsRes.data.forEach((st: any) => {
             const cName = st.classes?.name || (Array.isArray(st.classes) && st.classes[0]?.name);
             if (cName) {
               const key = cName.trim().toLowerCase();
@@ -1115,7 +1120,7 @@ export default function Tasks() {
                   </TableHeader>
                   <TableBody>
                     {sortedGroups.map((group) => (
-                      <TableRow key={group.title} className="hover:bg-muted/50 transition-colors">
+                      <TableRow key={group.title + '::' + group.class_name} className="hover:bg-muted/50 transition-colors">
                         <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
                           {group.task_id}
                         </TableCell>
@@ -1195,12 +1200,9 @@ export default function Tasks() {
                         </TableCell>
                         <TableCell className="text-sm font-medium text-center">
                           {(() => {
-                            const classKey = (group.class_name || '').trim().toLowerCase();
-                            const classEnrolledCount = classStudentCounts[classKey] || 0;
-                            const totalClassStudents = Math.max(classEnrolledCount, group.tasks.length);
                             return (
-                              <span className={group.completedCount === totalClassStudents && totalClassStudents > 0 ? "text-green-600 font-semibold" : "text-foreground"}>
-                                {group.completedCount}/{totalClassStudents}
+                              <span className={group.completedCount === group.submittedCount && group.submittedCount > 0 ? "text-green-600 font-semibold" : "text-foreground"}>
+                                {group.completedCount}/{group.submittedCount}
                               </span>
                             );
                           })()}

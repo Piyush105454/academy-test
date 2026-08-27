@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Upload, MoreVertical, GraduationCap, FileText, Edit, Film, Search, X, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Upload, MoreVertical, GraduationCap, FileText, Edit, Film, Search, X, ExternalLink, Lock, Unlock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { logActivity } from '@/utils/activityLogger';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -95,6 +95,7 @@ interface Session {
   subject_name?: string | null;
   created_at: string;
   updated_at: string;
+  feedback_unlocked?: boolean;
 }
 
 const getLocalDateString = (date: Date) => {
@@ -478,6 +479,24 @@ export default function Sessions() {
   const handleSessionTypeSelect = (type: 'guest_teacher' | 'guest_speaker' | 'local_teacher') => {
     setSelectedSessionType(type);
     setIsFormDialogOpen(true);
+  };
+
+  const handleToggleFeedbackLock = async (session: Session) => {
+    try {
+      const newStatus = !session.feedback_unlocked;
+      const { error } = await supabase
+        .from('sessions')
+        .update({ feedback_unlocked: newStatus })
+        .eq('id', session.id);
+      
+      if (error) throw error;
+      
+      toast.success(`Feedback ${newStatus ? 'unlocked' : 'locked'} successfully.`);
+      fetchSessions();
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to change feedback lock status.');
+    }
   };
 
   return (
@@ -990,6 +1009,14 @@ export default function Sessions() {
                                 </DropdownMenuItem>
                                 {userRole === 1 && (
                                   <DropdownMenuItem 
+                                    onClick={() => handleToggleFeedbackLock(session)}
+                                  >
+                                    {session.feedback_unlocked ? <Lock className="h-3 w-3 mr-1" /> : <Unlock className="h-3 w-3 mr-1" />}
+                                    {session.feedback_unlocked ? 'Lock Feedback' : 'Unlock Feedback'}
+                                  </DropdownMenuItem>
+                                )}
+                                {userRole === 1 && (
+                                  <DropdownMenuItem 
                                     onClick={() => {
                                       setSelectedSession(session);
                                       setDeleteDialogOpen(true);
@@ -1203,6 +1230,18 @@ export default function Sessions() {
                           <FileText className="h-4 w-4 mr-1" />
                           Record
                         </Button>
+                        {userRole === 1 && (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleToggleFeedbackLock(session)}
+                            className="flex-1"
+                            title={session.feedback_unlocked ? 'Lock Feedback' : 'Unlock Feedback'}
+                          >
+                            {session.feedback_unlocked ? <Lock className="h-4 w-4 mr-1" /> : <Unlock className="h-4 w-4 mr-1" />}
+                            {session.feedback_unlocked ? 'Lock' : 'Unlock'}
+                          </Button>
+                        )}
                         {userRole === 1 && (
                           <Button 
                             size="sm" 

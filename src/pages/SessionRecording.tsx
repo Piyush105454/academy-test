@@ -58,6 +58,7 @@ interface SessionRecording {
   session_strength: number | null;
   class_batch: string | null;
   designations?: string[];
+  feedback_unlocked?: boolean;
 }
 
 interface StudentPerformance {
@@ -347,6 +348,20 @@ export default function SessionRecording() {
       setFormData(prev => ({ ...prev, best_performer: top3Names }));
     }
   }, [studentFormData, studentPerformance, students, formData.best_performer]);
+
+  const isFeedbackLocked = (() => {
+    if (!session || userRole === 1 || session.feedback_unlocked) return false;
+    if (!session.session_date) return false;
+    
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const sessionTime = new Date(session.session_date).getTime();
+    const diffDays = Math.floor((Date.now() - sessionTime) / msPerDay);
+
+    if ((userRole === 4 || userRole === 3) && diffDays > 3) return true;
+    if (userRole === 2 && diffDays > 7) return true;
+    
+    return false;
+  })();
 
   const loadUserRole = async () => {
     try {
@@ -846,6 +861,7 @@ export default function SessionRecording() {
   };
 
   const handleSaveFeedback = async () => {
+    if (isFeedbackLocked) { toast.error('Feedback is locked. Please contact an admin to unlock.'); return; }
     if (!sessionId) return;
 
     // Validation for Facilitator (Teacher) feedback fields
@@ -1037,6 +1053,7 @@ export default function SessionRecording() {
   };
 
   const handleSaveHoursTracker = async () => {
+    if (isFeedbackLocked) { toast.error('Feedback is locked. Please contact an admin to unlock.'); return; }
     if (!sessionId) return;
 
     if (
@@ -1181,6 +1198,7 @@ export default function SessionRecording() {
   };
 
   const handleSaveStudentPerformanceField = (studentId: string, fieldName: string, value: any) => {
+    if (isFeedbackLocked) { toast.error('Feedback is locked. Please contact an admin to unlock.'); return; }
     // Get the student object to get the name
     const student = students.find(s => s.id === studentId);
     if (!student) return;
@@ -1208,6 +1226,7 @@ export default function SessionRecording() {
   };
 
   const handleBatchSaveStudentPerformance = useCallback(async () => {
+    if (isFeedbackLocked) { toast.error('Feedback is locked. Please contact an admin to unlock.'); return; }
     if (Object.keys(studentFormData).length === 0) return;
 
     try {
@@ -1392,6 +1411,7 @@ export default function SessionRecording() {
 
 
   const handleSaveTaskSettings = async () => {
+    if (isFeedbackLocked) { toast.error('Feedback is locked. Please contact an admin to unlock.'); return; }
     if (!newHomework.task_name.trim()) {
       toast.error('Please enter a task name');
       return;
@@ -1537,6 +1557,7 @@ export default function SessionRecording() {
   };
 
   const handleSaveHomework = async () => {
+    if (isFeedbackLocked) { toast.error('Feedback is locked. Please contact an admin to unlock.'); return; }
     if (!newHomework.task_name.trim()) {
       toast.error('Please enter a task name');
       return;
@@ -1782,6 +1803,7 @@ export default function SessionRecording() {
   };
 
   const handleDeleteHomework = async (id: string) => {
+    if (isFeedbackLocked) { toast.error('Feedback is locked. Please contact an admin to unlock.'); return; }
     if (!confirm('Delete this homework feedback?')) return;
 
     try {
@@ -1838,6 +1860,17 @@ export default function SessionRecording() {
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto space-y-6">
+        {isFeedbackLocked && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-start gap-3">
+            <Shield className="h-5 w-5 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-semibold text-sm">Feedback is Locked</p>
+              <p className="text-sm mt-1">
+                The deadline for editing this session's feedback has passed. Please contact an Admin to unlock it if you need to make changes.
+              </p>
+            </div>
+          </div>
+        )}
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">

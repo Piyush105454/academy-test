@@ -175,11 +175,10 @@ export default function TaskDetail() {
           rejection_comment,
           feedback_notes,
           created_at,
-          students:student_id(name),
+          students:student_id(name, classes(name)),
           sessions:session_id(title, class_batch, volunteer_name, facilitator_name)
         `)
         .eq('task_name', decodeURIComponent(taskTitle || ''))
-        .eq('academic_year', selectedYear)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -257,6 +256,7 @@ export default function TaskDetail() {
             .from('students')
             .select('id, name, email')
             .eq('class_id', clsData.id)
+            .eq('academic_year', taskAcademicYearFound)
             .order('name');
           if (stData) enrolledClassStudents = stData;
         }
