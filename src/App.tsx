@@ -33,6 +33,10 @@ const AddVolunteer = lazy(() => import("./pages/AddVolunteer"));
 const EditVolunteer = lazy(() => import("./pages/EditVolunteer"));
 const VolunteerList = lazy(() => import("./pages/VolunteerList"));
 const Settings = lazy(() => import("./pages/Settings"));
+const AttendanceManagement = lazy(() => import("./pages/attendance/AttendanceManagement"));
+const DailyRegister = lazy(() => import("./pages/attendance/DailyRegister"));
+const DailyAttendanceMarking = lazy(() => import("./pages/attendance/DailyAttendanceMarking"));
+const ClassWiseGrid = lazy(() => import("./pages/attendance/ClassWiseGrid"));
 const EditProfile = lazy(() => import("./pages/EditProfile"));
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
 
@@ -114,6 +118,10 @@ const App = () => (
                     <Route path="/volunteer-log-hours" element={<VolunteerLogHours />} />
                     <Route path="/facilitator-earnings" element={<FacilitatorEarnings />} />
                     <Route path="/admin-attendance" element={<AdminStudentAttendance />} />
+                    <Route path="/attendance-management" element={<AttendanceManagement />} />
+                    <Route path="/attendance-management/daily" element={<DailyRegister />} />
+                    <Route path="/attendance-management/daily/:classId" element={<DailyAttendanceMarking />} />
+                    <Route path="/attendance-management/class-wise" element={<ClassWiseGrid />} />
                     <Route path="/class-task-review" element={<ClassTaskReview />} />
                     <Route path="/class-leaders" element={<ClassLeaders />} />
                     <Route path="/tasks/add" element={<AddTask />} />
