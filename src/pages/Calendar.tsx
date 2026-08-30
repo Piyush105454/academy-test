@@ -68,6 +68,7 @@ interface Session {
   facilitator_name?: string;
   facilitator_email?: string;
   volunteer_name?: string;
+  volunteer_language?: string;
   volunteer_email?: string;
   coordinator_name?: string;
   coordinator_email?: string;
@@ -239,7 +240,7 @@ export default function Calendar() {
           centres:centre_id(name, location, email),
           centre_time_slots:centre_time_slot_id(day, start_time, end_time),
           subjects(name),
-          volunteers:volunteer_id(name, personal_email, work_email)
+          volunteers:volunteer_id(name, personal_email, work_email, remarks)
         `)
         .order('session_date', { ascending: true });
 
@@ -268,10 +269,17 @@ export default function Calendar() {
           ? facilitatorIdEmailMap[session.guest_teacher_id]
           : (facNameKey ? facilitatorEmailMap[facNameKey] : null);
 
-        return {
-          ...session,
-          facilitator_email: facilitatorEmail || null,
-          volunteer_email: session.volunteers?.personal_email || session.volunteers?.work_email || null,
+        let vLang = null;
+          if (session.volunteers?.remarks) {
+            const m = session.volunteers.remarks.match(/\[LANG:(.*?)\]/);
+            if (m) vLang = m[1];
+          }
+
+          return {
+            ...session,
+            facilitator_email: facilitatorEmail || null,
+            volunteer_email: session.volunteers?.personal_email || session.volunteers?.work_email || null,
+            volunteer_language: vLang,
           coordinator_name: session.coordinators?.name || null,
           coordinator_email: session.coordinators?.email || null,
           centre_name: session.centres?.name || null,
@@ -1266,14 +1274,19 @@ export default function Calendar() {
                   )}
                   
                   {selectedSession.volunteer_name && (
-                    <div className="bg-purple-50 border border-purple-200 rounded p-3">
-                      <p className="text-xs text-muted-foreground">👥 Volunteer</p>
-                      <p className="font-medium text-sm">{selectedSession.volunteer_name}</p>
-                      {selectedSession.volunteer_email && (
-                        <a href={`mailto:${selectedSession.volunteer_email}`} className="block text-xs text-purple-600 mt-1 hover:underline">📧 {selectedSession.volunteer_email}</a>
-                      )}
-                    </div>
-                  )}
+                      <div className="bg-purple-50 border border-purple-200 rounded p-3">
+                        <p className="text-xs text-muted-foreground">👤 Volunteer</p>
+                        <p className="font-medium text-sm">{selectedSession.volunteer_name}</p>
+                        {selectedSession.volunteer_email && (
+                          <a href={`mailto:${selectedSession.volunteer_email}`} className="block text-xs text-purple-600 mt-1 hover:underline">📧 {selectedSession.volunteer_email}</a>
+                        )}
+                        {selectedSession.volunteer_language && (
+                          <div className="mt-2 inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-white text-purple-800 border-purple-200">
+                            Language: {selectedSession.volunteer_language}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   
                   {selectedSession.coordinator_name && (
                     <div className="bg-green-50 border border-green-200 rounded p-3">

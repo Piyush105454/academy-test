@@ -67,6 +67,7 @@ export default function EditVolunteer() {
   const [preferredDay, setPreferredDay] = useState('none');
   const [preferredClass, setPreferredClass] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [preferredLanguage, setPreferredLanguage] = useState('');
   const [customVolunteerId, setCustomVolunteerId] = useState('');
   const [isOtherCity, setIsOtherCity] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -124,7 +125,15 @@ export default function EditVolunteer() {
         setInterestedTopic(data.interested_topic || '');
         setPreferredDay(data.preferred_day || 'none');
         setPreferredClass(data.preferred_class || '');
-        setRemarks(data.remarks || '');
+        let loadedRemarks = data.remarks || '';
+        let loadedLang = '';
+        const langMatch = loadedRemarks.match(/\[LANG:(.*?)\]\n?/);
+        if (langMatch) {
+           loadedLang = langMatch[1];
+           loadedRemarks = loadedRemarks.replace(langMatch[0], '');
+        }
+        setPreferredLanguage(loadedLang);
+        setRemarks(loadedRemarks);
         setCustomVolunteerId(getEffectiveVolunteerId(data));
         setVolunteerStatus(data.volunteer_status || (data.is_active ? 'active' : 'inactive'));
 
@@ -177,7 +186,12 @@ export default function EditVolunteer() {
     }
 
     try {
-      let updatedRemarks = validation.data.remarks || '';
+        let updatedRemarks = validation.data.remarks || '';
+        
+        // Save preferred language
+        if (preferredLanguage) {
+            updatedRemarks = `[LANG:${preferredLanguage}]\n${updatedRemarks}`.trim();
+        }
       if (customVolunteerId.trim()) {
         if (updatedRemarks.includes('VOLUNTEER_ID:')) {
           const parts = updatedRemarks.split('VOLUNTEER_ID:');
@@ -592,8 +606,22 @@ export default function EditVolunteer() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="volunteerStatus">Status</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="preferredLanguage">Preferred Language</Label>
+                    <Select value={preferredLanguage} onValueChange={setPreferredLanguage}>
+                      <SelectTrigger id="preferredLanguage">
+                        <SelectValue placeholder="Select language (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="English">English</SelectItem>
+                        <SelectItem value="Hindi + English Mix">Hindi + English Mix</SelectItem>
+                        <SelectItem value="Hindi">Hindi</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="volunteerStatus">Status</Label>
                   <Select value={volunteerStatus} onValueChange={setVolunteerStatus}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select status" />

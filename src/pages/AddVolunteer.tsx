@@ -70,6 +70,7 @@ export default function AddVolunteer() {
   const [preferredDay, setPreferredDay] = useState('none');
   const [preferredClass, setPreferredClass] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [preferredLanguage, setPreferredLanguage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [countryList, setCountryList] = useState<{name: string, code: string, dialCode: string}[]>([]);
   const navigate = useNavigate();
@@ -146,7 +147,8 @@ export default function AddVolunteer() {
         interested_topic: validation.data.interested_topic || null,
         preferred_day: validation.data.preferred_day === 'none' ? null : validation.data.preferred_day || null,
         preferred_class: validation.data.preferred_class || null,
-        remarks: validation.data.remarks || null,
+        remarks: (preferredLanguage ? `[LANG:${preferredLanguage}]
+` : '') + (validation.data.remarks || ''),
         preference: validation.data.preference || null,
         is_active: validation.data.volunteer_status === 'active',
       });
@@ -524,8 +526,23 @@ export default function AddVolunteer() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="remarks">Remarks</Label>
+                
+                  <div className="space-y-2">
+                    <Label htmlFor="preferredLanguage">Preferred Language</Label>
+                    <Select value={preferredLanguage} onValueChange={setPreferredLanguage}>
+                      <SelectTrigger id="preferredLanguage">
+                        <SelectValue placeholder="Select language (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="English">English</SelectItem>
+                        <SelectItem value="Hindi + English Mix">Hindi + English Mix</SelectItem>
+                        <SelectItem value="Hindi">Hindi</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="remarks">Remarks</Label>
                   <Textarea
                     id="remarks"
                     value={remarks}
