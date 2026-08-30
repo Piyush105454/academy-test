@@ -72,6 +72,7 @@ interface Student {
   bank_name?: string | null;
   account_number?: string | null;
   ifsc_code?: string | null;
+  is_active?: boolean;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
@@ -82,6 +83,7 @@ export default function ClassStudents() {
   const navigate = useNavigate();
   const { selectedYear } = useAcademicYear();
   const [classItem, setClassItem] = useState<Class | null>(null);
+  const [userRole, setUserRole] = useState<number | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
@@ -101,8 +103,8 @@ export default function ClassStudents() {
   const [selectedStudentForInfo, setSelectedStudentForInfo] = useState<Student | null>(null);
   const [isPromoteStudentOpen, setIsPromoteStudentOpen] = useState(false);
   const [studentToPromote, setStudentToPromote] = useState<Student | null>(null);
-  const [sortColumn, setSortColumn] = useState<SortColumn>(null);
-  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+  const [sortColumn, setSortColumn] = useState<SortColumn>('student_id');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [isAssignMonitorOpen, setIsAssignMonitorOpen] = useState(false);
   const [studentForMonitor, setStudentForMonitor] = useState<Student | null>(null);
   const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false);
@@ -197,6 +199,22 @@ export default function ClassStudents() {
   const academicYears = Array.from(new Set([...students.map(s => s.academic_year).filter(Boolean), selectedYear])).sort() as string[];
   const designations = Array.from(new Set(students.map(s => s.designation).filter(Boolean))).sort() as string[];
 
+  
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      try {
+        const { data } = await supabase.from('user_profiles').select('role_id').eq('id', session.user.id).maybeSingle();
+        if (data?.role_id) {
+          setUserRole(data.role_id);
+        }
+      } catch (err) {}
+    };
+    fetchUserRole();
+  }, []);
+  const isAdmin = userRole === 1;
+
   useEffect(() => {
     if (classId) {
       fetchClassAndStudents();
@@ -267,6 +285,21 @@ export default function ClassStudents() {
     setIsEditStudentOpen(true);
   };
 
+  
+  const handleToggleActive = async (student: Student) => {
+    try {
+      const newStatus = student.is_active === false;
+      if (student.email) {
+        const { error } = await supabase.from('user_profiles').update({ is_active: newStatus }).eq('email', student.email);
+        if (error) throw error;
+      }
+      setStudents(students.map(s => s.id === student.id ? { ...s, is_active: newStatus } : s));
+      toast.success(newStatus ? 'Student activated' : 'Student deactivated');
+    } catch (e) {
+      toast.error('Failed to toggle status');
+    }
+  };
+
   const handleToggleProfileLock = async (student: Student) => {
     try {
       const newStatus = student.allow_profile_edit === false;
@@ -334,15 +367,17 @@ export default function ClassStudents() {
               </p>
             </div>
           </div>
-          <Button
-            onClick={() => setIsAddStudentOpen(true)}
-            className="w-full sm:w-auto gap-2"
-          >
+          {isAdmin && (
+            <Button 
+              onClick={() => setIsAddStudentOpen(true)}
+              className="w-full sm:w-auto gap-2"
+            >
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">Add Student</span>
             <span className="sm:hidden">Add</span>
-          </Button>
-        </div>
+            </Button>
+          )}
+          </div>
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2 bg-muted/10 p-2 rounded-lg border border-border/60">
@@ -393,12 +428,12 @@ export default function ClassStudents() {
             {filteredStudents.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-muted-foreground mb-4">No students added yet</p>
-                <Button onClick={() => setIsAddStudentOpen(true)}>
+                {isAdmin && <Button onClick={() => setIsAddStudentOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Student
-                </Button>
-              </div>
-            ) : (
+                </Button>}
+                </div>
+              ) : (
               <>
                 {/* Desktop Table View */}
                 <div className="hidden md:block overflow-x-auto">
@@ -425,7 +460,8 @@ export default function ClassStudents() {
                         >
                           <div className="flex items-center gap-1">Gender <span className="text-muted-foreground ml-1">{getSortIndicator('gender')}</span></div>
                         </TableHead>
-                        <TableHead className="w-[100px]">DOB</TableHead>
+                        <TableHead className="w-[90px]">Status</TableHead>
+                          <TableHead className="w-[100px]">DOB</TableHead>
                         <TableHead>Email</TableHead>
                         <TableHead>Phone</TableHead>
                         <TableHead className="w-[120px]">Class Monitor</TableHead>
@@ -456,10 +492,7 @@ export default function ClassStudents() {
                                   <ArrowUpRight className="h-4 w-4 mr-2" />
                                   Promote
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleEditStudent(student)}>
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Edit
-                                </DropdownMenuItem>
+                                {isAdmin && <DropdownMenuItem onClick={() => handleEditStudent(student)}><Edit className="h-4 w-4 mr-2" />Edit</DropdownMenuItem>}
                                 <DropdownMenuItem onClick={() => {
                                   setStudentForMonitor(student);
                                   setIsAssignMonitorOpen(true);
@@ -467,7 +500,18 @@ export default function ClassStudents() {
                                   <UserCog className="h-4 w-4 mr-2" />
                                   Assign Monitor
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleToggleProfileLock(student)}>
+                                
+  {isAdmin && (
+    <DropdownMenuItem onClick={() => handleToggleActive(student)}>
+      {student.is_active !== false ? (
+        <><UserCog className="h-4 w-4 mr-2 text-red-500" /><span className="text-red-500">Deactivate Account</span></>
+      ) : (
+        <><UserCog className="h-4 w-4 mr-2 text-green-500" /><span className="text-green-500">Activate Account</span></>
+      )}
+    </DropdownMenuItem>
+  )}
+
+                                  <DropdownMenuItem onClick={() => handleToggleProfileLock(student)}>
                                   {student.allow_profile_edit !== false ? (
                                     <>
                                       <Lock className="h-4 w-4 mr-2" />
@@ -487,16 +531,7 @@ export default function ClassStudents() {
                                   <Key className="h-4 w-4 mr-2" />
                                   Reset Password
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setStudentToDelete(student);
-                                    setDeleteDialogOpen(true);
-                                  }}
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
+                                {isAdmin && <DropdownMenuItem onClick={() => { setStudentToDelete(student); setDeleteDialogOpen(true); }} className="text-destructive focus:text-destructive"><Trash2 className="h-4 w-4 mr-2" />Delete</DropdownMenuItem>}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -514,6 +549,11 @@ export default function ClassStudents() {
                           <TableCell className="font-medium">{student.student_id}</TableCell>
                           <TableCell>{student.name}</TableCell>
                           <TableCell className="text-sm">{student.gender || '-'}</TableCell>
+                            <TableCell>
+                              <Badge variant={student.is_active !== false ? 'default' : 'secondary'} className={student.is_active !== false ? 'bg-green-500 hover:bg-green-600' : ''}>
+                                {student.is_active !== false ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </TableCell>
                           <TableCell className="text-sm">
                             {student.dob
                               ? new Date(student.dob).toLocaleDateString()
@@ -547,8 +587,11 @@ export default function ClassStudents() {
                         <div className="min-w-0 flex-1">
                           <h3 className="font-semibold text-foreground break-words">{student.name}</h3>
                           <p className="text-xs text-muted-foreground mt-1">
-                            ID: {student.student_id}
-                          </p>
+                              ID: {student.student_id}
+                            </p>
+                            <Badge variant={student.is_active !== false ? 'default' : 'secondary'} className={`mt-2 ${student.is_active !== false ? 'bg-green-500' : ''}`}>
+                              {student.is_active !== false ? 'Active' : 'Inactive'}
+                            </Badge>
                         </div>
                       </div>
 
@@ -617,14 +660,14 @@ export default function ClassStudents() {
                           <ArrowUpRight className="h-4 w-4 mr-1" />
                           Promote
                         </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleEditStudent(student)}
-                          className="flex-1 min-w-[30%]"
-                        >
+                        {isAdmin && <Button
+                            size="sm"
+                            onClick={() => handleEditStudent(student)}
+                            className="flex-1 min-w-[30%]"
+                          >
                           <Edit className="h-4 w-4 mr-1" />
-                          Edit
-                        </Button>
+                            Edit
+                          </Button>}
                         <Button
                           size="sm"
                           variant="secondary"

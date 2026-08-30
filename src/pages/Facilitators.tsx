@@ -238,8 +238,16 @@ export default function Facilitators() {
           })
           .eq('id', editingId);
 
+        
         if (error) throw error;
+        
+        // Update user_profiles login status
+        try {
+          await supabase.from('user_profiles').update({ is_active: formData.status === 'active' }).ilike('email', normalizedEmail);
+        } catch(e) {}
+        
         toast.success('Facilitator updated successfully');
+
       } else {
         const { error } = await supabase
           .from('facilitators')
@@ -248,8 +256,16 @@ export default function Facilitators() {
             email: normalizedEmail
           }]);
 
+        
         if (error) throw error;
+        
+        // Ensure user_profiles gets the right active status if it exists
+        try {
+          await supabase.from('user_profiles').update({ is_active: formData.status === 'active' }).ilike('email', normalizedEmail);
+        } catch(e) {}
+        
         toast.success('Facilitator created successfully');
+
       }
 
       resetForm();

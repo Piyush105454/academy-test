@@ -150,7 +150,8 @@ export default function AdminStudentAttendance() {
           name,
           designation,
           class_id,
-          classes (name)
+            email,
+            classes (name)
         `);
 
       if (role === 4 && allowedClassIds.length > 0) {
@@ -159,7 +160,28 @@ export default function AdminStudentAttendance() {
 
       const { data: students, error: studentError } = await query;
 
+      
       if (studentError) throw studentError;
+
+      // Filter out inactive students
+      let activeStudents = students;
+      try {
+        const emails = students.map(s => s.email).filter(Boolean);
+        if (emails.length > 0) {
+          const { data: profiles } = await supabase.from('user_profiles').select('email, is_active').in('email', emails);
+          if (profiles) {
+            const profileMap = new Map(profiles.map(p => [p.email?.toLowerCase(), p.is_active]));
+            activeStudents = students.filter(s => {
+              if (!s.email) return true;
+              return profileMap.get(s.email.toLowerCase()) !== false;
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Error filtering active students', e);
+      }
+      const finalStudents = activeStudents;
+
 
       // Fetch all student_performance for the selected academic year
       const { startDate, endDate } = getDateRange();

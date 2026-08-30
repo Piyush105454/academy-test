@@ -21,15 +21,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    // Initialize auth state
     const initializeAuth = async () => {
       try {
-        // First, check for existing session
         const { data: { session: existingSession } } = await supabase.auth.getSession();
         
         if (isMounted) {
           setSession(existingSession);
           setUser(existingSession?.user ?? null);
+        }
+
+        // Run the active check in the background without blocking the UI load
+        if (existingSession?.user) {
+          supabase.from('user_profiles').select('is_active').eq('id', existingSession.user.id).maybeSingle().then(({ data }) => {
+            if (data && data.is_active === false) {
+              supabase.auth.signOut(); // This will trigger onAuthStateChange
+            }
+          }).catch(() => {});
         }
       } catch (error) {
         console.error('Error getting session:', error);
@@ -44,18 +51,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (isMounted) {
-          setSession(session);
-          setUser(session?.user ?? null);
-          setLoading(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      if (isMounted) {
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+        setLoading(false);
+
+        // Async check for deactivation on sign in
+        if (currentSession?.user && event === 'SIGNED_IN') {
+          supabase.from('user_profiles').select('is_active').eq('id', currentSession.user.id).maybeSingle().then(({ data }) => {
+            if (data && data.is_active === false) {
+              supabase.auth.signOut();
+            }
+          }).catch(() => {});
         }
       }
-    );
+    });
 
-    // Initialize auth
     initializeAuth();
 
     return () => {
@@ -65,22 +77,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: authData, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+    
+    if (!error && authData.user) {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('is_active')
+        .eq('id', authData.user.id)
+        .maybeSingle();
+        
+      if (profile && profile.is_active === false) {
+        await supabase.auth.signOut();
+        return { error: new Error('Your account has been deactivated. Please contact an administrator.') };
+      }
+    }
     return { error };
   };
 
   const signUp = async (email: string, password: string) => {
     const redirectUrl = `${window.location.origin}/`;
-    
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        emailRedirectTo: redirectUrl
-      }
+      options: { emailRedirectTo: redirectUrl }
     });
     return { error };
   };
@@ -88,17 +110,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     try {
       const { error } = await supabase.auth.signOut({ scope: 'local' });
-      
-      // Always clear local state, regardless of Supabase response
       setSession(null);
       setUser(null);
-      
-      if (error) {
-        console.warn('Logout warning (local session cleared):', error);
-      }
-    } catch (error) {
-      console.error('Error during sign out:', error);
-      // Even if logout fails, clear local session
+      if (error) console.warn('Logout warning (local session cleared):', error);
+    } catch (err) {
+      console.error('Logout exception:', err);
       setSession(null);
       setUser(null);
     }
@@ -113,8 +129,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }

@@ -49,6 +49,7 @@ import {
 } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
+import { type SubmissionRequirement, serializeSubmissionRequirements } from '../utils/submissionUtils';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { getCleanTaskId, getScheduledTasks, saveScheduledTasks as persistScheduledTasks } from '@/utils/scheduledTasksStore';
@@ -91,7 +92,19 @@ export default function ScheduledTasks() {
   const [previewTasks, setPreviewTasks] = useState<ScheduledTask[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [importFileName, setImportFileName] = useState<string>('');
-  const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['video', 'pdf']);
+  
+  const [importEarningAmount, setImportEarningAmount] = useState<number | ''>(5);
+  const [importSubmissionRequirements, setImportSubmissionRequirements] = useState<SubmissionRequirement[]>([]);
+
+const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['video', 'pdf']);
+
+  const [importTaskType, setImportTaskType] = useState('Task');
+  const [importAcademicYear, setImportAcademicYear] = useState(selectedYear);
+  const [rewardConfigs, setRewardConfigs] = useState<{task_type: string, rate_per_task: number}[]>([]);
+  const [allSubjects, setAllSubjects] = useState<{id: string, name: string}[]>([]);
+
+  const [importSessionId, setImportSessionId] = useState('none');
+  const [availableSessions, setAvailableSessions] = useState<{id: string, title: string}[]>([]);
   
   // Dashboard Metricsk View Modal
   const [selectedTask, setSelectedTask] = useState<ScheduledTask | null>(null);
@@ -113,6 +126,18 @@ export default function ScheduledTasks() {
     }
     return String(excelDate || '').trim();
   };
+
+  
+    // Fetch Task Types & Subjects
+    useEffect(() => {
+      const fetchLookups = async () => {
+        const { data: configs } = await (supabase as any).from('reward_configurations').select('task_type, rate_per_task');
+        if (configs) setRewardConfigs(configs);
+        const { data: subs } = await (supabase as any).from('subjects').select('id, name').order('name');
+        if (subs) setAllSubjects(subs);
+      };
+      fetchLookups();
+    }, []);
 
   // Load Classes for dropdown
   useEffect(() => {
@@ -168,6 +193,22 @@ export default function ScheduledTasks() {
     setScheduledTasks(tasks);
     try { localStorage.setItem('wes_scheduled_tasks_v2', JSON.stringify(tasks)); } catch { /* ignore */ }
   };
+
+  
+    // Fetch Sessions when class changes
+    useEffect(() => {
+      const fetchSessions = async () => {
+        if (!targetClass) { setAvailableSessions([]); return; }
+        const { data } = await (supabase as any)
+          .from('sessions')
+          .select('id, title')
+          .eq('class_batch', targetClass)
+          .order('session_date', { ascending: false });
+        if (data) setAvailableSessions(data);
+      };
+      fetchSessions();
+      setImportSessionId('none');
+    }, [targetClass]);
 
   // Update preview whenever selectedSheet or customSubjectOverride changes
   useEffect(() => {
@@ -271,7 +312,7 @@ export default function ScheduledTasks() {
         .from('wes_scheduled_tasks')
         .insert(previewTasks.map(t => ({
           title: t.title,
-          description: t.description + (importSubmissionTypes.length > 0 ? `\n\n__REQ[${importSubmissionTypes.join(',')}]__` : ''),
+          description: t.description + (importSubmissionRequirements.length > 0 ? `\n\n__REQS[${encodeURIComponent(JSON.stringify(importSubmissionRequirements))}]__\n\n__TYPE[${importTaskType}]__\n\n__YEAR[${importAcademicYear}]__\n\n__SESSION[${importSessionId}]__\n\n__EARNING[${importEarningAmount}]__` : ''),
           class_name: t.class_name,
           subject_name: t.subject_name,
           creation_date: t.creation_date,
@@ -381,18 +422,55 @@ export default function ScheduledTasks() {
         resolvedSubjectId = subjectData?.[0]?.id || null;
       }
 
+      
+      let finalDesc = task.description;
+      let finalReqs = ['video', 'pdf']; // fallback
+      let finalType = 'general';
+      let finalYear = task.academic_year || selectedYear;
+      let finalSessionId = null;
+      let finalEarningAmount = 5;
+      
+      const reqMatch = finalDesc.match(/__REQS\[(.*?)\]__/);
+      if (reqMatch) { 
+        try { 
+          const decodedReqs = JSON.parse(decodeURIComponent(reqMatch[1]));
+          finalReqs = serializeSubmissionRequirements(decodedReqs);
+        } catch(e) {}
+        finalDesc = finalDesc.replace(reqMatch[0], ''); 
+      } else {
+        // Fallback to old format
+        const oldReqMatch = finalDesc.match(/__REQ\[(.*?)\]__/);
+        if (oldReqMatch) { finalReqs = oldReqMatch[1] ? oldReqMatch[1].split(',') : []; finalDesc = finalDesc.replace(oldReqMatch[0], ''); }
+      }
+      
+      const typeMatch = finalDesc.match(/__TYPE\[(.*?)\]__/);
+      if (typeMatch) { finalType = typeMatch[1]; finalDesc = finalDesc.replace(typeMatch[0], ''); }
+      
+      const yearMatch = finalDesc.match(/__YEAR\[(.*?)\]__/);
+      if (yearMatch) { finalYear = yearMatch[1]; finalDesc = finalDesc.replace(yearMatch[0], ''); }
+      
+      const sessionMatch = finalDesc.match(/__SESSION\[(.*?)\]__/);
+      if (sessionMatch) { finalSessionId = sessionMatch[1] === 'none' ? null : sessionMatch[1]; finalDesc = finalDesc.replace(sessionMatch[0], ''); }
+      
+      const earningMatch = finalDesc.match(/__EARNING\[(.*?)\]__/);
+      if (earningMatch) { finalEarningAmount = Number(earningMatch[1]) || 5; finalDesc = finalDesc.replace(earningMatch[0], ''); }
+      
+      finalDesc = finalDesc.trim();
+
       // 5. Insert one row per student (same as AddTask)
       const taskRecords = studentsData.map((student: any) => ({
         student_id: student.id,
         task_name: task.title,
-        task_description: task.description,
+        task_description: finalDesc,
         task_id: generatedTaskId,
         deadline: task.deadline ? `${task.deadline}T23:59:59Z` : new Date().toISOString(),
-        status: 'pending',
-        feedback_type: 'general',
-        academic_year: task.academic_year || selectedYear,
+        session_id: finalSessionId,
+          earning_amount: finalEarningAmount,
+          status: 'pending',
+        feedback_type: finalType,
+        academic_year: finalYear,
         created_at: new Date().toISOString(),
-        submission_types: ['video', 'pdf'],
+        submission_types: finalReqs,
         subject_id: resolvedSubjectId,
       }));
 
@@ -536,7 +614,35 @@ export default function ScheduledTasks() {
 
                 <div className="space-y-4 py-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
+                    
+                      <div className="space-y-1.5">
+                        <Label>Task Type</Label>
+                        
+                          <Select value={importTaskType} onValueChange={(val) => {
+                            setImportTaskType(val);
+                            const config = rewardConfigs.find(c => c.task_type === val);
+                            if (config && config.rate_per_task) setImportEarningAmount(config.rate_per_task);
+                          }}>
+
+                          <SelectTrigger><SelectValue placeholder="Select Task Type" /></SelectTrigger>
+                          <SelectContent>
+                            {rewardConfigs.map(c => <SelectItem key={c.task_type} value={c.task_type}>{c.task_type}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="space-y-1.5">
+                        <Label>Academic Year</Label>
+                        <Select value={importAcademicYear} onValueChange={setImportAcademicYear}>
+                          <SelectTrigger><SelectValue placeholder="Select Year" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="2026-27">2026-27</SelectItem>
+                            <SelectItem value="2025-26">2025-26</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
                       <Label htmlFor="target-class">Target Class / Designation</Label>
                       <Select value={targetClass} onValueChange={setTargetClass}>
                         <SelectTrigger id="target-class">
@@ -550,7 +656,30 @@ export default function ScheduledTasks() {
                       </Select>
                     </div>
 
-                    <div className="space-y-1.5">
+                    
+                      <div className="space-y-1.5">
+                        <Label>Subject (Optional)</Label>
+                        <Select value={customSubjectOverride} onValueChange={setCustomSubjectOverride}>
+                          <SelectTrigger><SelectValue placeholder="Select Subject" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">Auto-detect from Sheet</SelectItem>
+                            {allSubjects.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="space-y-1.5">
+                        <Label>Linked Session (Optional)</Label>
+                        <Select value={importSessionId} onValueChange={setImportSessionId}>
+                          <SelectTrigger><SelectValue placeholder="No Session" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {availableSessions.map(s => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
                       <Label htmlFor="excel-file">Upload Excel File (.xlsx / .csv)</Label>
                       <Input
                         id="excel-file"
@@ -592,57 +721,106 @@ export default function ScheduledTasks() {
                         </Select>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold flex items-center gap-1.5">
-                          <BookOpen className="h-3.5 w-3.5 text-primary" />
-                          Subject Mapping
-                        </Label>
-                        <Select value={customSubjectOverride} onValueChange={setCustomSubjectOverride}>
-                          <SelectTrigger className="h-9 text-xs bg-background">
-                            <SelectValue placeholder="Select Subject" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="auto">Auto-detect Subject from Sheet</SelectItem>
-                            <SelectItem value="Azure (Specialization)">Azure (Specialization)</SelectItem>
-                            <SelectItem value="English Com and Soft Skill">English Com and Soft Skill</SelectItem>
-                            <SelectItem value="Artificial Intelligence">Artificial Intelligence</SelectItem>
-                            <SelectItem value="Certified Computer Course">Certified Computer Course</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      
                     </div>
                   )}
 
-                  <div className="space-y-3 pt-3 border-t">
-                    <Label className="text-sm font-semibold flex items-center gap-1.5">
-                      <CheckCircle2 className="h-4 w-4 text-primary" />
-                      Required Submission Types (Applied to all imported tasks)
-                    </Label>
-                    <div className="flex flex-wrap gap-4 bg-slate-50 p-4 rounded-xl border">
-                      {[
-                        { id: 'video', label: 'Video Recording' },
-                        { id: 'pdf', label: 'PDF Document' },
-                        { id: 'text', label: 'Text Submission' },
-                        { id: 'link', label: 'Link / URL' },
-                      ].map((type) => (
-                        <label key={type.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 p-1.5 rounded-md transition-colors">
-                          <input
-                            type="checkbox"
-                            checked={importSubmissionTypes.includes(type.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setImportSubmissionTypes(prev => [...prev, type.id]);
-                              } else {
-                                setImportSubmissionTypes(prev => prev.filter(t => t !== type.id));
-                              }
-                            }}
-                            className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
-                          />
-                          <span className="text-sm font-medium">{type.label}</span>
-                        </label>
-                      ))}
+                  
+                    <div className="space-y-3 pt-3 border-t">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-sm font-bold flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                          Required Submission Types (Applied to all imported tasks)
+                        </Label>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => {
+                            const newReq: SubmissionRequirement = {
+                              id: Math.random().toString(36).substr(2, 9),
+                              title: '',
+                              type: 'pdf'
+                            };
+                            setImportSubmissionRequirements([...importSubmissionRequirements, newReq]);
+                          }}
+                        >
+                          + Add Requirement
+                        </Button>
+                      </div>
+                      
+                      {importSubmissionRequirements.length === 0 ? (
+                        <div className="text-sm text-red-500 font-medium">At least one submission requirement is mandatory. Add a requirement.</div>
+                      ) : (
+                        <div className="space-y-3">
+                          {importSubmissionRequirements.map((req, index) => (
+                            <div key={req.id} className="flex gap-2 items-start border p-3 rounded-md bg-gray-50">
+                              <div className="flex-1 space-y-2">
+                                <div>
+                                  <Label className="text-xs">Requirement Title *</Label>
+                                  <Input 
+                                    placeholder="e.g., Presentation PPT" 
+                                    value={req.title}
+                                    onChange={(e) => {
+                                      const updated = [...importSubmissionRequirements];
+                                      updated[index].title = e.target.value;
+                                      setImportSubmissionRequirements(updated);
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                              <div className="w-48 space-y-2">
+                                <Label className="text-xs">File Type</Label>
+                                <select 
+                                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                                  value={req.type}
+                                  onChange={(e) => {
+                                    const updated = [...importSubmissionRequirements];
+                                    updated[index].type = e.target.value as SubmissionRequirement['type'];
+                                    setImportSubmissionRequirements(updated);
+                                  }}
+                                >
+                                  <option value="video">Video</option>
+                                  <option value="pdf">Pdf</option>
+                                  <option value="doc">Doc</option>
+                                  <option value="ppt">Ppt</option>
+                                  <option value="excel">Excel</option>
+                                  <option value="image">Image</option>
+                                  <option value="code">Code</option>
+                                  <option value="link">Link</option>
+                                </select>
+                              </div>
+                              <div className="space-y-2 flex flex-col justify-end h-full mt-6">
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  size="icon"
+                                  onClick={() => {
+                                    const updated = importSubmissionRequirements.filter((_, i) => i !== index);
+                                    setImportSubmissionRequirements(updated);
+                                  }}
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
+                    
+                    <div className="space-y-1.5 pt-3 border-t">
+                      <Label>Reward Points (Earning Amount)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={importEarningAmount}
+                        onChange={e => setImportEarningAmount(e.target.value ? Number(e.target.value) : '')}
+                        placeholder="e.g., 5"
+                      />
+                    </div>
+
 
                   {previewTasks.length > 0 && (
                     <div className="space-y-2 border rounded-xl p-3 bg-muted/30">

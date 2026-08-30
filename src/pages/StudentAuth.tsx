@@ -16,11 +16,9 @@ export function StudentAuth() {
 
   const validateStudentEmail = async (studentEmail: string): Promise<boolean> => {
     try {
-      // Check if email exists in user_profiles as a student with a class assigned
-      // This query is allowed by RLS policy for pre-authentication validation
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, class_id')
+        .select('id, class_id, is_active')
         .ilike('email', studentEmail)
         .eq('role_id', 5) // Student role
         .not('class_id', 'is', null) // Must have a class assigned
@@ -28,13 +26,16 @@ export function StudentAuth() {
         .maybeSingle();
 
       if (error) {
-        console.error('Student validation error:', error.message);
+        return false;
+      }
+      
+      // If found but inactive, deny validation
+      if (data && data.is_active === false) {
         return false;
       }
       
       return !!data;
     } catch (err) {
-      console.error('Student validation exception:', err);
       return false;
     }
   };
@@ -45,25 +46,37 @@ export function StudentAuth() {
     setLoading(true);
 
     try {
-      // Validate student email first
-      const isStudent = await validateStudentEmail(email);
-      if (!isStudent) {
-        setError('You do not have class email');
-        setLoading(false);
-        return;
-      }
-
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (authError) {
-        setError(authError.message);
-      } else {
-        navigate('/student-dashboard');
-      }
-    } catch (err) {
+        // Validate student email first
+        const isStudent = await validateStudentEmail(email);
+        if (!isStudent) {
+          setError('You do not have class email, or your account has been deactivated.');
+          setLoading(false);
+          return;
+        }
+        
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+  
+        if (authError) {
+          setError(authError.message);
+        } else if (authData.user) {
+          // Double check user profile status
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('is_active')
+            .eq('id', authData.user.id)
+            .maybeSingle();
+            
+          if (profile && profile.is_active === false) {
+            await supabase.auth.signOut();
+            setError('Your account has been deactivated. Please contact your coordinator.');
+          } else {
+            navigate('/student-dashboard');
+          }
+        }
+      } catch (err) {
       setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);
