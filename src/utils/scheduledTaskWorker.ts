@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { type SubmissionRequirement, serializeSubmissionRequirements } from '@/utils/submissionUtils';
 
 /**
  * Background worker: runs on app load.
@@ -77,21 +78,54 @@ export async function runScheduledTaskWorker(selectedYear: string): Promise<void
         }
         const generatedTaskId = `${prefix}${String(nextSeq).padStart(3, '0')}`;
 
-        // 5. Parse dynamic submission_types from the hidden tag in description
-        let actualDesc = task.description || '';
-        let dynamicSubmissionTypes = ['video', 'pdf']; // fallback
-        const reqMatch = actualDesc.match(/__REQ\[(.*?)\]__/);
+        // 5. Parse dynamic metadata from the hidden tag in description
+        let finalDesc = task.description || '';
+        let finalReqs = ['video', 'pdf']; // fallback
+        let finalType = 'general';
+        let finalYear = task.academic_year || selectedYear;
+        let finalSessionId = null;
+        let finalInchargeId = null;
+        let finalEarningAmount = 5;
+
+        const reqMatch = finalDesc.match(/__REQS\[(.*?)\]__/);
         if (reqMatch) {
-          dynamicSubmissionTypes = reqMatch[1].split(',').filter(Boolean);
-          actualDesc = actualDesc.replace(reqMatch[0], '').trim();
+          try {
+            const decodedReqs = JSON.parse(decodeURIComponent(reqMatch[1]));
+            finalReqs = serializeSubmissionRequirements(decodedReqs);
+          } catch(e) {}
+          finalDesc = finalDesc.replace(reqMatch[0], '');
+        } else {
+          // Fallback to old format
+          const oldReqMatch = finalDesc.match(/__REQ\[(.*?)\]__/);
+          if (oldReqMatch) { finalReqs = oldReqMatch[1] ? oldReqMatch[1].split(',') : []; finalDesc = finalDesc.replace(oldReqMatch[0], ''); }
         }
+
+        const typeMatch = finalDesc.match(/__TYPE\[(.*?)\]__/);
+        if (typeMatch) { finalType = typeMatch[1]; finalDesc = finalDesc.replace(typeMatch[0], ''); }
+
+        const yearMatch = finalDesc.match(/__YEAR\[(.*?)\]__/);
+        if (yearMatch) { finalYear = yearMatch[1]; finalDesc = finalDesc.replace(yearMatch[0], ''); }
+
+        const sessionMatch = finalDesc.match(/__SESSION\[(.*?)\]__/);
+        if (sessionMatch) { finalSessionId = sessionMatch[1] === 'none' ? null : sessionMatch[1]; finalDesc = finalDesc.replace(sessionMatch[0], ''); }
+
+        const incMatch = finalDesc.match(/__INCHARGE\[(.*?)\]__/);
+        if (incMatch && incMatch[1] !== 'none') {
+          finalInchargeId = incMatch[1];
+          finalDesc = finalDesc.replace(incMatch[0], '');
+        }
+
+        const earningMatch = finalDesc.match(/__EARNING\[(.*?)\]__/);
+        if (earningMatch) { finalEarningAmount = Number(earningMatch[1]) || 5; finalDesc = finalDesc.replace(earningMatch[0], ''); }
+
+        finalDesc = finalDesc.trim();
 
         // 6. Check if already assigned (avoid duplicates)
         const { data: existingAssignment } = await (supabase as any)
           .from('student_task_feedback')
           .select('id')
           .eq('task_name', task.title)
-          .eq('academic_year', task.academic_year || selectedYear)
+          .eq('academic_year', finalYear)
           .limit(1);
 
         if (existingAssignment && existingAssignment.length > 0) {
@@ -118,14 +152,17 @@ export async function runScheduledTaskWorker(selectedYear: string): Promise<void
         const taskRecords = students.map((student: any) => ({
           student_id: student.id,
           task_name: task.title,
-          task_description: actualDesc,
+          task_description: finalDesc,
           task_id: generatedTaskId,
           deadline: task.deadline ? `${task.deadline}T23:59:59Z` : new Date(task.creation_date).toISOString(),
+          session_id: finalSessionId,
+          created_by: finalInchargeId,
+          earning_amount: finalEarningAmount,
           status: 'pending',
-          feedback_type: 'general',
-          academic_year: task.academic_year || selectedYear,
+          feedback_type: finalType,
+          academic_year: finalYear,
           created_at: new Date(task.creation_date).toISOString(),
-          submission_types: dynamicSubmissionTypes,
+          submission_types: finalReqs,
           subject_id: resolvedSubjectId,
         }));
 
@@ -144,7 +181,7 @@ export async function runScheduledTaskWorker(selectedYear: string): Promise<void
           .update({ status: 'published', updated_at: new Date().toISOString() })
           .eq('id', task.id);
 
-        console.log(`[Worker] ✅ Auto-assigned "${task.title}" → ${generatedTaskId} to ${students.length} students`);
+        console.log(`[Worker] ✓ Auto-assigned "${task.title}" → ${generatedTaskId} to ${students.length} students`);
       } catch (taskErr) {
         console.error(`[Worker] Error processing task "${task.title}":`, taskErr);
       }

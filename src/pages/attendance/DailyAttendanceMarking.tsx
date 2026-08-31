@@ -12,12 +12,14 @@ import { format } from 'date-fns';
 interface StudentData {
   id: string;
   name: string;
+    roll_number?: string;
+  student_id?: string;
   roll_no?: string;
 }
 
 interface AttendanceRecord {
   student_id: string;
-  status: 'P' | 'LT' | 'A' | 'L';
+  status: 'P' | 'LT' | 'A' | 'L' | 'H';
 }
 
 export default function DailyAttendanceMarking() {
@@ -61,7 +63,7 @@ export default function DailyAttendanceMarking() {
       const { data: cls } = await supabase.from('classes').select('name').eq('id', classId).single();
       if (cls) setClassName(cls.name);
 
-      const { data: studs } = await supabase.from('students').select('id, name').eq('class_id', classId).order('name');
+      const { data: studs } = await supabase.from('students').select('id, name, roll_number, student_id').eq('class_id', classId).order('name');
       if (studs) setStudents(studs);
     } catch (e) {
       console.error(e);
@@ -92,39 +94,18 @@ export default function DailyAttendanceMarking() {
     }
   };
 
-  const isLate = () => {
-    const now = new Date();
-    const currentDate = format(now, 'yyyy-MM-dd');
-    if (selectedDate !== currentDate) return false; // Only apply late logic for today
-
-    const [hours, minutes] = lateThreshold.split(':').map(Number);
-    const thresholdTime = new Date();
-    thresholdTime.setHours(hours, minutes, 0, 0);
-
-    return now > thresholdTime;
-  };
-
-  const handleMark = (studentId: string, status: 'P' | 'LT' | 'A' | 'L') => {
-    if (status === 'P' && isLate()) {
-      status = 'LT';
-      toast.info('Student marked as Late based on the checking time.');
-    }
+  const handleMark = (studentId: string, status: 'P' | 'LT' | 'A' | 'L' | 'H') => {
     setAttendance(prev => ({ ...prev, [studentId]: status }));
   };
 
-  const handleBulkMark = (status: 'P' | 'A') => {
+  const handleBulkMark = (status: 'P' | 'A' | 'H') => {
     const newAtt = { ...attendance };
-    const appliedStatus = (status === 'P' && isLate()) ? 'LT' : status;
-    
     students.forEach(s => {
-      newAtt[s.id] = appliedStatus;
+      newAtt[s.id] = status;
     });
     setAttendance(newAtt);
-    if (appliedStatus === 'LT') {
-       toast.info('Students marked as Late based on checking time.');
-    }
   };
-
+  
   const handleSave = async () => {
     if (!classId || !user?.email) return;
     setSaving(true);
@@ -217,13 +198,17 @@ export default function DailyAttendanceMarking() {
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="text-green-700 border-green-200 hover:bg-green-50" onClick={() => handleBulkMark('P')}>MARK ALL P</Button>
                   <Button size="sm" variant="outline" className="text-red-700 border-red-200 hover:bg-red-50" onClick={() => handleBulkMark('A')}>MARK ALL A</Button>
+                  <Button size="sm" variant="outline" className="text-purple-700 border-purple-200 hover:bg-purple-50" onClick={() => handleBulkMark('H')}>MARK ALL H</Button>
                 </div>
               </div>
 
               <div className="mt-4">
-                <div className="grid grid-cols-12 gap-4 pb-3 border-b text-xs font-semibold text-slate-500">
-                  <div className="col-span-8">STUDENT NAME</div>
-                  <div className="col-span-4 text-center">ATTENDANCE STATUS</div>
+                <div className="flex justify-between items-center pb-3 border-b text-xs font-semibold text-slate-500 tracking-wider">
+                  <div className="flex w-1/2">
+                    <div className="w-20 sm:w-24 shrink-0 uppercase">ROLL</div>
+                    <div className="uppercase">STUDENT NAME</div>
+                  </div>
+                  <div className="uppercase text-right pr-2">ATTENDANCE STATUS</div>
                 </div>
 
                 {loading ? (
@@ -233,14 +218,19 @@ export default function DailyAttendanceMarking() {
                 ) : (
                   <div className="divide-y">
                     {students.map((student) => (
-                      <div key={student.id} className="grid grid-cols-12 gap-4 py-3 items-center">
-                        <div className="col-span-8 flex items-center gap-3">
-                          <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
-                            {student.name.charAt(0)}
+                      <div key={student.id} className="flex justify-between items-center py-3 border-b last:border-0 hover:bg-slate-50/50 transition-colors">
+                          <div className="flex items-center w-1/2">
+                            <div className="w-20 sm:w-24 shrink-0 font-mono text-xs font-semibold text-slate-500">
+                              {student.student_id || student.roll_number || '-'}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 uppercase">
+                                {student.name.charAt(0)}
+                              </div>
+                              <span className="font-medium text-sm text-slate-800">{student.name}</span>
+                            </div>
                           </div>
-                          <span className="font-medium text-sm">{student.name}</span>
-                        </div>
-                        <div className="col-span-4 flex justify-center gap-1 sm:gap-2">
+                          <div className="flex justify-end gap-1 sm:gap-2 pr-1">
                           <button 
                             onClick={() => handleMark(student.id, 'P')}
                             className={`w-8 h-8 sm:w-10 sm:h-10 rounded text-xs font-bold transition-colors ${attendance[student.id] === 'P' ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-400 hover:bg-green-100 hover:text-green-600'}`}
@@ -264,6 +254,12 @@ export default function DailyAttendanceMarking() {
                             className={`w-8 h-8 sm:w-10 sm:h-10 rounded text-xs font-bold transition-colors ${attendance[student.id] === 'L' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-blue-100 hover:text-blue-500'}`}
                           >
                             L
+                          </button>
+                          <button 
+                            onClick={() => handleMark(student.id, 'H')}
+                            className={`w-8 h-8 sm:w-10 sm:h-10 rounded text-xs font-bold transition-colors ${attendance[student.id] === 'H' ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-purple-100 hover:text-purple-500'}`}
+                          >
+                            H
                           </button>
                         </div>
                       </div>

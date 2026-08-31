@@ -10,7 +10,10 @@ import {
   AlertCircle, 
   Plus, 
   Trash2, 
-  Eye, 
+  Eye,
+  MoreHorizontal,
+  Edit,
+  RotateCcw, 
   FileSpreadsheet,
   ArrowRight,
   BookOpen,
@@ -23,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -30,6 +34,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -78,6 +89,7 @@ export default function ScheduledTasks() {
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [filterClass, setFilterClass] = useState('all');
   const [filterSubject, setFilterSubject] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -104,11 +116,16 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
   const [allSubjects, setAllSubjects] = useState<{id: string, name: string}[]>([]);
 
   const [importSessionId, setImportSessionId] = useState('none');
+  const [importInchargeId, setImportInchargeId] = useState<string>('none');
+  const [inchargeOptions, setInchargeOptions] = useState<{id: string, name: string}[]>([]);
   const [availableSessions, setAvailableSessions] = useState<{id: string, title: string}[]>([]);
   
   // Dashboard Metricsk View Modal
   const [selectedTask, setSelectedTask] = useState<ScheduledTask | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<ScheduledTask | null>(null);
+  const [editTaskForm, setEditTaskForm] = useState({ title: '', subject_name: '', creation_date: '', deadline: '' });
 
   // Helper date formatter
   const formatExcelDate = (excelDate: any): string => {
@@ -133,8 +150,17 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
       const fetchLookups = async () => {
         const { data: configs } = await (supabase as any).from('reward_configurations').select('task_type, rate_per_task');
         if (configs) setRewardConfigs(configs);
-        const { data: subs } = await (supabase as any).from('subjects').select('id, name').order('name');
+        const { data: subs } = await (supabase as any).from('subjects').select('id, name').order('full_name');
         if (subs) setAllSubjects(subs);
+        
+        const { data: profiles } = await (supabase as any)
+          .from('user_profiles')
+          .select('id, full_name, role_id')
+          .in('role_id', [1, 2, 3, 4])
+          .order('full_name');
+        if (profiles) {
+            setInchargeOptions(profiles.map((p: any) => ({ id: p.id, name: p.full_name })));
+          }
       };
       fetchLookups();
     }, []);
@@ -147,7 +173,7 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
           .from('classes')
           .select('id, name')
           .neq('name', '__SYSTEM_DEV_MODE__')
-          .order('name');
+          .order('full_name');
         if (data) setClasses(data);
       } catch (e) {
         console.error('Error loading classes:', e);
@@ -312,7 +338,7 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
         .from('wes_scheduled_tasks')
         .insert(previewTasks.map(t => ({
           title: t.title,
-          description: t.description + (importSubmissionRequirements.length > 0 ? `\n\n__REQS[${encodeURIComponent(JSON.stringify(importSubmissionRequirements))}]__\n\n__TYPE[${importTaskType}]__\n\n__YEAR[${importAcademicYear}]__\n\n__SESSION[${importSessionId}]__\n\n__EARNING[${importEarningAmount}]__` : ''),
+          description: t.description + (importSubmissionRequirements.length > 0 ? `\n\n__REQS[${encodeURIComponent(JSON.stringify(importSubmissionRequirements))}]__\n\n__TYPE[${importTaskType}]__\n\n__YEAR[${importAcademicYear}]__\n\n__SESSION[${importSessionId}]__\n\n__INCHARGE[${importInchargeId}]__\n\n__EARNING[${importEarningAmount}]__` : ''),
           class_name: t.class_name,
           subject_name: t.subject_name,
           creation_date: t.creation_date,
@@ -344,22 +370,130 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
     }
   };
 
-  // Delete Single Scheduled Task from DB
-  const handleDeleteTask = async (id: string) => {
-    try {
-      const { error } = await (supabase as any)
-        .from('wes_scheduled_tasks')
-        .delete()
-        .eq('id', id);
-      if (error) { toast.error(`Delete failed: ${error.message}`); return; }
-      setScheduledTasks(prev => prev.filter(t => t.id !== id));
-      toast.success('Scheduled task deleted');
-    } catch (e) {
-      toast.error('Failed to delete task');
+  
+  const handleDeleteSelectedTasks = async () => {
+    if (selectedTasks.length === 0) return;
+    if (window.confirm(`⚠️ Delete ${selectedTasks.length} selected task(s)?\n\nIf these tasks were already assigned to students, they will also be permanently removed from their portals.\n\nClick OK to confirm.`)) {
+      try {
+        const tasksToDelete = scheduledTasks.filter(t => selectedTasks.includes(t.id));
+        const taskTitles = tasksToDelete.map(t => t.title);
+
+        const { error } = await (supabase as any)
+          .from('wes_scheduled_tasks')
+          .delete()
+          .in('id', selectedTasks);
+          
+        if (error) { toast.error(`Delete failed: ${error.message}`); return; }
+
+        // Also delete from student_task_feedback if published
+        if (taskTitles.length > 0) {
+          const { error: fbError } = await (supabase as any)
+            .from('student_task_feedback')
+            .delete()
+            .in('task_name', taskTitles);
+          if (fbError) console.error('Failed to delete from feedback table:', fbError);
+        }
+
+        setScheduledTasks(prev => prev.filter(t => !selectedTasks.includes(t.id)));
+        setSelectedTasks([]);
+        toast.success(`Deleted ${selectedTasks.length} task(s) successfully`);
+      } catch (e) {
+        toast.error('Failed to delete tasks');
+      }
     }
   };
 
-  // Publish Task to ALL students in the class (same as AddTask — one row per student)
+  
+  const handleUndoPublish = async (task: ScheduledTask) => {
+    if (window.confirm(`⚠️ Undo publishing for "${task.title}"?\n\nThis will instantly remove the task from all students' dashboards.\n\nClick OK to confirm.`)) {
+      try {
+        const { error: fbError } = await (supabase as any)
+          .from('student_task_feedback')
+          .delete()
+          .eq('task_name', task.title);
+        if (fbError) throw new Error(fbError.message);
+
+        // We must push the creation_date to tomorrow, otherwise it will instantly show up as "Published" again
+        // due to the Auto-Assign logic that considers any past date as published.
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowIso = tomorrow.toISOString().split('T')[0];
+        const todayIso = new Date().toISOString().split('T')[0];
+        
+        const newCreationDate = task.creation_date <= todayIso ? tomorrowIso : task.creation_date;
+
+        const { error: scheduleError } = await (supabase as any)
+          .from('wes_scheduled_tasks')
+          .update({ status: 'scheduled', creation_date: newCreationDate })
+          .eq('id', task.id);
+        if (scheduleError) throw new Error(scheduleError.message);
+
+        setScheduledTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: 'scheduled', creation_date: newCreationDate } : t));
+        toast.success(`Task "${task.title}" has been unpublished.` + (newCreationDate !== task.creation_date ? ` Date moved to ${newCreationDate} to prevent auto-publishing.` : ''));
+      } catch (e: any) {
+        toast.error(`Failed to undo publish: ${e.message}`);
+      }
+    }
+  };
+
+  const handleDeleteSingle = async (task: ScheduledTask) => {
+    if (window.confirm(`⚠️ Delete "${task.title}"?\n\nIf this task was already assigned to students, it will also be permanently removed from their portals.\n\nClick OK to confirm.`)) {
+      try {
+        const { error: scheduledError } = await (supabase as any)
+          .from('wes_scheduled_tasks')
+          .delete()
+          .eq('id', task.id);
+        if (scheduledError) throw new Error(scheduledError.message);
+
+        const { error: fbError } = await (supabase as any)
+          .from('student_task_feedback')
+          .delete()
+          .eq('task_name', task.title);
+        if (fbError) console.error('Failed to delete from feedback table:', fbError);
+
+        setScheduledTasks(prev => prev.filter(t => t.id !== task.id));
+        toast.success(`Deleted task successfully`);
+      } catch (e: any) {
+        toast.error(`Failed to delete task: ${e.message}`);
+      }
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTask) return;
+    try {
+      const { error: updateError } = await (supabase as any)
+        .from('wes_scheduled_tasks')
+        .update({
+          title: editTaskForm.title,
+          subject_name: editTaskForm.subject_name,
+          creation_date: editTaskForm.creation_date,
+          deadline: editTaskForm.deadline
+        })
+        .eq('id', editingTask.id);
+      if (updateError) throw new Error(updateError.message);
+
+      const isPastOrToday = editingTask.creation_date <= todayIso;
+      const isPublished = editingTask.status === 'published' || isPastOrToday;
+      if (isPublished) {
+        const { error: fbError } = await (supabase as any)
+          .from('student_task_feedback')
+          .update({
+            task_name: editTaskForm.title,
+            deadline: `${editTaskForm.deadline}T23:59:59Z`
+          })
+          .eq('task_name', editingTask.title);
+        if (fbError) console.error('Failed to sync edit to students:', fbError);
+      }
+
+      setScheduledTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...editTaskForm } : t));
+      setEditDialogOpen(false);
+      toast.success('Task updated successfully');
+    } catch (e: any) {
+      toast.error(`Failed to update task: ${e.message}`);
+    }
+  };
+
   const handlePublishNow = async (task: ScheduledTask) => {
     try {
       // 1. Find the class record by name
@@ -428,6 +562,7 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
       let finalType = 'general';
       let finalYear = task.academic_year || selectedYear;
       let finalSessionId = null;
+      let finalInchargeId = null;
       let finalEarningAmount = 5;
       
       const reqMatch = finalDesc.match(/__REQS\[(.*?)\]__/);
@@ -465,6 +600,7 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
         task_id: generatedTaskId,
         deadline: task.deadline ? `${task.deadline}T23:59:59Z` : new Date().toISOString(),
         session_id: finalSessionId,
+          created_by: finalInchargeId,
           earning_amount: finalEarningAmount,
           status: 'pending',
         feedback_type: finalType,
@@ -554,31 +690,16 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
           </div>
 
           <div className="flex items-center gap-2">
-            {scheduledTasks.length > 0 && (
-              <Button
-                variant="destructive"
-                className="gap-2 font-semibold"
-                onClick={async () => {
-                  if (window.confirm(`⚠️ Delete ALL ${scheduledTasks.length} scheduled tasks from database?\n\nThis cannot be undone. Click OK to confirm.`)) {
-                    try {
-                      const { error } = await (supabase as any)
-                        .from('wes_scheduled_tasks')
-                        .delete()
-                        .neq('id', '00000000-0000-0000-0000-000000000000'); // delete all rows
-                      if (error) { toast.error(`Failed: ${error.message}`); return; }
-                      setScheduledTasks([]);
-                      localStorage.removeItem('wes_scheduled_tasks_v2');
-                      toast.success('All scheduled tasks cleared from database. You can now re-import.');
-                    } catch (e) {
-                      toast.error('Failed to clear tasks');
-                    }
-                  }
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-                Clear All ({scheduledTasks.length})
-              </Button>
-            )}
+            {selectedTasks.length > 0 && (
+                <Button
+                  variant="destructive"
+                  className="gap-2 font-semibold"
+                  onClick={handleDeleteSelectedTasks}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete Selected ({selectedTasks.length})
+                </Button>
+              )}
 
             <Button 
               variant="outline" 
@@ -668,8 +789,20 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
                         </Select>
                       </div>
                       
+                      
                       <div className="space-y-1.5">
-                        <Label>Linked Session (Optional)</Label>
+                        <Label>Incharge (Optional)</Label>
+                        <Select value={importInchargeId} onValueChange={setImportInchargeId}>
+                          <SelectTrigger><SelectValue placeholder="No Incharge" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {inchargeOptions.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                        <div className="space-y-1.5">
+                          <Label>Linked Session (Optional)</Label>
                         <Select value={importSessionId} onValueChange={setImportSessionId}>
                           <SelectTrigger><SelectValue placeholder="No Session" /></SelectTrigger>
                           <SelectContent>
@@ -940,18 +1073,18 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
 
                 {/* Filter Subject */}
                 <div className="w-44">
-                  <Select value={filterSubject} onValueChange={setFilterSubject}>
-                    <SelectTrigger className="h-9 text-xs">
-                      <SelectValue placeholder="Filter by Subject" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Subjects</SelectItem>
-                      <SelectItem value="Azure (Specialization)">Azure (Specialization)</SelectItem>
-                      <SelectItem value="English Com and Soft Skill">English Com and Soft Skill</SelectItem>
-                      <SelectItem value="Artificial Intelligence">Artificial Intelligence</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                    <Select value={filterSubject} onValueChange={setFilterSubject}>
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue placeholder="Filter by Subject" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Subjects</SelectItem>
+                        {Array.from(new Set([...allSubjects.map(s => s.name), ...scheduledTasks.map(t => t.subject_name)])).sort().map(s => (
+                          <SelectItem key={s} value={s}>{s}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
                 {/* Filter Status */}
                 <div className="w-40">
@@ -988,6 +1121,18 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">
+                        <Checkbox 
+                          checked={filteredTasks.length > 0 && selectedTasks.length === filteredTasks.slice(0, 100).length}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedTasks(filteredTasks.slice(0, 100).map(t => t.id));
+                            } else {
+                              setSelectedTasks([]);
+                            }
+                          }}
+                        />
+                      </TableHead>
                       <TableHead>Task ID</TableHead>
                       <TableHead>Task Title</TableHead>
                       <TableHead>Class / Designation</TableHead>
@@ -1004,7 +1149,19 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
                       const isPublished = t.status === 'published' || isPastOrToday;
 
                       return (
-                        <TableRow key={t.id}>
+                        <TableRow key={t.id} className={selectedTasks.includes(t.id) ? "bg-muted/50" : ""}>
+                          <TableCell>
+                            <Checkbox 
+                              checked={selectedTasks.includes(t.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedTasks([...selectedTasks, t.id]);
+                                } else {
+                                  setSelectedTasks(selectedTasks.filter(id => id !== t.id));
+                                }
+                              }}
+                            />
+                          </TableCell>
                           <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
                             {getCleanTaskId(t, idx)}
                           </TableCell>
@@ -1041,42 +1198,54 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
                             )}
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  setSelectedTask(t);
-                                  setViewDialogOpen(true);
-                                }}
-                                title="View Details"
-                                className="h-8 w-8 p-0"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" className="h-8 w-8 p-0">
+                                    <span className="sr-only">Open menu</span>
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => {
+                                    setSelectedTask(t);
+                                    setViewDialogOpen(true);
+                                  }}>
+                                    <Eye className="mr-2 h-4 w-4" /> View Details
+                                  </DropdownMenuItem>
+                                  
+                                  <DropdownMenuItem onClick={() => {
+                                    setEditingTask(t);
+                                    setEditTaskForm({
+                                      title: t.title,
+                                      subject_name: t.subject_name,
+                                      creation_date: t.creation_date,
+                                      deadline: t.deadline || t.creation_date
+                                    });
+                                    setEditDialogOpen(true);
+                                  }}>
+                                    <Edit className="mr-2 h-4 w-4" /> Edit Task
+                                  </DropdownMenuItem>
 
-                              {!isPublished && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handlePublishNow(t)}
-                                  className="h-7 text-xs gap-1 border-emerald-600 text-emerald-700 hover:bg-emerald-50"
-                                >
-                                  Publish Now
-                                </Button>
-                              )}
+                                  {!isPublished && (
+                                    <DropdownMenuItem onClick={() => handlePublishNow(t)}>
+                                      <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" /> Publish Now
+                                    </DropdownMenuItem>
+                                  )}
 
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDeleteTask(t.id)}
-                                title="Delete Task"
-                                className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
+                                  {isPublished && (
+                                    <DropdownMenuItem onClick={() => handleUndoPublish(t)}>
+                                      <RotateCcw className="mr-2 h-4 w-4 text-amber-600" /> Undo Publish
+                                    </DropdownMenuItem>
+                                  )}
+
+                                  <DropdownMenuSeparator />
+                                  
+                                  <DropdownMenuItem onClick={() => handleDeleteSingle(t)} className="text-destructive focus:text-destructive">
+                                    <Trash2 className="mr-2 h-4 w-4" /> Delete Task
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
                         </TableRow>
                       );
                     })}
@@ -1131,7 +1300,69 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
-    </DashboardLayout>
+      
+          {/* Edit Task Dialog */}
+          <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Edit Task</DialogTitle>
+                <DialogDescription>
+                  Modify the details of this scheduled task. Changes to published tasks will automatically update student dashboards.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Task Title</Label>
+                  <Input 
+                    value={editTaskForm.title} 
+                    onChange={e => setEditTaskForm({...editTaskForm, title: e.target.value})}
+                  />
+                </div>
+                                  <div className="space-y-2">
+                    <Label>Subject</Label>
+                    <Select 
+                      value={editTaskForm.subject_name} 
+                      onValueChange={val => setEditTaskForm({...editTaskForm, subject_name: val})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Subject" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allSubjects.map(s => (
+                          <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Assign Date</Label>
+                    <Input 
+                      type="date"
+                      value={editTaskForm.creation_date} 
+                      onChange={e => setEditTaskForm({...editTaskForm, creation_date: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Deadline</Label>
+                    <Input 
+                      type="date"
+                      value={editTaskForm.deadline} 
+                      onChange={e => setEditTaskForm({...editTaskForm, deadline: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleSaveEdit}>Save Changes</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+        </div>
+      </DashboardLayout>
   );
 }
