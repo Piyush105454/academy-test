@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, MoreVertical, Eye, Plus, Search, X, GraduationCap, Upload, Check, ChevronsUpDown, ExternalLink, Download } from 'lucide-react';
+import { FileText, MoreVertical, Eye, Plus, Search, X, GraduationCap, Upload, Check, ChevronsUpDown, ExternalLink, Download, Video } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -55,6 +55,9 @@ interface FeedbackSession {
   volunteer_name: string;
   volunteer_id?: string | null;
   organization_name?: string | null;
+  centre_name?: string | null;
+  session_strength?: number | null;
+  recorded_at?: string | null;
   coordinator_name: string | null;
   status: string;
   topics_covered: string | null;
@@ -80,6 +83,21 @@ interface FeedbackSession {
   supervisor_feedback_status?: string;
   admin_feedback_status?: string;
 }
+
+
+const isDelayed = (session: any) => {
+  const isDone = session.status === 'completed';
+  if (isDone && session.recorded_at) {
+    const sessionDateStr = session.session_date;
+    const recordedDateStr = new Date(session.recorded_at).toISOString().split('T')[0];
+    return recordedDateStr > sessionDateStr;
+  }
+  if (!isDone) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    return session.session_date < todayStr;
+  }
+  return false;
+};
 
 export default function FeedbackSelection() {
   const navigate = useNavigate();
@@ -150,6 +168,7 @@ export default function FeedbackSelection() {
           coordinators:coordinator_id(name),
           subjects(name),
           volunteers:volunteer_id(name, organization_name),
+          centres:centre_id(name),
           session_hours_tracker(plan_coordinate_hours, preparation_hours, session_hours, reflection_feedback_followup_hours, total_volunteering_time, logged_hours_in_benevity, notes)
         `)
         .not('recorded_at', 'is', null)
@@ -171,6 +190,7 @@ export default function FeedbackSelection() {
           coordinator_name: session.coordinators?.name || null,
           subject_name: session.subjects?.name || null,
           organization_name: orgName,
+          centre_name: session.centres?.name || null,
         };
       });
 
@@ -745,87 +765,96 @@ export default function FeedbackSelection() {
               <div className="overflow-x-auto border border-border rounded-lg">
                 <Table className="text-xs">
                   <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="font-bold min-w-[220px] w-[220px]">Session ID</TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleColumnSort('subject_name')}>
-                        Subject {getSortIndicator('subject_name')}
-                      </TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleColumnSort('content_category')}>
-                        Category {getSortIndicator('content_category')}
-                      </TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleColumnSort('module_name')}>
-                        Module No & Name {getSortIndicator('module_name')}
-                      </TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleColumnSort('topics_covered')}>
-                        Topics Covered {getSortIndicator('topics_covered')}
-                      </TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleColumnSort('volunteer_name')}>
-                        Volunteer {getSortIndicator('volunteer_name')}
-                      </TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleColumnSort('organization_name')}>
-                        Organisation {getSortIndicator('organization_name')}
-                      </TableHead>
-                      <TableHead>Coordinator</TableHead>
-                      <TableHead>Facilitator</TableHead>
-                      <TableHead>Class</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Facilitator Status</TableHead>
-                      <TableHead>Coordinator Status</TableHead>
-                      <TableHead>Supervisor Status</TableHead>
-                      <TableHead className="w-[60px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="font-bold min-w-[150px]">Session ID</TableHead>
+                        <TableHead className="min-w-[100px]">Subject</TableHead>
+                        <TableHead className="min-w-[100px]">Category</TableHead>
+                        <TableHead className="min-w-[150px]">Module No & Name</TableHead>
+                        <TableHead className="min-w-[150px]">Topics Covered</TableHead>
+                        <TableHead className="min-w-[80px]">Type</TableHead>
+                        <TableHead className="min-w-[100px]">Volunteer</TableHead>
+                        <TableHead className="min-w-[100px]">Organisation</TableHead>
+                        <TableHead className="min-w-[100px]">Coordinator</TableHead>
+                        <TableHead className="min-w-[100px]">Facilitator</TableHead>
+                        <TableHead className="min-w-[80px]">Class</TableHead>
+                        <TableHead className="min-w-[100px]">Centre</TableHead>
+                        <TableHead className="min-w-[80px]">Strength</TableHead>
+                        <TableHead className="min-w-[100px]">Date</TableHead>
+                        <TableHead className="min-w-[100px]">Time</TableHead>
+                        <TableHead className="min-w-[100px] text-center">Recording</TableHead>
+                        <TableHead className="min-w-[100px] text-center">Meeting</TableHead>
+                        <TableHead className="min-w-[120px]">Status</TableHead>
+                        <TableHead className="min-w-[80px]">Delayed</TableHead>
+                        <TableHead className="w-[60px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
                   <TableBody>
                     {filteredSessions.map((session) => (
                       <TableRow key={session.id} className="hover:bg-muted/50">
-                        <TableCell className="py-2 min-w-[220px] w-[220px]">
-                          <Badge 
-                            variant="outline" 
-                            className="font-mono text-[11px] bg-primary/10 text-primary border-primary/20 font-bold px-2 py-0.5 whitespace-nowrap inline-block"
-                            title={`Full Database UUID: ${session.id}`}
-                          >
-                            {session.session_id_code || `#${session.id.slice(0, 8).toUpperCase()}`}
-                          </Badge>
+                        <TableCell className="font-medium text-primary">
+                          {session.session_id_code || '---'}
                         </TableCell>
-                        <TableCell 
-                          className="cursor-pointer font-medium text-primary hover:underline"
-                          onClick={() => handleViewDetails(session.id)}
-                        >
-                          <TruncatedText text={session.subject_name} maxLength={20} />
+                        <TableCell>{session.subject_name || '-'}</TableCell>
+                        <TableCell>{session.content_category || '-'}</TableCell>
+                        <TableCell>{session.module_no ? `${session.module_no} - ${session.module_name || ''}` : session.module_name || '-'}</TableCell>
+                        <TableCell className="max-w-[150px] truncate" title={session.topics_covered || ''}>
+                          {session.topics_covered || '-'}
                         </TableCell>
-                        <TableCell><TruncatedText text={session.content_category} maxLength={20} /></TableCell>
-                        <TableCell><TruncatedText text={session.module_name} maxLength={20} /></TableCell>
-                        <TableCell><TruncatedText text={session.topics_covered} maxLength={30} /></TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-[10px] h-5 px-1 whitespace-nowrap">
-                            {session.session_type === 'guest_speaker' ? 'GS' : session.session_type === 'local_teacher' ? 'LT' : 'GT'}
+                          <Badge variant="outline" >
+                            {session.session_type}
                           </Badge>
                         </TableCell>
-                        <TableCell><TruncatedText text={session.volunteer_name} maxLength={15} /></TableCell>
-                        <TableCell><TruncatedText text={session.organization_name} maxLength={15} /></TableCell>
-                        <TableCell><TruncatedText text={session.coordinator_name} maxLength={15} /></TableCell>
-                        <TableCell><TruncatedText text={session.facilitator_name} maxLength={15} /></TableCell>
+                        <TableCell>{session.volunteer_name || '-'}</TableCell>
+                        <TableCell>{session.organization_name || '-'}</TableCell>
+                        <TableCell>{session.coordinator_name || '-'}</TableCell>
+                        <TableCell>{session.facilitator_name || '-'}</TableCell>
                         <TableCell>{session.class_batch || '-'}</TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {new Date(session.session_date).toLocaleDateString('en-GB')}
+                        <TableCell>{session.centre_name || '-'}</TableCell>
+                        <TableCell className="text-center">{session.session_strength ?? '-'}</TableCell>
+                        <TableCell>{new Date(session.session_date).toLocaleDateString("en-GB")}</TableCell>
+                        <TableCell>{session.session_time || '-'}</TableCell>
+                        
+                        <TableCell className="text-center">
+                          {session.recording_url ? (
+                            <a href={session.recording_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-md transition-colors font-medium">
+                              <Video className="h-3.5 w-3.5" />
+                              View
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground text-xs italic">-</span>
+                          )}
                         </TableCell>
-                        <TableCell>{getStatusBadge(session.facilitator_feedback_status)}</TableCell>
-                        <TableCell>{getStatusBadge(session.coordinator_feedback_status)}</TableCell>
-                        <TableCell>{getStatusBadge(session.supervisor_feedback_status)}</TableCell>
+
+                        <TableCell className="text-center">
+                          {session.meeting_link ? (
+                            <a href={session.meeting_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center p-1.5 rounded-full hover:bg-slate-100 transition-colors text-primary" title="Join Meeting">
+                              <Video className="h-4 w-4" />
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground text-xs italic">-</span>
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          {getStatusBadge(session.status)}
+                        </TableCell>
+
+                        <TableCell className="text-center">
+                          {isDelayed(session) ? <Badge variant="destructive">Yes</Badge> : <Badge variant="secondary">No</Badge>}
+                        </TableCell>
+
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Open menu</span>
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleViewDetails(session.id)}>
-                                <Eye className="h-4 w-4 mr-2" /> View
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleAddFeedback(session.id)}>
-                                <Plus className="h-4 w-4 mr-2" /> Edit
+                              <DropdownMenuItem onClick={() => navigate(`/sessions/${session.id}/feedback-details`)}>
+                                <Eye className="mr-2 h-4 w-4" /> View Record
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>

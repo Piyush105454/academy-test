@@ -325,7 +325,7 @@ export default function Tasks() {
     // Month filter
     if (filterMonth !== 'all') {
       filtered = filtered.filter((t) => {
-        const rawDate = t.due_date && t.due_date.trim() !== '' ? t.due_date : t.created_at;
+        const rawDate = t.created_at;
         if (!rawDate || rawDate.trim() === '') return false;
         const dateToUse = new Date(rawDate);
         if (isNaN(dateToUse.getTime())) return false;
@@ -607,7 +607,8 @@ export default function Tasks() {
 
         if (filterMonth !== 'all') {
           const m = Number(filterMonth);
-          const yearNum = m >= 4 ? 2026 : 2027;
+          const parts = selectedYear.split('-');
+          const yearNum = m >= 4 ? parseInt(parts[0], 10) : 2000 + parseInt(parts[1], 10);
           const monthStart = new Date(Date.UTC(yearNum, m - 1, 1, 0, 0, 0)).toISOString();
           const monthEnd = new Date(Date.UTC(yearNum, m, 0, 23, 59, 59, 999)).toISOString();
           q = q.gte('created_at', monthStart).lte('created_at', monthEnd);

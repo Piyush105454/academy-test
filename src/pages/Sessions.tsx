@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Upload, MoreVertical, GraduationCap, FileText, Edit, Film, Search, X, ExternalLink, Lock, Unlock } from 'lucide-react';
+import { Plus, Trash2, Upload, MoreVertical, GraduationCap, FileText, Edit, Film, Search, X, ExternalLink, Lock, Unlock, Video } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { logActivity } from '@/utils/activityLogger';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -80,6 +80,13 @@ interface Session {
   centre_time_slot_id: string | null;
   class_batch: string | null;
   centre_name?: string | null;
+  organization_name?: string | null;
+  module_no?: string | null;
+  session_strength?: number | null;
+  facilitator_feedback_status?: string | null;
+  coordinator_feedback_status?: string | null;
+  supervisor_feedback_status?: string | null;
+  recorded_at?: string | null;
   centre_location?: string | null;
   centre_email?: string | null;
   slot_day?: string | null;
@@ -105,7 +112,51 @@ const getLocalDateString = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+
+const getCurrentMonthBounds = () => {
+  const today = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fromStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-01`;
+  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const toStr = `${lastDay.getFullYear()}-${pad(lastDay.getMonth() + 1)}-${pad(lastDay.getDate())}`;
+  return { fromStr, toStr };
+};
+const initialBounds = getCurrentMonthBounds();
+
+
+const isDelayed = (session: any) => {
+  const isDone = session.facilitator_feedback_status === 'completed' || session.status === 'completed';
+  if (isDone && session.recorded_at) {
+    const sessionDateStr = session.session_date;
+    const recordedDateStr = new Date(session.recorded_at).toISOString().split('T')[0];
+    return recordedDateStr > sessionDateStr;
+  }
+  if (!isDone) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    return session.session_date < todayStr;
+  }
+  return false;
+};
+
 export default function Sessions() {
+
+  const getStatusColor = (status) => {
+    if (!status) return 'bg-gray-100 text-gray-800';
+    switch (status.toLowerCase()) {
+      case 'completed':
+      case 'done':
+      case 'submitted':
+        return 'bg-green-100 text-green-800 hover:bg-green-200 border-green-200';
+      case 'pending':
+      case 'committed':
+        return 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 border-yellow-200';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800 hover:bg-red-200 border-red-200';
+      default:
+        return 'bg-gray-100 text-gray-800 hover:bg-gray-200 border-gray-200';
+    }
+  };
+
   const navigate = useNavigate();
   const { user } = useAuth();
   const [userRole, setUserRole] = useState<number | null>(null);
@@ -145,8 +196,8 @@ export default function Sessions() {
   const [coordinatorFilter, setCoordinatorFilter] = useState<string | null>(null);
   const [categorySort, setCategorySort] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [dateFromFilter, setDateFromFilter] = useState<string>('');
-  const [dateToFilter, setDateToFilter] = useState<string>('');
+  const [dateFromFilter, setDateFromFilter] = useState<string>(initialBounds.fromStr);
+  const [dateToFilter, setDateToFilter] = useState<string>(initialBounds.toStr);
   const [sessionTypeFilter, setSessionTypeFilter] = useState<string | null>(null);
   const [subjectFilter, setSubjectFilter] = useState<string | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof Session | null>('session_date');
@@ -219,7 +270,8 @@ export default function Sessions() {
           coordinators:coordinator_id(name, email),
           centres:centre_id(name, location, email),
           centre_time_slots:centre_time_slot_id(day, start_time, end_time),
-          subjects(name)
+          subjects(name),
+          volunteers:volunteer_id(organization_name)
         `)
         .order('session_date', { ascending: true });
 
@@ -230,6 +282,7 @@ export default function Sessions() {
         ...session,
         coordinator_name: session.coordinators?.name || null,
         coordinator_email: session.coordinators?.email || null,
+          organization_name: session.volunteers?.organization_name || null,
         centre_name: session.centres?.name || null,
         centre_location: session.centres?.location || null,
         centre_email: session.centres?.email || null,
@@ -806,65 +859,26 @@ export default function Sessions() {
                   <Table className="w-full text-sm">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="min-w-[220px] w-[220px] font-bold">Session ID</TableHead>
-                        <TableHead className="min-w-[80px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('subject_name')}>
-                          <div className="flex items-center gap-1">
-                            Subject
-                            <span className={sortColumn === 'subject_name' ? 'font-bold' : 'text-muted-foreground'}>
-                              {getSortIndicator('subject_name')}
-                            </span>
-                          </div>
-                        </TableHead>
-                        <TableHead className="min-w-[70px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('content_category')}>
-                          <div className="flex items-center gap-1">
-                            Category
-                            <span className={sortColumn === 'content_category' ? 'font-bold' : 'text-muted-foreground'}>
-                              {getSortIndicator('content_category')}
-                            </span>
-                          </div>
-                        </TableHead>
-                        <TableHead className="min-w-[70px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('module_name')}>
-                          <div className="flex items-center gap-1">
-                            Module No & Module Name
-                            <span className={sortColumn === 'module_name' ? 'font-bold' : 'text-muted-foreground'}>
-                              {getSortIndicator('module_name')}
-                            </span>
-                          </div>
-                        </TableHead>
-                        <TableHead className="min-w-[70px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('topics_covered')}>
-                          <div className="flex items-center gap-1">
-                            Topics Covered
-                            <span className={sortColumn === 'topics_covered' ? 'font-bold' : 'text-muted-foreground'}>
-                              {getSortIndicator('topics_covered')}
-                            </span>
-                          </div>
-                        </TableHead>
-                        <TableHead className="min-w-[40px]">Type</TableHead>
-                        <TableHead className="min-w-[70px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('volunteer_name')}>
-                          <div className="flex items-center gap-1">
-                            Volunteer
-                            <span className={sortColumn === 'volunteer_name' ? 'font-bold' : 'text-muted-foreground'}>
-                              {getSortIndicator('volunteer_name')}
-                            </span>
-                          </div>
-                        </TableHead>
-                        <TableHead className="min-w-[70px]">Coordinator</TableHead>
-                        <TableHead className="min-w-[70px]">Facilitator</TableHead>
-                        <TableHead className="min-w-[60px]">Class</TableHead>
-                        <TableHead className="min-w-[70px]">Centre</TableHead>
-                        <TableHead className="min-w-[70px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('session_date')}>
-                          <div className="flex items-center gap-1">
-                            Date
-                            <span className={sortColumn === 'session_date' ? 'font-bold' : 'text-muted-foreground'}>
-                              {getSortIndicator('session_date')}
-                            </span>
-                          </div>
-                        </TableHead>
-                        <TableHead className="min-w-[70px]">Time</TableHead>
-                        <TableHead className="min-w-[60px]">Recording</TableHead>
-                        <TableHead className="min-w-[50px]">Meeting</TableHead>
-                        <TableHead className="min-w-[60px]">Status</TableHead>
-                        <TableHead className="min-w-[50px]">Actions</TableHead>
+                        <TableHead className="min-w-[150px] font-bold">Session ID</TableHead>
+                        <TableHead className="min-w-[100px]">Subject</TableHead>
+                        <TableHead className="min-w-[100px]">Category</TableHead>
+                        <TableHead className="min-w-[150px]">Module No & Name</TableHead>
+                        <TableHead className="min-w-[150px]">Topics Covered</TableHead>
+                        <TableHead className="min-w-[80px]">Type</TableHead>
+                        <TableHead className="min-w-[100px]">Volunteer</TableHead>
+                        <TableHead className="min-w-[100px]">Organisation</TableHead>
+                        <TableHead className="min-w-[100px]">Coordinator</TableHead>
+                        <TableHead className="min-w-[100px]">Facilitator</TableHead>
+                        <TableHead className="min-w-[80px]">Class</TableHead>
+                        <TableHead className="min-w-[100px]">Centre</TableHead>
+                        <TableHead className="min-w-[80px]">Strength</TableHead>
+                        <TableHead className="min-w-[100px]">Date</TableHead>
+                        <TableHead className="min-w-[100px]">Time</TableHead>
+                        <TableHead className="min-w-[120px]">Facilitator Status</TableHead>
+                        <TableHead className="min-w-[120px]">Coordinator Status</TableHead>
+                        <TableHead className="min-w-[120px]">Supervisor Status</TableHead>
+                        <TableHead className="min-w-[80px]">Delayed</TableHead>
+                        <TableHead className="min-w-[80px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -880,151 +894,65 @@ export default function Sessions() {
 
                         return (
                         <TableRow key={session.id} className={rowBgClass}>
-                          <TableCell className="text-xs px-2 py-1 min-w-[220px] w-[220px]">
-                            <Badge 
-                              variant="outline" 
-                              className="font-mono text-[11px] bg-primary/10 text-primary border-primary/20 font-bold px-2 py-0.5 whitespace-nowrap inline-block"
-                              title={`Full Database UUID: ${session.id}`}
-                            >
-                              {session.session_id_code || `#${session.id.slice(0, 8).toUpperCase()}`}
+                          <TableCell className="font-medium text-primary">
+                            {session.session_id_code || '---'}
+                          </TableCell>
+                          <TableCell>{session.subject_name || '-'}</TableCell>
+                          <TableCell>{session.content_category || '-'}</TableCell>
+                          <TableCell>{session.module_no ? `${session.module_no} - ${session.module_name || ''}` : session.module_name || '-'}</TableCell>
+                          <TableCell className="max-w-[150px] truncate" title={session.topics_covered || ''}>
+                            {session.topics_covered || '-'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" >
+                              {session.session_type}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-xs px-2 py-1 max-w-[70px]">
-                            <div 
-                              onClick={() => navigate(`/sessions/${session.id}/recording`)}
-                              className="cursor-pointer hover:underline text-foreground"
-                              title="Go to Recording & Feedback"
-                            >
-                              <TruncatedText text={session.subject_name} maxLength={20} />
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs px-2 py-1 max-w-[70px]"><TruncatedText text={session.content_category} maxLength={20} /></TableCell>
-                          <TableCell className="text-xs px-2 py-1 max-w-[70px]"><TruncatedText text={session.module_name} maxLength={20} /></TableCell>
-                          <TableCell className="text-xs px-2 py-1 max-w-[70px]"><TruncatedText text={session.topics_covered} maxLength={20} /></TableCell>
-                          <TableCell className="px-2 py-1">
-                            <Badge variant="outline" className="text-xs whitespace-nowrap">
-                              {session.session_type === 'guest_speaker' ? 'GS' : session.session_type === 'local_teacher' ? 'LT' : 'GT'}
+                          <TableCell>{session.volunteer_name || '-'}</TableCell>
+                          <TableCell>{session.organization_name || '-'}</TableCell>
+                          <TableCell>{session.coordinator_name || '-'}</TableCell>
+                          <TableCell>{session.facilitator_name || '-'}</TableCell>
+                          <TableCell>{session.class_batch || '-'}</TableCell>
+                          <TableCell>{session.centre_name || '-'}</TableCell>
+                          <TableCell className="text-center">{session.session_strength ?? '-'}</TableCell>
+                          <TableCell>{new Date(session.session_date).toLocaleDateString("en-GB")}</TableCell>
+                          <TableCell>{session.session_time || '-'}</TableCell>
+                          <TableCell>
+                            <Badge className={getStatusColor(session.facilitator_feedback_status || session.status)}>
+                              {(session.facilitator_feedback_status || session.status).toUpperCase()}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-xs px-2 py-1 max-w-[70px]"><TruncatedText text={session.volunteer_name} maxLength={20} /></TableCell>
-                          <TableCell className="text-xs px-2 py-1 max-w-[70px]"><TruncatedText text={session.coordinator_name} maxLength={20} /></TableCell>
-                          <TableCell className="text-xs px-2 py-1 max-w-[70px]"><TruncatedText text={session.facilitator_name} maxLength={20} /></TableCell>
-                          <TableCell className="text-xs px-2 py-1 max-w-[60px]"><TruncatedText text={session.class_batch} maxLength={15} /></TableCell>
-                          <TableCell className="text-xs px-2 py-1 max-w-[70px]"><TruncatedText text={session.centre_name} maxLength={20} /></TableCell>
-                          <TableCell className="text-xs px-2 py-1 whitespace-nowrap">
-                            <div className="flex flex-col gap-0.5">
-                              <span>
-                                {new Date(session.session_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                              </span>
-                              {session.session_date === todayStr && (
-                                <span className="inline-flex items-center rounded px-1 py-0.5 text-[9px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 w-fit">
-                                  Today
-                                </span>
-                              )}
-                              {session.session_date === tomorrowStr && (
-                                <span className="inline-flex items-center rounded px-1 py-0.5 text-[9px] font-semibold bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 w-fit">
-                                  Tomorrow
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs px-2 py-1 whitespace-nowrap">
-                            {session.slot_start_time && session.slot_end_time 
-                              ? `${session.slot_start_time.slice(0, 5)}-${session.slot_end_time.slice(0, 5)}` 
-                              : '-'}
-                          </TableCell>
-                          <TableCell className="text-xs px-2 py-1">
-                            {session.recording_url ? (
-                              <a
-                                href={session.recording_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline whitespace-nowrap text-xs"
-                              >
-                                📹
-                              </a>
-                            ) : session.recording_status === 'pending' ? (
-                              <span className="text-xs">⏳</span>
-                            ) : session.recording_status === 'failed' ? (
-                              <span className="text-xs">❌</span>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs px-2 py-1">
-                            {session.meeting_link ? (
-                              <a
-                                href={session.meeting_link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline whitespace-nowrap text-xs"
-                              >
-                                🔗
-                              </a>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs px-2 py-1">
-                            <Badge 
-                              variant={
-                                session.status === 'completed' ? 'default' :
-                                session.status === 'rescheduled' ? 'secondary' :
-                                session.status === 'cancelled' ? 'destructive' :
-                                'outline'
-                              }
-                              className="text-xs whitespace-nowrap"
-                            >
-                              {session.status || '-'}
+                          <TableCell>
+                            <Badge className={getStatusColor(session.coordinator_feedback_status || 'pending')}>
+                              {(session.coordinator_feedback_status || 'pending').toUpperCase()}
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={getStatusColor(session.supervisor_feedback_status || 'pending')}>
+                              {(session.supervisor_feedback_status || 'pending').toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {isDelayed(session) ? <Badge variant="destructive">Yes</Badge> : <Badge variant="secondary">No</Badge>}
                           </TableCell>
                           <TableCell>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-6 w-6">
-                                  <MoreVertical className="h-3 w-3" />
+                                <Button variant="ghost" className="h-8 w-8 p-0">
+                                  <span className="sr-only">Open menu</span>
+                                  <MoreVertical className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="bg-popover">
-                                <DropdownMenuItem 
-                                  onClick={() => {
-                                    setSelectedSession(session);
-                                    setEditSessionDialogOpen(true);
-                                  }}
-                                >
-                                  <Edit className="h-3 w-3 mr-1" />
-                                  Edit Full
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => { setSelectedSession(session); setIsTypeDialogOpen(true); }}>
+                                  <Edit className="mr-2 h-4 w-4" /> Edit Type
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => handleEditStatus(session)}
-                                >
-                                  <Edit className="h-3 w-3 mr-1" />
-                                  Edit Status
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => navigate(`/sessions/${session.id}/recording`)}
-                                >
-                                  <FileText className="h-3 w-3 mr-1" />
-                                  Record
+                                <DropdownMenuItem onClick={() => navigate(`/sessions/${session.id}/recording`)}>
+                                  <Video className="mr-2 h-4 w-4" /> View Recording
                                 </DropdownMenuItem>
                                 {userRole === 1 && (
-                                  <DropdownMenuItem 
-                                    onClick={() => handleToggleFeedbackLock(session)}
-                                  >
-                                    {session.feedback_unlocked ? <Lock className="h-3 w-3 mr-1" /> : <Unlock className="h-3 w-3 mr-1" />}
-                                    {session.feedback_unlocked ? 'Lock Feedback' : 'Unlock Feedback'}
-                                  </DropdownMenuItem>
-                                )}
-                                {userRole === 1 && (
-                                  <DropdownMenuItem 
-                                    onClick={() => {
-                                      setSelectedSession(session);
-                                      setDeleteDialogOpen(true);
-                                    }}
-                                    className="text-destructive focus:text-destructive"
-                                  >
-                                    <Trash2 className="h-3 w-3 mr-1" />
-                                    Delete
+                                  <DropdownMenuItem onClick={() => { setSelectedSession(session); setDeleteDialogOpen(true); }} className="text-red-600">
+                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
                                   </DropdownMenuItem>
                                 )}
                               </DropdownMenuContent>
