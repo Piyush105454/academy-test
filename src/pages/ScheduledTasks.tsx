@@ -150,7 +150,7 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
       const fetchLookups = async () => {
         const { data: configs } = await (supabase as any).from('reward_configurations').select('task_type, rate_per_task');
         if (configs) setRewardConfigs(configs);
-        const { data: subs } = await (supabase as any).from('subjects').select('id, name').order('full_name');
+        const { data: subs } = await (supabase as any).from('subjects').select('id, name').order('name');
         if (subs) setAllSubjects(subs);
         
         const { data: profiles } = await (supabase as any)
@@ -171,9 +171,9 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
       try {
         const { data } = await supabase
           .from('classes')
-          .select('id, name')
-          .neq('name', '__SYSTEM_DEV_MODE__')
-          .order('full_name');
+            .select('id, name')
+            .neq('name', '__SYSTEM_DEV_MODE__')
+            .order('name');
         if (data) setClasses(data);
       } catch (e) {
         console.error('Error loading classes:', e);
@@ -260,7 +260,7 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
   }, [rawParsedTasks, selectedSheet, customSubjectOverride, targetClass]);
 
   // Handle Excel File Select & Parse
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -280,20 +280,58 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
 
         workbook.SheetNames.forEach((sheetName, sIdx) => {
           const sheet = workbook.Sheets[sheetName];
-          const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+          const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
 
           let subjectName = (sheetName.toLowerCase().includes('soft') || sheetName.toLowerCase().includes('english') || sIdx === 1)
             ? 'English Com and Soft Skill'
             : 'Azure (Specialization)';
 
+          if (rows.length < 2) return;
+
+          // Attempt to dynamically find column indices based on header row (row 0)
+          const headers = (rows[0] || []).map(h => String(h || '').toLowerCase().trim());
+          
+          let titleIdx = headers.findIndex(h => h.includes('title'));
+          let descIdx = headers.findIndex(h => h.includes('description') || h.includes('daily task') || h.includes('content') || h.includes('task detail'));
+          let assignIdx = headers.findIndex(h => h.includes('assign') || h.includes('creation') || h.includes('start'));
+          let deadlineIdx = headers.findIndex(h => h.includes('submission') || h.includes('deadline') || h.includes('end'));
+
           for (let i = 1; i < rows.length; i++) {
             const r = rows[i];
-            if (!r || r.length < 5) continue;
+            if (!r || r.length === 0) continue;
+            
+            // Skip entirely empty rows
+            if (r.every(cell => !cell || String(cell).trim() === '')) continue;
 
-            const title = r[7] || r[2] || r[0];
-            const desc = r[6] || r[3] || r[0];
-            const assignDate = formatExcelDate(r[8]);
-            const deadlineDate = formatExcelDate(r[9]);
+            let title = '';
+            let desc = '';
+            let rawAssign = '';
+            let rawDeadline = '';
+
+            // If headers were found, use them
+            if (titleIdx >= 0 && assignIdx >= 0) {
+              title = r[titleIdx];
+              desc = descIdx >= 0 ? r[descIdx] : r[titleIdx];
+              rawAssign = r[assignIdx];
+              rawDeadline = deadlineIdx >= 0 ? r[deadlineIdx] : r[assignIdx];
+            } 
+            // Fallback 1: 4-column format (Description, Title, Assign, Deadline)
+            else if (r.length <= 5 && r[1] && r[2]) {
+              desc = r[0];
+              title = r[1];
+              rawAssign = r[2];
+              rawDeadline = r[3];
+            }
+            // Fallback 2: Old robust 10+ column format
+            else {
+              title = r[7] || r[2] || r[0];
+              desc = r[6] || r[3] || r[0];
+              rawAssign = r[8];
+              rawDeadline = r[9];
+            }
+
+            const assignDate = formatExcelDate(rawAssign);
+            const deadlineDate = formatExcelDate(rawDeadline);
 
             if (title && assignDate) {
               parsedList.push({
@@ -328,7 +366,7 @@ const [importSubmissionTypes, setImportSubmissionTypes] = useState<string[]>(['v
     reader.readAsBinaryString(file);
   };
 
-  // Save Bulk Import Tasks → directly to Supabase DB
+  // Save Bulk Import Tasks
   const handleConfirmImport = async () => {
     if (previewTasks.length === 0) return;
     setIsImporting(true);
