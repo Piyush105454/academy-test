@@ -56,6 +56,7 @@ interface EarningRecord {
 }
 
 interface RewardConfig {
+  class_id?: string | null;
   id: string;
   task_type: string;
   expected_tasks: number;
@@ -95,6 +96,7 @@ export default function AdminStudentEarnings() {
   const [filterSubject, setFilterSubject] = useState('all');
   const [rewardConfigs, setRewardConfigs] = useState<RewardConfig[]>([]);
   const [isEditingConfigs, setIsEditingConfigs] = useState(false);
+  const [selectedModalClass, setSelectedModalClass] = useState<string>('all');
   const [editingConfigs, setEditingConfigs] = useState<RewardConfig[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
@@ -233,23 +235,34 @@ export default function AdminStudentEarnings() {
 
       await fetchClasses(role, facClassIds);
       await fetchStudentEarnings(role, facClassIds);
-      fetchRewardConfigs();
+      fetchRewardConfigs(selectedModalClass !== "all" ? selectedModalClass : undefined);
       fetchSubjects();
     }
     init();
   }, [selectedYear, selectedMonth, user?.email]);
+
+  useEffect(() => {
+    if (isPotentialModalOpen) {
+      fetchRewardConfigs(selectedModalClass !== 'all' ? selectedModalClass : undefined);
+    }
+  }, [selectedModalClass, isPotentialModalOpen]);
 
   const fetchSubjects = async () => {
     const { data } = await supabase.from('subjects').select('id, name').order('name');
     if (data) setSubjects(data);
   };
 
-  const fetchRewardConfigs = async () => {
+  const fetchRewardConfigs = async (classId?: string) => {
     try {
-      const { data, error } = await supabase
-        .from('reward_configurations')
-        .select('*')
-        .order('task_type');
+      let query = supabase.from('reward_configurations').select('*');
+      
+      if (classId && classId !== 'all') {
+        query = query.eq('class_id', classId);
+      } else {
+        query = query.is('class_id', null);
+      }
+      
+      const { data, error } = await query.order('task_type');
 
       if (error) {
         console.warn('reward_configurations table might not exist, using defaults');
@@ -475,7 +488,7 @@ export default function AdminStudentEarnings() {
         if (error) throw error;
       }
       toast.success('Reward configurations updated');
-      fetchRewardConfigs();
+      fetchRewardConfigs(selectedModalClass !== "all" ? selectedModalClass : undefined);
       setIsEditingConfigs(false);
     } catch (error: any) {
       console.error('Error saving configs:', error);
@@ -1193,9 +1206,23 @@ export default function AdminStudentEarnings() {
                     Reward Structure & Monthly Potential
                   </DialogTitle>
                   <DialogDescription>
-                    Configure how much students can earn for each task type
-                  </DialogDescription>
-                </div>
+                      Configure how much students can earn for each task type
+                    </DialogDescription>
+                    <div className="mt-4 flex items-center gap-2">
+                      <span className="text-sm font-medium">Configuration for Class:</span>
+                      <Select value={selectedModalClass} onValueChange={setSelectedModalClass} disabled={isEditingConfigs}>
+                        <SelectTrigger className="w-[200px]">
+                          <SelectValue placeholder="Global Default" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Global Default</SelectItem>
+                          {classes.map(cls => (
+                            <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 {!isEditingConfigs ? (
                   <Button variant="outline" size="sm" onClick={() => {
                     setEditingConfigs([...rewardConfigs]);

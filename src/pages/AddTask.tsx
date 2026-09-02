@@ -84,16 +84,34 @@ export default function AddTask() {
   useEffect(() => {
     fetchClasses();
     fetchSubjects();
-    fetchRewardConfigs();
-  }, []);
+      }, []);
 
-  const fetchRewardConfigs = async () => {
-    const { data, error } = await supabase
-      .from('reward_configurations')
-      .select('task_type, rate_per_task')
-      .order('task_type');
-    if (!error && data) setRewardConfigs(data);
+  const fetchRewardConfigs = async (classId: string) => {
+    let query = supabase.from('reward_configurations').select('task_type, rate_per_task');
+    if (classId) {
+      query = query.eq('class_id', classId);
+    } else {
+      query = query.is('class_id', null);
+    }
+    const { data, error } = await query.order('task_type');
+    if (!error && data) {
+      // If we queried a specific class and got nothing, maybe fallback to global defaults?
+      if (classId && data.length === 0) {
+        const { data: fallbackData } = await supabase.from('reward_configurations').select('task_type, rate_per_task').is('class_id', null).order('task_type');
+        if (fallbackData) setRewardConfigs(fallbackData);
+      } else {
+        setRewardConfigs(data);
+      }
+    }
   };
+
+  useEffect(() => {
+    if (formData.class_id) {
+      fetchRewardConfigs(formData.class_id);
+    } else {
+      setRewardConfigs([]);
+    }
+  }, [formData.class_id]);
 
   useEffect(() => {
     if (formData.class_id) {
@@ -307,27 +325,18 @@ export default function AddTask() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="task_type">Task Type *</Label>
+              <div className="col-span-1 md:col-span-2 space-y-2">
+                <Label htmlFor="class">Assign to Class *</Label>
                 <Select
-                  value={formData.task_type}
-                  onValueChange={(value) => {
-                    const config = rewardConfigs.find(c => c.task_type === value);
-                    setFormData({
-                      ...formData,
-                      task_type: value,
-                      earning_amount: config ? config.rate_per_task : formData.earning_amount
-                    });
-                  }}
+                  value={formData.class_id}
+                  onValueChange={(value) => setFormData({ ...formData, class_id: value })}
                 >
-                  <SelectTrigger id="task_type">
-                    <SelectValue placeholder="Select Task Type" />
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Class" />
                   </SelectTrigger>
                   <SelectContent>
-                    {rewardConfigs.map((config) => (
-                      <SelectItem key={config.task_type} value={config.task_type}>
-                        {config.task_type}
-                      </SelectItem>
+                    {classes.map((cls) => (
+                      <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -445,18 +454,28 @@ export default function AddTask() {
                 </Select>
               </div>
 
-              <div className="col-span-1 md:col-span-2 space-y-2">
-                <Label htmlFor="class">Assign to Class *</Label>
+              <div className="space-y-2">
+                <Label htmlFor="task_type">Task Type *</Label>
                 <Select
-                  value={formData.class_id}
-                  onValueChange={(value) => setFormData({ ...formData, class_id: value })}
+                    disabled={!formData.class_id}
+                    value={formData.task_type}
+                  onValueChange={(value) => {
+                    const config = rewardConfigs.find(c => c.task_type === value);
+                    setFormData({
+                      ...formData,
+                      task_type: value,
+                      earning_amount: config ? config.rate_per_task : formData.earning_amount
+                    });
+                  }}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Class" />
+                  <SelectTrigger id="task_type">
+                    <SelectValue placeholder="Select Task Type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {classes.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+                    {rewardConfigs.map((config) => (
+                      <SelectItem key={config.task_type} value={config.task_type}>
+                        {config.task_type}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

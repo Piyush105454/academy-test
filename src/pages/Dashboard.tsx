@@ -11,6 +11,7 @@ import { TopStudentsWidget } from '@/components/dashboard/TopStudentsWidget';
 import { TopFacilitatorsWidget } from '@/components/dashboard/TopFacilitatorsWidget';
 import { TopVolunteersWidget } from '@/components/dashboard/TopVolunteersWidget';
 import { TodayClassAttendanceWidget } from '@/components/dashboard/TodayClassAttendanceWidget';
+import { TargetSessionsWidget } from '@/components/dashboard/TargetSessionsWidget';
 import { FeedbackStatusWidget } from '@/components/dashboard/FeedbackStatusWidget';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import {
@@ -706,6 +707,8 @@ export default function Dashboard() {
 
         {/* Top Rankings & Attendance Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+          <TargetSessionsWidget />
+
           {/* 5. Today's Attendance */}
           <TodayClassAttendanceWidget 
             selectedClass={selectedClass}

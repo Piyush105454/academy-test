@@ -21,6 +21,7 @@ interface CurriculumItem {
   topic_title: string;
   videos: string;
   quiz_content_ppt: string;
+  material_link?: string;
   fresh_session?: string;
   revision_session?: string;
   created_at?: string;
@@ -44,7 +45,7 @@ export function EditCurriculumDialog({
   const [formData, setFormData] = useState({
     videos: '',
     quiz_content_ppt: '',
-   
+    material_link: '',
   });
 
   useEffect(() => {
@@ -52,7 +53,7 @@ export function EditCurriculumDialog({
       setFormData({
         videos: item.videos || '',
         quiz_content_ppt: item.quiz_content_ppt || '',
-       
+        material_link: item.material_link || '',
       });
     }
   }, [item, open]);
@@ -68,6 +69,7 @@ export function EditCurriculumDialog({
         .update({
           videos: formData.videos || null,
           quiz_content_ppt: formData.quiz_content_ppt || null,
+          material_link: formData.material_link || null,
           
         })
         .eq('id', item.id);
@@ -91,7 +93,7 @@ export function EditCurriculumDialog({
         <DialogHeader>
           <DialogTitle>Edit Curriculum Item</DialogTitle>
           <DialogDescription>
-            Update video links, PPT/Quiz, and session links for "{item?.module_title}"
+            Update video links, Quiz, Material, and session links for "{item?.module_title}"
           </DialogDescription>
         </DialogHeader>
 
@@ -113,7 +115,7 @@ export function EditCurriculumDialog({
 
           <div>
             <Label htmlFor="quiz_content_ppt" className="text-sm font-medium">
-              PPT/Quiz Link
+              Quiz Link
             </Label>
             <Input
               id="quiz_content_ppt"
@@ -121,6 +123,21 @@ export function EditCurriculumDialog({
               value={formData.quiz_content_ppt}
               onChange={(e) =>
                 setFormData({ ...formData, quiz_content_ppt: e.target.value })
+              }
+              className="mt-1"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="material_link" className="text-sm font-medium">
+              Material Link
+            </Label>
+            <Input
+              id="material_link"
+              placeholder="https://example.com/material"
+              value={formData.material_link}
+              onChange={(e) =>
+                setFormData({ ...formData, material_link: e.target.value })
               }
               className="mt-1"
             />

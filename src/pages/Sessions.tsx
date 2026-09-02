@@ -3,6 +3,7 @@ import { Plus, Trash2, Upload, MoreVertical, GraduationCap, FileText, Edit, Film
 import { useNavigate } from 'react-router-dom';
 import { logActivity } from '@/utils/activityLogger';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { MonthTargetDialog } from '@/components/sessions/MonthTargetDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -582,6 +583,7 @@ export default function Sessions() {
               <span className="hidden sm:inline">Guest Speaker Overview</span>
               <span className="sm:hidden">GS Overview</span>
             </Button>
+            <MonthTargetDialog />
             <Button
               onClick={() => setIsImportOpen(true)}
               variant="outline"

@@ -1393,7 +1393,9 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                           </div>
                         </TableHead>
                         <TableHead>Videos</TableHead>
-                        <TableHead>PPT/Quiz</TableHead>
+                        <TableHead>Quiz</TableHead>
+                        <TableHead>Material</TableHead>
+                        <TableHead>Material</TableHead>
                           <TableHead className="w-[120px]">
                             <div className="flex flex-col">
                               <span>Fresh Session</span>
@@ -1448,6 +1450,21 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                               <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>
+                            <TableCell>
+                              {item.material_link ? (
+                                <a
+                                  href={item.material_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline"
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <FileText className="h-4 w-4 text-purple-500" />
+                                    <span>View</span>
+                                  </div>
+                                </a>
+                              ) : '-'}
+                            </TableCell>
                           <TableCell>
                             {(() => {
                               const info = getSessionInfo(item.topic_title);
@@ -1644,7 +1661,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                         </div>
                       )}
 
-                      {/* PPT/Quiz */}
+                      {/* Quiz */}
                       {item.quiz_content_ppt && (
                         <div className="text-xs">
                           <a
@@ -1653,10 +1670,26 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                             rel="noopener noreferrer"
                             className="text-primary hover:underline font-medium"
                           >
-                            📊 View PPT/Quiz →
+                            📊 View Quiz →
                           </a>
                         </div>
                       )}
+
+                        {item.material_link && (
+                          <div className="text-xs">
+                            <a
+                              href={item.material_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline font-medium"
+                            >
+                              <div className="flex items-center gap-1">
+                                <FileText className="h-3 w-3 text-purple-500" />
+                                <span>Material</span>
+                              </div>
+                            </a>
+                          </div>
+                        )}
 
                       {/* Fresh Session */}
                       {(() => {
