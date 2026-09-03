@@ -52,6 +52,7 @@ const ClassTaskReview = lazy(() => import("@/pages/ClassTaskReview"));
 const StudentEarnings = lazy(() => import("./pages/StudentEarnings"));
 const StudentAttendance = lazy(() => import("./pages/StudentAttendance"));
 const AdminStudentEarnings = lazy(() => import("./pages/AdminStudentEarnings"));
+
 const AdminFacilitatorEarnings = lazy(() => import("./pages/AdminFacilitatorEarnings"));
 const VolunteerLogHours = lazy(() => import("./pages/VolunteerLogHours"));
 const FacilitatorEarnings = lazy(() => import("./pages/FacilitatorEarnings"));
@@ -113,6 +114,7 @@ const App = () => (
                     <Route path="/student-earnings" element={<StudentEarnings />} />
                     <Route path="/student-attendance" element={<StudentAttendance />} />
                     <Route path="/admin-earnings" element={<AdminStudentEarnings />} />
+                    
                     <Route path="/admin-facilitator-earnings" element={<AdminFacilitatorEarnings />} />
                     <Route path="/admin-facilitator-earnings/:facilitatorId" element={<AdminFacilitatorEarnings />} />
                     <Route path="/volunteer-log-hours" element={<VolunteerLogHours />} />

@@ -4,6 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Target, TrendingUp } from 'lucide-react';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
+import { Link } from 'react-router-dom';
+import { ExternalLink } from 'lucide-react';
 
 export function TargetSessionsWidget() {
   const [target, setTarget] = useState<number>(0);
@@ -112,6 +114,11 @@ export function TargetSessionsWidget() {
               <div className="text-xs text-muted-foreground italic">No sessions this month.</div>
             )}
           </div>
+        </div>
+        <div className="pt-2 mt-1 border-t border-border flex justify-end">
+          <Link to="/leaderboard" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition-colors">
+            View detailed leaderboard <ExternalLink className="h-3 w-3" />
+          </Link>
         </div>
       </CardContent>
     </Card>

@@ -11,7 +11,7 @@ import { TopStudentsWidget } from '@/components/dashboard/TopStudentsWidget';
 import { TopFacilitatorsWidget } from '@/components/dashboard/TopFacilitatorsWidget';
 import { TopVolunteersWidget } from '@/components/dashboard/TopVolunteersWidget';
 import { TodayClassAttendanceWidget } from '@/components/dashboard/TodayClassAttendanceWidget';
-import { TargetSessionsWidget } from '@/components/dashboard/TargetSessionsWidget';
+import { MonthlyLeaderboardWidget } from '@/components/dashboard/MonthlyLeaderboardWidget';
 import { FeedbackStatusWidget } from '@/components/dashboard/FeedbackStatusWidget';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import {
@@ -705,9 +705,11 @@ export default function Dashboard() {
           {userRole !== 4 && <VolunteerReachOutStats />}
         </div>
 
-        {/* Top Rankings & Attendance Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <TargetSessionsWidget />
+                  {/* Top Rankings & Attendance Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+            <MonthlyLeaderboardWidget />
+
+          
 
           {/* 5. Today's Attendance */}
           <TodayClassAttendanceWidget 
@@ -811,3 +813,5 @@ export default function Dashboard() {
     </DashboardLayout>
   );
 }
+
+// trigger rebuild

@@ -7,6 +7,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { LayoutGrid, List, ArrowUpDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
@@ -31,6 +33,8 @@ interface StudentTask {
 export default function StudentTasks() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'deadline', direction: 'asc' });
   const [tasks, setTasks] = useState<StudentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'pending' | 'submitted' | 'completed' | 'overdue' | 'rejected'>('pending');
@@ -169,6 +173,26 @@ export default function StudentTasks() {
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="hidden md:flex border rounded-md overflow-hidden bg-background mr-2">
+              <Button
+                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                size="icon"
+                onClick={() => setViewMode('list')}
+                className="h-9 w-9 rounded-none"
+                title="List View"
+              >
+                <List className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                size="icon"
+                onClick={() => setViewMode('grid')}
+                className="h-9 w-9 rounded-none"
+                title="Grid View"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+            </div>
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
               <SelectTrigger className="w-full sm:w-[150px] bg-card border-border">
                 <SelectValue placeholder="Filter by Month" />
@@ -232,7 +256,9 @@ export default function StudentTasks() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <>
+            {/* Grid View (Always on Mobile, Optional on Desktop) */}
+            <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6", viewMode === 'list' && "md:hidden")}>
             {filteredTasks.map((task) => (
               <Card
                 key={task.id}
@@ -285,7 +311,7 @@ export default function StudentTasks() {
                   <div className="flex items-center justify-between pt-4 border-t border-border mt-2">
                     <div className="text-xs text-muted-foreground font-medium flex gap-3">
                       <span>TYPE: {task.feedback_type.toUpperCase()}</span>
-                      <span className="text-primary font-bold">Earn: {task.earning_amount || 5}</span>
+                      <span className="text-primary font-bold">&#8377; {task.earning_amount || 5}</span>
                     </div>
                     <Button
                       variant="ghost"
@@ -304,6 +330,94 @@ export default function StudentTasks() {
               </Card>
             ))}
           </div>
+
+            {/* Table View (Desktop Only) */}
+          {viewMode === 'list' && (
+            <div className="hidden md:block overflow-x-auto bg-card rounded-xl border border-border shadow-sm">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[300px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('task_name')}>
+                      <div className="flex items-center gap-1">Task Name <ArrowUpDown className="h-3 w-3" /></div>
+                    </TableHead>
+                    <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('feedback_type')}>
+                      <div className="flex items-center gap-1">Type <ArrowUpDown className="h-3 w-3" /></div>
+                    </TableHead>
+                    <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('status')}>
+                      <div className="flex items-center gap-1">Status <ArrowUpDown className="h-3 w-3" /></div>
+                    </TableHead>
+                    <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('deadline')}>
+                      <div className="flex items-center gap-1">Deadline <ArrowUpDown className="h-3 w-3" /></div>
+                    </TableHead>
+                    <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('earning_amount')}>
+                      <div className="flex items-center gap-1">Earning <ArrowUpDown className="h-3 w-3" /></div>
+                    </TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTasks.map((task) => {
+                    const isPast = task.deadline ? new Date(task.deadline) < new Date() : false;
+                    const isPending = task.status === 'pending';
+                    
+  const handleSort = (key: string) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+  
+return (
+                      <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/student-tasks/${task.id}`)}>
+                        <TableCell className="font-medium">
+                          <div className="line-clamp-2" title={task.task_name}>{task.task_name}</div>
+                          {(task as any).task_id && (
+                            <div className="font-mono text-[10px] text-muted-foreground mt-1 bg-muted px-1.5 py-0.5 rounded w-fit">
+                              {(task as any).task_id}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-muted-foreground">{task.feedback_type.toUpperCase()}</span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusBadgeVariant(task.status)}>
+                            {task.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {task.deadline ? (
+                            <div className={cn(
+                              "text-xs px-2 py-1 rounded-md border inline-flex items-center gap-1 whitespace-nowrap",
+                              isPast && isPending ? "bg-red-50 text-red-600 border-red-200" : "bg-blue-50 text-blue-700 border-blue-200"
+                            )}>
+                              <Clock className="h-3 w-3" />
+                              {isPast && isPending ? "Overdue" : "Due"}
+                              <span className="hidden lg:inline ml-1">
+                                {new Date(task.deadline).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-primary font-bold">&#8377; {task.earning_amount || 5}</span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" className="h-8 text-primary group-hover:gap-2 transition-all">
+                            View
+                            <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+              </div>
+            )}
+          </>
         )}
       </div>
     </DashboardLayout>
