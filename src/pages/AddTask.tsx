@@ -472,7 +472,7 @@ export default function AddTask() {
                     <SelectValue placeholder="Select Task Type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {rewardConfigs.map((config) => (
+                    {rewardConfigs.filter(c => c.task_type).map((config) => (
                       <SelectItem key={config.task_type} value={config.task_type}>
                         {config.task_type}
                       </SelectItem>

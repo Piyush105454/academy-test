@@ -2597,7 +2597,7 @@ export default function SessionRecording() {
                               <SelectValue placeholder="Select task type" />
                             </SelectTrigger>
                             <SelectContent>
-                              {rewardConfigs.map((config) => (
+                              {rewardConfigs.filter(c => c.task_type).map((config) => (
                                 <SelectItem key={config.task_type} value={config.task_type}>
                                   {config.task_type}
                                 </SelectItem>
