@@ -133,6 +133,7 @@ export default function Tasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<TaskItem[]>([]);
   const [taskGroups, setTaskGroups] = useState<TaskGroup[]>([]);
+  const [visibleGroupsCount, setVisibleGroupsCount] = useState(20);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1113,14 +1114,13 @@ export default function Tasks() {
                       <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('academic_year')}>Year <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                       <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('reward')}>Reward <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                       <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('due_date')}>Deadline <ArrowUpDown className="h-3 w-3" /></div></TableHead>
-                      <TableHead><div className="flex items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('approved')}>Status <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                       <TableHead className="text-center"><div className="flex justify-center items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('submitted')}>Submitted <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                       <TableHead className="text-center"><div className="flex justify-center items-center gap-1 cursor-pointer hover:text-primary" onClick={() => handleSort('approved')}>Approved <ArrowUpDown className="h-3 w-3" /></div></TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sortedGroups.map((group) => (
+                    {sortedGroups.slice(0, visibleGroupsCount).map((group) => (
                       <TableRow key={group.title + '::' + group.class_name} className="hover:bg-muted/50 transition-colors">
                         <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
                           {group.task_id}
@@ -1166,27 +1166,7 @@ export default function Tasks() {
                         <TableCell className="text-xs whitespace-nowrap">
                           {formatDateDisplay(group.due_date)}
                         </TableCell>
-                        <TableCell>
-                          {(() => {
-                            const classKey = (group.class_name || '').trim().toLowerCase();
-                            const classEnrolledCount = classStudentCounts[classKey] || 0;
-                            const totalClassStudents = Math.max(classEnrolledCount, group.tasks.length);
-                            return (
-                              <div className="flex flex-col gap-1">
-                                <div className="flex justify-between text-[10px] text-muted-foreground">
-                                  <span>Progress</span>
-                                  <span>{group.completedCount}/{totalClassStudents}</span>
-                                </div>
-                                <div className="w-24 h-1 bg-muted rounded-full overflow-hidden">
-                                  <div 
-                                    className="h-full bg-primary" 
-                                    style={{ width: `${(group.completedCount / totalClassStudents) * 100}%` }}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </TableCell>
+                        
                         <TableCell className="text-sm font-medium text-center">
                           {(() => {
                             const classKey = (group.class_name || '').trim().toLowerCase();
@@ -1246,6 +1226,17 @@ export default function Tasks() {
                     ))}
                   </TableBody>
                 </Table>
+                {visibleGroupsCount < sortedGroups.length && (
+                  <div className="flex justify-center p-4 border-t border-border bg-muted/20">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setVisibleGroupsCount(prev => prev + 20)}
+                      className="w-full sm:w-auto"
+                    >
+                      Load More Tasks
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

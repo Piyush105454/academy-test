@@ -475,16 +475,16 @@ export default function AdminStudentEarnings() {
         const { error } = await supabase
           .from('reward_configurations')
           .upsert({
-            task_type: config.task_type,
-            expected_tasks: config.expected_tasks,
-            frequency: config.frequency,
-            rate_per_task: config.rate_per_task,
-            potential_monthly: config.expected_tasks * config.rate_per_task,
-            how_to_earn: config.how_to_earn,
-            reviewer_rate: config.reviewer_rate || 0
-          }, { 
-            onConflict: 'task_type' 
-          });
+              ...(config.id && !config.id.startsWith('new-') ? { id: config.id } : {}),
+              class_id: selectedModalClass !== "all" ? selectedModalClass : null,
+              task_type: config.task_type,
+              expected_tasks: config.expected_tasks,
+              frequency: config.frequency,
+              rate_per_task: config.rate_per_task,
+              potential_monthly: config.expected_tasks * config.rate_per_task,
+              how_to_earn: config.how_to_earn,
+              reviewer_rate: config.reviewer_rate || 0
+            });
         if (error) throw error;
       }
       toast.success('Reward configurations updated');
