@@ -1395,7 +1395,6 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                         <TableHead>Videos</TableHead>
                         <TableHead>Quiz</TableHead>
                         <TableHead>Material</TableHead>
-                        <TableHead>Material</TableHead>
                           <TableHead className="w-[120px]">
                             <div className="flex flex-col">
                               <span>Fresh Session</span>
