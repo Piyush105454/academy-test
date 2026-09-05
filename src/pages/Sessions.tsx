@@ -896,8 +896,13 @@ export default function Sessions() {
 
                         return (
                         <TableRow key={session.id} className={rowBgClass}>
-                          <TableCell className="font-medium text-primary">
-                            {session.session_id_code || '---'}
+                          <TableCell className="font-medium">
+                            <span 
+                              className="text-primary hover:underline cursor-pointer" 
+                              onClick={() => navigate(`/sessions/${session.id}/recording`)}
+                            >
+                              {session.session_id_code || '---'}
+                            </span>
                           </TableCell>
                           <TableCell>{session.subject_name || '-'}</TableCell>
                           <TableCell>{session.content_category || '-'}</TableCell>
@@ -945,16 +950,40 @@ export default function Sessions() {
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => { setSelectedSession(session); setIsTypeDialogOpen(true); }}>
-                                  <Edit className="mr-2 h-4 w-4" /> Edit Type
+                              <DropdownMenuContent align="end" className="bg-popover">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedSession(session);
+                                    setEditSessionDialogOpen(true);
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit Details
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => navigate(`/sessions/${session.id}/recording`)}>
-                                  <Video className="mr-2 h-4 w-4" /> View Recording
+                                <DropdownMenuItem 
+                                  onClick={() => handleEditStatus(session)}
+                                >
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit Status
                                 </DropdownMenuItem>
                                 {userRole === 1 && (
-                                  <DropdownMenuItem onClick={() => { setSelectedSession(session); setDeleteDialogOpen(true); }} className="text-red-600">
-                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                  <DropdownMenuItem 
+                                    onClick={() => handleToggleFeedbackLock(session)}
+                                  >
+                                    {session.feedback_unlocked ? <Lock className="h-4 w-4 mr-2" /> : <Unlock className="h-4 w-4 mr-2" />}
+                                    {session.feedback_unlocked ? 'Lock Feedback' : 'Unlock Feedback'}
+                                  </DropdownMenuItem>
+                                )}
+                                {userRole === 1 && (
+                                  <DropdownMenuItem 
+                                    onClick={() => {
+                                      setSelectedSession(session);
+                                      setDeleteDialogOpen(true);
+                                    }}
+                                    className="text-red-600 focus:text-red-600"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
                                   </DropdownMenuItem>
                                 )}
                               </DropdownMenuContent>

@@ -75,6 +75,7 @@ export default function Dashboard() {
   const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<number | null>(null);
+  const [roleChecking, setRoleChecking] = useState(true);
   const { getDateRange, selectedYear } = useAcademicYear();
 
   useEffect(() => {
@@ -506,6 +507,17 @@ export default function Dashboard() {
     { label: 'In Progress', value: sessionStatus.inProgress, color: 'bg-muted/30', textColor: 'text-blue-700' },
     { label: 'Completed', value: sessionStatus.completed, color: 'bg-muted/30', textColor: 'text-green-700' },
   ];
+
+  if (roleChecking || userRole === 5) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <p className="text-muted-foreground">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <DashboardLayout>

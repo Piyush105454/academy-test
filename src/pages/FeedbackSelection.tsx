@@ -791,8 +791,13 @@ export default function FeedbackSelection() {
                   <TableBody>
                     {filteredSessions.map((session) => (
                       <TableRow key={session.id} className="hover:bg-muted/50">
-                        <TableCell className="font-medium text-primary">
-                          {session.session_id_code || '---'}
+                        <TableCell className="font-medium">
+                          <span 
+                            className="text-primary hover:underline cursor-pointer" 
+                            onClick={() => navigate(`/sessions/${session.id}/feedback-details`)}
+                          >
+                            {session.session_id_code || '---'}
+                          </span>
                         </TableCell>
                         <TableCell>{session.subject_name || '-'}</TableCell>
                         <TableCell>{session.content_category || '-'}</TableCell>

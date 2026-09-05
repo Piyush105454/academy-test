@@ -1,265 +1,126 @@
 const fs = require('fs');
-
 let content = fs.readFileSync('src/pages/StudentTasks.tsx', 'utf-8');
 
-// 1. Add new imports
-const extraImports = `import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { LayoutGrid, List, ArrowUpDown } from 'lucide-react';
-`;
+// 1. Interface
+content = content.replace(
+  /rejection_comment\?: string \| null;\n\}/,
+  'rejection_comment?: string | null;\n  subjects?: { name: string } | null;\n}'
+);
 
-if (!content.includes('TableBody')) {
-  content = content.replace("import { Badge } from '@/components/ui/badge';", extraImports + "import { Badge } from '@/components/ui/badge';");
-}
+// 2. State vars
+content = content.replace(
+  /const \[searchQuery, setSearchQuery\] = useState\(''\);/,
+  `const [searchQuery, setSearchQuery] = useState('');
+  const [filterSubject, setFilterSubject] = useState('all');
+  const [filterTaskType, setFilterTaskType] = useState('all');`
+);
 
-// 2. Add state variables inside the component
-const stateVarsOld = `  const [loading, setLoading] = useState(true);
-  const [tasks, setTasks] = useState<StudentTask[]>([]);
-  const [filter, setFilter] = useState('pending');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState('all');`;
+// 3. Select query
+content = content.replace(
+  /\.select\('id, task_name, task_description, deadline, feedback_type, status, feedback_notes, submission_link, created_at, earning_amount, rejection_comment'\)/,
+  `.select('id, task_name, task_description, deadline, feedback_type, status, feedback_notes, submission_link, created_at, earning_amount, rejection_comment, subjects(name)')`
+);
 
-const stateVarsNew = `  const [loading, setLoading] = useState(true);
-  const [tasks, setTasks] = useState<StudentTask[]>([]);
-  const [filter, setFilter] = useState('pending');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState('all');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
-  const [sortConfig, setSortConfig] = useState<{ key: keyof StudentTask | 'isPast', direction: 'asc' | 'desc' }>({ key: 'deadline', direction: 'asc' });`;
+// 4. Extract unique options
+content = content.replace(
+  /const filteredTasks = useMemo\(\(\) => \{/,
+  `const uniqueSubjects = useMemo(() => {
+    const subs = new Set<string>();
+    tasks.forEach(t => {
+      if (t.subjects?.name) subs.add(t.subjects.name);
+    });
+    return Array.from(subs).sort();
+  }, [tasks]);
 
-content = content.replace(stateVarsOld, stateVarsNew);
+  const uniqueTaskTypes = useMemo(() => {
+    const types = new Set<string>();
+    tasks.forEach(t => {
+      if (t.feedback_type) types.add(t.feedback_type.toUpperCase());
+    });
+    return Array.from(types).sort();
+  }, [tasks]);
 
-// 3. Update the filteredTasks definition to include sorting
-const filteredOld = `  const filteredTasks = useMemo(() => {
-    let filtered = tasks;
+  const filteredTasks = useMemo(() => {`
+);
 
-    // Filter by tab
-    if (filter === 'pending') {
-      filtered = filtered.filter(t => t.status === 'pending');
-    } else if (filter === 'submitted') {
-      filtered = filtered.filter(t => t.status === 'submitted');
-    } else if (filter === 'completed') {
-      filtered = filtered.filter(t => t.status === 'completed');
-    } else if (filter === 'rejected') {
-      filtered = filtered.filter(t => t.status === 'rejected');
-    } else if (filter === 'overdue') {
-      filtered = filtered.filter(t => {
-        if (!t.deadline) return false;
-        return t.status === 'pending' && new Date(t.deadline) < new Date();
-      });
-    }
-
-    // Filter by search
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(t => 
-        t.task_name.toLowerCase().includes(q) || 
-        (t.task_description && t.task_description.toLowerCase().includes(q))
-      );
-    }
-    
-    // Filter by month
-    if (selectedMonth !== 'all') {
-      filtered = filtered.filter(t => {
-        if (!t.created_at) return false;
-        const date = new Date(t.created_at);
-        const monthYear = \`\${date.getFullYear()}-\${String(date.getMonth() + 1).padStart(2, '0')}\`;
-        return monthYear === selectedMonth;
-      });
-    }
-
-    return filtered;
-  }, [tasks, filter, searchQuery, selectedMonth]);`;
-
-const filteredNew = `  const filteredTasks = useMemo(() => {
-    let filtered = tasks;
-
-    // Filter by tab
-    if (filter === 'pending') {
-      filtered = filtered.filter(t => t.status === 'pending');
-    } else if (filter === 'submitted') {
-      filtered = filtered.filter(t => t.status === 'submitted');
-    } else if (filter === 'completed') {
-      filtered = filtered.filter(t => t.status === 'completed');
-    } else if (filter === 'rejected') {
-      filtered = filtered.filter(t => t.status === 'rejected');
-    } else if (filter === 'overdue') {
-      filtered = filtered.filter(t => {
-        if (!t.deadline) return false;
-        return t.status === 'pending' && new Date(t.deadline) < new Date();
-      });
-    }
-
-    // Filter by search
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(t => 
-        t.task_name.toLowerCase().includes(q) || 
-        (t.task_description && t.task_description.toLowerCase().includes(q)) ||
-        t.feedback_type.toLowerCase().includes(q)
-      );
-    }
-    
-    // Filter by month
-    if (selectedMonth !== 'all') {
-      filtered = filtered.filter(t => {
-        if (!t.created_at) return false;
-        const date = new Date(t.created_at);
-        const monthYear = \`\${date.getFullYear()}-\${String(date.getMonth() + 1).padStart(2, '0')}\`;
-        return monthYear === selectedMonth;
-      });
-    }
-
-    // Sort tasks
-    filtered.sort((a, b) => {
-      let valA: any = a[sortConfig.key as keyof StudentTask];
-      let valB: any = b[sortConfig.key as keyof StudentTask];
-      
-      if (sortConfig.key === 'isPast') {
-        valA = a.deadline ? (new Date(a.deadline) < new Date() ? 1 : 0) : -1;
-        valB = b.deadline ? (new Date(b.deadline) < new Date() ? 1 : 0) : -1;
+// 5. Apply filters inside the `return tasks.filter(t => {` block
+content = content.replace(
+  /if \(filter === 'overdue'\) \{[\s\S]*?return false;\n      \}/,
+  `if (filter === 'overdue') {
+        const isOverdue = t.deadline && new Date(t.deadline) < new Date() && t.status !== 'completed' && t.status !== 'submitted';
+        if (!isOverdue) return false;
+      } else {
+        if (t.status !== filter) return false;
       }
       
-      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
-      return 0;
-    });
+      if (filterSubject !== 'all' && t.subjects?.name !== filterSubject) return false;
+      if (filterTaskType !== 'all' && t.feedback_type?.toUpperCase() !== filterTaskType) return false;`
+);
 
-    return filtered;
-  }, [tasks, filter, searchQuery, selectedMonth, sortConfig]);
+// 6. Fix Search & Filter Bar UI
+// We have:
+//             <div className="relative w-full md:w-96">
+//               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+//               <Input ... />
+//             </div>
+content = content.replace(
+  /<div className="relative w-full md:w-96">\s*<Search className="absolute left-3 top-1\/2 -translate-y-1\/2 h-4 w-4 text-muted-foreground" \/>\s*<Input[\s\S]*?\/>\s*<\/div>/,
+  `<div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto flex-1">
+              <div className="relative w-full md:w-80 shrink-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search tasks..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 bg-muted/50 border-none focus-visible:ring-primary h-9"
+                />
+              </div>
+              <Select value={filterSubject} onValueChange={setFilterSubject}>
+                <SelectTrigger className="w-full sm:w-[150px] shrink-0 bg-muted/50 border-none h-9">
+                  <SelectValue placeholder="All Subjects" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Subjects</SelectItem>
+                  {uniqueSubjects.map(sub => <SelectItem key={sub} value={sub}>{sub}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={filterTaskType} onValueChange={setFilterTaskType}>
+                <SelectTrigger className="w-full sm:w-[150px] shrink-0 bg-muted/50 border-none h-9">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  {uniqueTaskTypes.map(typ => <SelectItem key={typ} value={typ}>{typ}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>`
+);
 
-  const handleSort = (key: keyof StudentTask | 'isPast') => {
-    setSortConfig(prev => ({
-      key,
-      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
-    }));
-  };
-`;
+// 7. Grid view subject addition
+content = content.replace(
+  /<span>TYPE: \{task\.feedback_type\.toUpperCase\(\)\}<\/span>/,
+  `<span>TYPE: {task.feedback_type.toUpperCase()}</span>\n                        {task.subjects?.name && <span>SUBJECT: {task.subjects.name.toUpperCase()}</span>}`
+);
 
-content = content.replace(filteredOld, filteredNew);
+// 8. Table view headers
+content = content.replace(
+  /<TableHead className="cursor-pointer hover:bg-muted\/50 transition-colors" onClick=\{\(\) => handleSort\('feedback_type'\)\}>\s*<div className="flex items-center gap-1">Type <ArrowUpDown className="h-3 w-3" \/><\/div>\s*<\/TableHead>/,
+  `<TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('feedback_type')}>
+                        <div className="flex items-center gap-1">Type <ArrowUpDown className="h-3 w-3" /></div>
+                      </TableHead>
+                      <TableHead>Subject</TableHead>`
+);
 
-// 4. Update the View mode toggle in the header
-const headerOld = `          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>`;
-const headerNew = `          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="hidden md:flex border rounded-md overflow-hidden bg-background mr-2">
-              <Button
-                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                size="icon"
-                onClick={() => setViewMode('list')}
-                className="h-9 w-9 rounded-none"
-                title="List View"
-              >
-                <List className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                size="icon"
-                onClick={() => setViewMode('grid')}
-                className="h-9 w-9 rounded-none"
-                title="Grid View"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
-            </div>
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>`;
-
-content = content.replace(headerOld, headerNew);
-
-
-// 5. Update the Grid rendering to support the Table
-const renderOldRegex = /(<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">[\s\S]*?)(\s*<\/div>\s*<\/DashboardLayout>)/;
-const renderMatch = content.match(renderOldRegex);
-
-if (renderMatch) {
-  const originalGrid = renderMatch[1];
-  // Replace the first grid div with a conditional class
-  const updatedGrid = originalGrid.replace(
-    '<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">', 
-    '{/* Grid View (Always on Mobile, Optional on Desktop) */}\n          <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6", viewMode === \'list\' && "md:hidden")}>'
-  );
-
-  const tableRender = `          
-          {/* Table View (Desktop Only) */}
-          {viewMode === 'list' && (
-            <div className="hidden md:block overflow-x-auto bg-card rounded-xl border border-border shadow-sm">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[300px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('task_name')}>
-                      <div className="flex items-center gap-1">Task Name <ArrowUpDown className="h-3 w-3" /></div>
-                    </TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('feedback_type')}>
-                      <div className="flex items-center gap-1">Type <ArrowUpDown className="h-3 w-3" /></div>
-                    </TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('status')}>
-                      <div className="flex items-center gap-1">Status <ArrowUpDown className="h-3 w-3" /></div>
-                    </TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('deadline')}>
-                      <div className="flex items-center gap-1">Deadline <ArrowUpDown className="h-3 w-3" /></div>
-                    </TableHead>
-                    <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('earning_amount')}>
-                      <div className="flex items-center gap-1">Earning <ArrowUpDown className="h-3 w-3" /></div>
-                    </TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTasks.map((task) => {
-                    const isPast = task.deadline ? new Date(task.deadline) < new Date() : false;
-                    const isPending = task.status === 'pending';
-                    return (
-                      <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(\`/student-tasks/\${task.id}\`)}>
-                        <TableCell className="font-medium">
-                          <div className="line-clamp-2" title={task.task_name}>{task.task_name}</div>
-                          {(task as any).task_id && (
-                            <div className="font-mono text-[10px] text-muted-foreground mt-1 bg-muted px-1.5 py-0.5 rounded w-fit">
-                              {(task as any).task_id}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-xs text-muted-foreground">{task.feedback_type.toUpperCase()}</span>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={statusBadgeVariant(task.status)}>
-                            {task.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {task.deadline ? (
-                            <div className={cn(
-                              "text-xs px-2 py-1 rounded-md border inline-flex items-center gap-1 whitespace-nowrap",
-                              isPast && isPending ? "bg-red-50 text-red-600 border-red-200" : "bg-blue-50 text-blue-700 border-blue-200"
-                            )}>
-                              <Clock className="h-3 w-3" />
-                              {isPast && isPending ? "Overdue" : "Due"}
-                              <span className="hidden lg:inline ml-1">
-                                {new Date(task.deadline).toLocaleDateString()}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-primary font-bold">?{task.earning_amount || 5}</span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" className="h-8 text-primary group-hover:gap-2 transition-all">
-                            View
-                            <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}`;
-  
-  content = content.replace(renderMatch[0], updatedGrid + "\n" + tableRender + renderMatch[2]);
-}
+// 9. Table view cells
+content = content.replace(
+  /<TableCell>\s*<span className="text-xs text-muted-foreground">\{task\.feedback_type\.toUpperCase\(\)\}<\/span>\s*<\/TableCell>/,
+  `<TableCell>
+                            <span className="text-xs text-muted-foreground">{task.feedback_type.toUpperCase()}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs text-muted-foreground">{task.subjects?.name || '-'}</span>
+                          </TableCell>`
+);
 
 fs.writeFileSync('src/pages/StudentTasks.tsx', content);
-console.log('Successfully updated StudentTasks.tsx');
+console.log("Updated StudentTasks.tsx");

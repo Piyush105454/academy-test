@@ -28,7 +28,6 @@ interface StudentTask {
   created_at: string;
   earning_amount?: number;
   rejection_comment?: string | null;
-  subjects?: { name: string } | null;
 }
 
 export default function StudentTasks() {
@@ -40,8 +39,6 @@ export default function StudentTasks() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'pending' | 'submitted' | 'completed' | 'overdue' | 'rejected'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterSubject, setFilterSubject] = useState('all');
-  const [filterTaskType, setFilterTaskType] = useState('all');
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const currentMonthIndex = new Date().getMonth(); // 0 to 11
     return String(currentMonthIndex + 1); // "1" to "12"
@@ -102,7 +99,7 @@ export default function StudentTasks() {
         while (true) {
           const { data: pageData } = await supabase
             .from('student_task_feedback')
-            .select('id, task_name, task_description, deadline, feedback_type, status, feedback_notes, submission_link, created_at, earning_amount, rejection_comment, subjects(name)')
+            .select('id, task_name, task_description, deadline, feedback_type, status, feedback_notes, submission_link, created_at, earning_amount, rejection_comment')
             .in('student_id', studentIds)
             .or(`academic_year.eq.${selectedYear},created_at.gte.${startDate.toISOString()}`)
             .order('created_at', { ascending: false })
@@ -128,22 +125,6 @@ export default function StudentTasks() {
     }
   };
 
-  const uniqueSubjects = useMemo(() => {
-    const subs = new Set<string>();
-    tasks.forEach(t => {
-      if (t.subjects?.name) subs.add(t.subjects.name);
-    });
-    return Array.from(subs).sort();
-  }, [tasks]);
-
-  const uniqueTaskTypes = useMemo(() => {
-    const types = new Set<string>();
-    tasks.forEach(t => {
-      if (t.feedback_type) types.add(t.feedback_type.toUpperCase());
-    });
-    return Array.from(types).sort();
-  }, [tasks]);
-
   const filteredTasks = useMemo(() => {
     return tasks.filter(task => {
       const matchesSearch = task.task_name?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -154,9 +135,6 @@ export default function StudentTasks() {
         const monthOfDate = dateToUse.getMonth() + 1;
         if (String(monthOfDate) !== selectedMonth) return false;
       }
-
-      if (filterSubject !== 'all' && task.subjects?.name !== filterSubject) return false;
-      if (filterTaskType !== 'all' && task.feedback_type?.toUpperCase() !== filterTaskType) return false;
 
       if (filter === 'submitted') return task.status === 'submitted';
       if (filter === 'completed') return task.status === 'completed' || task.status === 'approved';
@@ -173,7 +151,7 @@ export default function StudentTasks() {
       }
       return true;
     });
-  }, [tasks, searchQuery, selectedMonth, filter, filterSubject, filterTaskType]);
+  }, [tasks, searchQuery, selectedMonth, filter]);
 
   const statusBadgeVariant = (status: string) => {
     if (status === 'submitted') return 'secondary';
@@ -232,35 +210,15 @@ export default function StudentTasks() {
 
         {/* Search & Filter Bar */}
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-card p-4 rounded-xl border border-border shadow-sm">
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto flex-1">
-              <div className="relative w-full md:w-80 shrink-0">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search tasks..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 bg-muted/50 border-none focus-visible:ring-primary h-9"
-                />
-              </div>
-              <Select value={filterSubject} onValueChange={setFilterSubject}>
-                <SelectTrigger className="w-full sm:w-[150px] shrink-0 bg-muted/50 border-none h-9">
-                  <SelectValue placeholder="All Subjects" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Subjects</SelectItem>
-                  {uniqueSubjects.map(sub => <SelectItem key={sub} value={sub}>{sub}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={filterTaskType} onValueChange={setFilterTaskType}>
-                <SelectTrigger className="w-full sm:w-[150px] shrink-0 bg-muted/50 border-none h-9">
-                  <SelectValue placeholder="All Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  {uniqueTaskTypes.map(typ => <SelectItem key={typ} value={typ}>{typ}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="relative w-full md:w-96">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-muted/50 border-none focus-visible:ring-primary"
+            />
+          </div>
           <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
             <Button variant={filter === 'pending' ? 'default' : 'ghost'} onClick={() => setFilter('pending')} size="sm" className="gap-1.5">
               <History className="h-4 w-4" /> Pending
@@ -353,7 +311,6 @@ export default function StudentTasks() {
                   <div className="flex items-center justify-between pt-4 border-t border-border mt-2">
                     <div className="text-xs text-muted-foreground font-medium flex gap-3">
                       <span>TYPE: {task.feedback_type.toUpperCase()}</span>
-                        {task.subjects?.name && <span>SUBJECT: {task.subjects.name.toUpperCase()}</span>}
                       <span className="text-primary font-bold">&#8377; {task.earning_amount || 5}</span>
                     </div>
                     <Button
@@ -384,9 +341,8 @@ export default function StudentTasks() {
                       <div className="flex items-center gap-1">Task Name <ArrowUpDown className="h-3 w-3" /></div>
                     </TableHead>
                     <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('feedback_type')}>
-                        <div className="flex items-center gap-1">Type <ArrowUpDown className="h-3 w-3" /></div>
-                      </TableHead>
-                      <TableHead>Subject</TableHead>
+                      <div className="flex items-center gap-1">Type <ArrowUpDown className="h-3 w-3" /></div>
+                    </TableHead>
                     <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('status')}>
                       <div className="flex items-center gap-1">Status <ArrowUpDown className="h-3 w-3" /></div>
                     </TableHead>
@@ -422,11 +378,8 @@ return (
                           )}
                         </TableCell>
                         <TableCell>
-                            <span className="text-xs text-muted-foreground">{task.feedback_type.toUpperCase()}</span>
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-xs text-muted-foreground">{task.subjects?.name || '-'}</span>
-                          </TableCell>
+                          <span className="text-xs text-muted-foreground">{task.feedback_type.toUpperCase()}</span>
+                        </TableCell>
                         <TableCell>
                           <Badge variant={statusBadgeVariant(task.status)}>
                             {task.status}
