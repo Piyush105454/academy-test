@@ -66,7 +66,6 @@ export default function StudentEarnings() {
   useEffect(() => {
     if (user?.email) {
       loadEarningsData();
-      fetchRewardConfigs();
       fetchSubjects();
     }
   }, [user?.email, selectedYear]);
@@ -196,11 +195,16 @@ export default function StudentEarnings() {
     if (data) setSubjects(data);
   };
 
-  const fetchRewardConfigs = async () => {
+  const fetchRewardConfigs = async (classIds: string[]) => {
     try {
+      if (classIds.length === 0) {
+        setRewardConfigs(DEFAULT_EARNING_POTENTIAL as any);
+        return;
+      }
       const { data, error } = await supabase
         .from('reward_configurations')
         .select('*')
+        .in('class_id', classIds)
         .order('task_type');
 
       if (error) {
@@ -226,8 +230,9 @@ export default function StudentEarnings() {
       // Get all student records first
       const { data: students, error: studentError } = await supabase
         .from('students')
-        .select('id')
-        .ilike('email', user?.email);
+        .select('id, class_id')
+        .ilike('email', user?.email)
+        .eq('academic_year', selectedYear);
 
       if (studentError) throw studentError;
 
@@ -238,6 +243,8 @@ export default function StudentEarnings() {
       }
 
       const studentIds = students.map(s => s.id);
+      const classIds = [...new Set(students.map(s => s.class_id).filter(Boolean))];
+      fetchRewardConfigs(classIds);
 
       // Fetch from student_earnings table filtered by academic year
       const { startDate, endDate } = getDateRange();
@@ -298,7 +305,7 @@ export default function StudentEarnings() {
             My Earnings
           </h1>
           <p className="text-muted-foreground mt-1 font-medium">
-            You can earn up to <span className="text-primary font-bold">₹{rewardConfigs.reduce((sum, r) => sum + (r.expected_tasks * r.rate_per_task), 0).toLocaleString()}</span> every month by completing all your tasks!
+            You can earn up to <span className="text-primary font-bold">₹{totalPotentialMonthly.toLocaleString()}</span> every month by completing all your tasks!
           </p>
         </div>
 
@@ -351,7 +358,7 @@ export default function StudentEarnings() {
             <CardContent>
               <div className="text-4xl font-black flex items-baseline gap-1">
                 <span className="text-2xl font-light opacity-80">₹</span>
-                {rewardConfigs.reduce((sum, r) => sum + (r.expected_tasks * r.rate_per_task), 0).toLocaleString()}
+                {totalPotentialMonthly.toLocaleString()}
               </div>
               <div className="mt-4 flex items-center gap-2 text-blue-100 text-sm bg-white/10 w-fit px-2 py-1 rounded">
                 <CheckCircle2 className="h-4 w-4" />

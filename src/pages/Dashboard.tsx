@@ -244,7 +244,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function checkUserRole() {
-      if (!user?.id) return;
+      if (!user?.id) {
+        setRoleChecking(false);
+        return;
+      }
 
       try {
         const { data: profileData } = await supabase
@@ -264,6 +267,8 @@ export default function Dashboard() {
         }
       } catch (error) {
         console.error('Error checking user role:', error);
+      } finally {
+        setRoleChecking(false);
       }
     }
 
