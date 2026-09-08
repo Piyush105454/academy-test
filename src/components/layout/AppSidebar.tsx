@@ -31,9 +31,8 @@ const navGroups: NavGroup[] = [
     studentVisible: false,
     items: [
       { title: 'Dashboard', url: '/dashboard', icon: Home, requiredRole: null, studentVisible: false },
-      { title: 'My Earnings', url: '/facilitator-earnings', icon: ClipboardList, requiredRole: 4, studentVisible: false },
-      { title: 'Calendar', url: '/calendar', icon: CalendarDays, requiredRole: null, studentVisible: false },
-      { title: 'Resource Hub', url: '/resources', icon: BookOpen, requiredRole: null, studentVisible: false },
+      { title: 'Calendar', url: '/calendar', icon: CalendarDays, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
+      { title: 'Resource Hub', url: '/resources', icon: BookOpen, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
     ],
   },
   {
@@ -47,6 +46,23 @@ const navGroups: NavGroup[] = [
       { title: 'Scheduled Tasks', url: '/scheduled-tasks', icon: Clock, requiredRole: null, studentVisible: false },
       { title: 'Student Attendance', url: '/admin-attendance', icon: ClipboardList, requiredRole: null, studentVisible: false },
       { title: 'Attendance Management', url: '/attendance-management', icon: CalendarDays, requiredRole: null, studentVisible: false },
+    ]
+  },
+  {
+    label: 'Schedule Facilitator Task Management',
+    studentVisible: false,
+    items: [
+      // Teacher / Employee Views (Only Role 4)
+      { title: 'My Work', url: '/academy/my-work', icon: ClipboardList, requiredRole: 4, studentVisible: false },
+      { title: 'My Earnings', url: '/academy/my-earnings', icon: FileText, requiredRole: 4, studentVisible: false },
+      { title: 'My Goals', url: '/academy/my-goals', icon: FileText, requiredRole: 4, studentVisible: false },
+      { title: 'Leaderboard', url: '/academy/leaderboard', icon: Users2, requiredRole: 4, studentVisible: false },
+      
+      // Admin / Manager Views (Hidden from Role 4)
+      { title: 'Tasks & Templates', url: '/academy/tasks', icon: ClipboardList, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
+      { title: 'Approvals', url: '/academy/approvals', icon: Shield, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
+      { title: 'Goals Admin', url: '/academy/manage-goals', icon: FileText, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
+      { title: 'Leaderboard', url: '/academy/leaderboard', icon: Users, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
     ]
   },
   {
@@ -108,11 +124,14 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const { isDevMode, toggleDevMode } = useDeveloperMode();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
-  const [userRole, setUserRole] = useState<number | null>(null);
+  const [userRole, setUserRole] = useState<number | null>(() => {
+    const saved = localStorage.getItem('user_role');
+    return saved ? parseInt(saved, 10) : null;
+  });
+  const [isRoleLoading, setIsRoleLoading] = useState(userRole === null);
   const roleLoadedRef = useRef(false);
 
   useEffect(() => {
-    // Only load role once per user session
     if (user?.id && !roleLoadedRef.current) {
       loadUserRole();
     }
@@ -132,14 +151,21 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
 
       if (data?.role_id) {
         setUserRole(data.role_id);
-        roleLoadedRef.current = true;
+        localStorage.setItem('user_role', data.role_id.toString());
+      } else {
+        setUserRole(null);
+        localStorage.removeItem('user_role');
       }
+      roleLoadedRef.current = true;
     } catch (error) {
       console.error('Error loading user role:', error);
+    } finally {
+      setIsRoleLoading(false);
     }
   };
 
   const handleSignOut = async () => {
+    localStorage.removeItem('user_role');
     await signOut();
   };
 
@@ -177,7 +203,11 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
 
         {/* Navigation */}
         <nav className="flex-1 p-3 md:p-4 space-y-3 overflow-y-auto">
-          {navGroups.map((group) => {
+          {isRoleLoading ? (
+            <div className="flex justify-center p-4">
+              <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
+            </div>
+          ) : navGroups.map((group) => {
             // Filter group visibility based on role
             if (userRole === 5 && !group.studentVisible) return null;
             if (userRole !== 5 && group.studentVisible) return null;

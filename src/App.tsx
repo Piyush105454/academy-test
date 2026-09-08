@@ -41,6 +41,16 @@ const EditProfile = lazy(() => import("./pages/EditProfile"));
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
 
 // Task Management Heavy Routes (Lazy Loaded)
+const TasksAdmin = lazy(() => import("./pages/academy/TasksAdmin"));
+const MyWork = lazy(() => import("./pages/academy/MyWork"));
+const MyEarnings = lazy(() => import("./pages/academy/MyEarnings"));
+const MyGoals = lazy(() => import("./pages/academy/MyGoals"));
+const Leaderboard = lazy(() => import("./pages/academy/Leaderboard"));
+const Approvals = lazy(() => import("./pages/academy/Approvals"));
+const ManageGoals = lazy(() => import("./pages/academy/ManageGoals"));
+const Team = lazy(() => import("./pages/academy/Team"));
+const Reports = lazy(() => import("./pages/academy/Reports"));
+
 const Tasks = lazy(() => import("./pages/Tasks"));
 const TaskDetail = lazy(() => import("./pages/TaskDetail"));
 const TaskEdit = lazy(() => import("./pages/TaskEdit"));
@@ -106,6 +116,18 @@ const App = () => (
                     <Route path="/volunteers/add" element={<AddVolunteer />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/profile/edit" element={<EditProfile />} />
+                    
+                    {/* Academy MVP Routes */}
+                    <Route path="/academy/tasks" element={<TasksAdmin />} />
+                    <Route path="/academy/my-work" element={<MyWork />} />
+                    <Route path="/academy/my-earnings" element={<MyEarnings />} />
+                    <Route path="/academy/my-goals" element={<MyGoals />} />
+                    <Route path="/academy/leaderboard" element={<Leaderboard />} />
+                    <Route path="/academy/approvals" element={<Approvals />} />
+                    <Route path="/academy/manage-goals" element={<ManageGoals />} />
+                    <Route path="/academy/team" element={<Team />} />
+                    <Route path="/academy/reports" element={<Reports />} />
+                    
                     <Route path="/tasks" element={<Tasks />} />
                     <Route path="/scheduled-tasks" element={<ScheduledTasks />} />
                     <Route path="/tasks/:taskTitle" element={<TaskDetail />} />

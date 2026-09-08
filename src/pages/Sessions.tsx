@@ -161,18 +161,22 @@ export default function Sessions() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [userRole, setUserRole] = useState<number | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
 
   useEffect(() => {
     if (user?.id) {
       supabase
         .from('user_profiles')
-        .select('role_id')
+        .select('role_id, full_name')
         .eq('id', user.id)
         .single()
         .then(({ data }) => {
           if (data?.role_id) {
             setUserRole(data.role_id);
+          }
+          if (data?.full_name) {
+            setUserName(data.full_name);
           }
         });
     }
@@ -450,8 +454,10 @@ export default function Sessions() {
       filtered = filtered.filter(s => s.volunteer_name === volunteerFilter);
     }
 
-    // Apply facilitator filter
-    if (facilitatorFilter) {
+    // Apply facilitator filter or lock to current user if facilitator
+    if (userRole === 4 && userName) {
+      filtered = filtered.filter(s => s.facilitator_name === userName);
+    } else if (facilitatorFilter) {
       filtered = filtered.filter(s => s.facilitator_name === facilitatorFilter);
     }
 
@@ -752,17 +758,29 @@ export default function Sessions() {
                       <label className="text-sm font-medium text-foreground mb-2 block">
                         Filter by Facilitator
                       </label>
-                      <Select value={facilitatorFilter || 'all'} onValueChange={(value) => setFacilitatorFilter(value === 'all' ? null : value)}>
+                      <Select 
+                        value={userRole === 4 ? (userName || 'locked') : (facilitatorFilter || 'all')} 
+                        onValueChange={(value) => setFacilitatorFilter(value === 'all' ? null : value)}
+                        disabled={userRole === 4}
+                      >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select facilitator" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All Facilitators</SelectItem>
-                          {[...new Set(sessions.map(s => s.facilitator_name).filter(Boolean))].sort().map((facilitator) => (
-                            <SelectItem key={facilitator} value={facilitator || ''}>
-                              {facilitator}
+                          {userRole === 4 ? (
+                            <SelectItem value={userName || 'locked'}>
+                              {userName || 'My Sessions'} <Lock className="inline h-3 w-3 ml-2" />
                             </SelectItem>
-                          ))}
+                          ) : (
+                            <>
+                              <SelectItem value="all">All Facilitators</SelectItem>
+                              {[...new Set(sessions.map(s => s.facilitator_name).filter(Boolean))].sort().map((facilitator) => (
+                                <SelectItem key={facilitator} value={facilitator || ''}>
+                                  {facilitator}
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>

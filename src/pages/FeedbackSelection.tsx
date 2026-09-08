@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, MoreVertical, Eye, Plus, Search, X, GraduationCap, Upload, Check, ChevronsUpDown, ExternalLink, Download, Video } from 'lucide-react';
+import { FileText, MoreVertical, Eye, Plus, Search, X, GraduationCap, Upload, Check, ChevronsUpDown, ExternalLink, Download, Video, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -39,6 +39,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
@@ -101,8 +102,29 @@ const isDelayed = (session: any) => {
 
 export default function FeedbackSelection() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [userRole, setUserRole] = useState<number | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [feedbackSessions, setFeedbackSessions] = useState<FeedbackSession[]>([]);
+
+  useEffect(() => {
+    if (user?.id) {
+      supabase
+        .from('user_profiles')
+        .select('role_id, full_name')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.role_id) {
+            setUserRole(data.role_id);
+          }
+          if (data?.full_name) {
+            setUserName(data.full_name);
+          }
+        });
+    }
+  }, [user?.id]);
   
   // Filters and sorting state matching Sessions.tsx
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -264,7 +286,11 @@ export default function FeedbackSelection() {
     // Other filters
     if (volunteerFilter) filtered = filtered.filter(s => s.volunteer_name === volunteerFilter);
     if (organizationFilter) filtered = filtered.filter(s => s.organization_name === organizationFilter);
-    if (facilitatorFilter) filtered = filtered.filter(s => s.facilitator_name === facilitatorFilter);
+    if (userRole === 4 && userName) {
+      filtered = filtered.filter(s => s.facilitator_name === userName);
+    } else if (facilitatorFilter) {
+      filtered = filtered.filter(s => s.facilitator_name === facilitatorFilter);
+    }
     if (coordinatorFilter) filtered = filtered.filter(s => s.coordinator_name === coordinatorFilter);
 
     // New status filters
@@ -662,13 +688,25 @@ export default function FeedbackSelection() {
 
               <div>
                 <label className="text-xs font-medium mb-1 block">Facilitator</label>
-                <Select value={facilitatorFilter || 'all'} onValueChange={(v) => setFacilitatorFilter(v === 'all' ? null : v)}>
+                <Select 
+                  value={userRole === 4 ? (userName || 'locked') : (facilitatorFilter || 'all')} 
+                  onValueChange={(v) => setFacilitatorFilter(v === 'all' ? null : v)}
+                  disabled={userRole === 4}
+                >
                   <SelectTrigger className="h-9 truncate"><SelectValue placeholder="All Facilitators" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Facilitators</SelectItem>
-                    {[...new Set(feedbackSessions.map(s => s.facilitator_name).filter(Boolean))].sort().map(s => (
-                      <SelectItem key={s} value={s!}>{s}</SelectItem>
-                    ))}
+                    {userRole === 4 ? (
+                      <SelectItem value={userName || 'locked'}>
+                        {userName || 'My Feedback'} <Lock className="inline h-3 w-3 ml-2" />
+                      </SelectItem>
+                    ) : (
+                      <>
+                        <SelectItem value="all">All Facilitators</SelectItem>
+                        {[...new Set(feedbackSessions.map(s => s.facilitator_name).filter(Boolean))].sort().map(s => (
+                          <SelectItem key={s} value={s!}>{s}</SelectItem>
+                        ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

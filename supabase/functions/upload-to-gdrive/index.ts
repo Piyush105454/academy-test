@@ -13,16 +13,30 @@ serve(async (req) => {
   }
 
   try {
-    const email = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_EMAIL2');
+    let email = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_EMAIL2');
     let key = Deno.env.get('GOOGLE_PRIVATE_KEY2');
-    const folderId = Deno.env.get('GOOGLE_DRIVE_HOMEWORK_FOLDER_ID2');
+    let folderId = Deno.env.get('GOOGLE_DRIVE_HOMEWORK_FOLDER_ID2');
 
     if (!email || !key || !folderId) {
       throw new Error("Missing Google Drive credentials in environment variables");
     }
 
-    // Fix key formatting if it has escaped newlines
+    email = email.trim().replace(/^["']|["']$/g, '');
+    folderId = folderId.trim().replace(/^["']|["']$/g, '');
+    
+    key = key.trim();
+    if (key.startsWith('"') && key.endsWith('"')) {
+      try {
+        key = JSON.parse(key);
+      } catch (e) {
+        key = key.replace(/^"|"$/g, '');
+      }
+    } else if (key.startsWith("'") && key.endsWith("'")) {
+      key = key.slice(1, -1);
+    }
+
     key = key.replace(/\\n/g, '\n');
+    key = key.replace(/\\r/g, '').replace(/\r/g, '');
 
     const auth = new JWT({
       email: email,

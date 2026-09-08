@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { parseSubmissionRequirements, parseSubmissionLinks, serializeSubmissionLinks, type SubmissionRequirement } from "../utils/submissionUtils";
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { supabase } from '@/integrations/supabase/client';
+import { GoogleDriveResumableUploader } from '@/utils/GoogleDriveResumableUploader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -177,74 +178,14 @@ export default function StudentTaskDetail() {
     }
   };
 
-  const uploadFileWithProgress = (
-    file: File, 
-    folderPath: string[], 
-    accessToken: string,
-    onProgress: (percent: number) => void,
-    signal?: AbortSignal
-  ): Promise<any> => {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      
-      if (signal) {
-        signal.addEventListener('abort', () => {
-          xhr.abort();
-          reject(new DOMException('Aborted', 'AbortError'));
-        });
-      }
 
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          const percent = Math.round((event.loaded / event.total) * 100);
-          onProgress(percent);
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            resolve(response);
-          } catch (e) {
-            reject(new Error('Invalid response from server'));
-          }
-        } else {
-          try {
-            const errorRes = JSON.parse(xhr.responseText);
-            reject(new Error(errorRes.error || `Upload failed with status ${xhr.status}`));
-          } catch (e) {
-            reject(new Error(`Upload failed with status ${xhr.status}`));
-          }
-        }
-      });
-
-      xhr.addEventListener('error', () => {
-        reject(new Error('Network error during upload'));
-      });
-
-      xhr.addEventListener('abort', () => {
-        reject(new DOMException('Aborted', 'AbortError'));
-      });
-
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-gdrive`;
-      xhr.open('POST', url, true);
-      xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
-      
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('folderPath', JSON.stringify(folderPath));
-      
-      xhr.send(formData);
-    });
-  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, reqId: string, reqType: string) => {
     const files = event.target.files;
     if (!files || files.length === 0 || !task) return;
     
     const allowedTypes = [reqType];
-    const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB limit
+    const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB limit
     
     // Validate all files
     for (let i = 0; i < files.length; i++) {
@@ -252,7 +193,7 @@ export default function StudentTaskDetail() {
       
       // Check file size
       if (file.size > MAX_FILE_SIZE) {
-        toast.error(`File "${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum size allowed is 25 MB.`);
+        toast.error(`File "${file.name}" is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum size allowed is 500 MB.`);
         return;
       }
       
@@ -299,28 +240,18 @@ export default function StudentTaskDetail() {
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        
-        // Timeout handling (60 seconds)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-        try {
-          const result = await uploadFileWithProgress(
-            file,
-            folderPath,
-            session?.access_token || '',
-            (percent) => {
-              setUploadProgress(percent);
-            },
-            controller.signal
-          );
-          
-          clearTimeout(timeoutId);
-          newLinks.push(result.webViewLink);
-        } catch (err: any) {
-          clearTimeout(timeoutId);
-          throw err;
-        }
+        const uploader = new GoogleDriveResumableUploader({
+          file,
+          folderPath,
+          supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+          accessToken: session?.access_token || '',
+          onProgress: (percent) => setUploadProgress(percent),
+          chunkSize: 30 * 1024 * 1024 // 30MB chunks for much faster speed (fewer HTTP requests)
+        });
+
+        const result = await uploader.upload();
+        newLinks.push(result.webViewLink);
       }
       
       setSubmissionLinks(prev => {
@@ -611,11 +542,17 @@ export default function StudentTaskDetail() {
                           />
                           
                           {uploadingReqId === req.id ? (
-                            <div className="flex flex-col items-center gap-2 py-4">
+                            <div className="flex flex-col items-center gap-3 py-4 w-full px-8">
                               <Loader2 className="h-10 w-10 text-primary animate-spin" />
                               <p className="text-sm font-semibold text-primary animate-pulse">
-                                Uploading file...
+                                Uploading file... {uploadProgress}%
                               </p>
+                              <div className="w-full bg-primary/20 rounded-full h-2.5">
+                                <div 
+                                  className="bg-primary h-2.5 rounded-full transition-all duration-300" 
+                                  style={{ width: `${uploadProgress}%` }}
+                                ></div>
+                              </div>
                             </div>
                           ) : (
                             <div className="flex flex-col items-center gap-2">
@@ -625,7 +562,7 @@ export default function StudentTaskDetail() {
                               <div>
                                 <span className="font-semibold text-sm text-primary group-hover:underline">Click to upload</span> or drag and drop
                                 <p className="text-xs text-muted-foreground mt-1 capitalize">
-                                  Supported: {req.type} (Max size: 25 MB)
+                                  Supported: {req.type} (Max size: 500 MB)
                                 </p>
                               </div>
                             </div>

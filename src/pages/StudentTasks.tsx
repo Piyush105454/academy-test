@@ -28,6 +28,8 @@ interface StudentTask {
   created_at: string;
   earning_amount?: number;
   rejection_comment?: string | null;
+  created_by?: string | null;
+  incharge_name?: string;
   subjects?: { name: string } | null;
 }
 
@@ -38,10 +40,11 @@ export default function StudentTasks() {
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'deadline', direction: 'asc' });
   const [tasks, setTasks] = useState<StudentTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'pending' | 'submitted' | 'completed' | 'overdue' | 'rejected'>('pending');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'submitted' | 'completed' | 'overdue' | 'rejected'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSubject, setFilterSubject] = useState('all');
   const [filterTaskType, setFilterTaskType] = useState('all');
+  const [filterIncharge, setFilterIncharge] = useState('all');
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const currentMonthIndex = new Date().getMonth(); // 0 to 11
     return String(currentMonthIndex + 1); // "1" to "12"
@@ -102,7 +105,7 @@ export default function StudentTasks() {
         while (true) {
           const { data: pageData } = await supabase
             .from('student_task_feedback')
-            .select('id, task_name, task_description, deadline, feedback_type, status, feedback_notes, submission_link, created_at, earning_amount, rejection_comment, subjects(name)')
+            .select('id, task_name, task_description, deadline, feedback_type, status, feedback_notes, submission_link, created_at, earning_amount, rejection_comment, created_by, subjects(name)')
             .in('student_id', studentIds)
             .or(`academic_year.eq.${selectedYear},created_at.gte.${startDate.toISOString()}`)
             .order('created_at', { ascending: false })
@@ -115,6 +118,23 @@ export default function StudentTasks() {
         }
 
         if (allTasks.length > 0) {
+          // Fetch incharge names
+          const inchargeIds = Array.from(new Set(allTasks.map(t => t.created_by).filter(Boolean)));
+          if (inchargeIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from('user_profiles')
+              .select('id, full_name')
+              .in('id', inchargeIds);
+            
+            const profileMap = new Map((profiles || []).map(p => [p.id, p.full_name]));
+            allTasks = allTasks.map(t => ({
+              ...t,
+              incharge_name: t.created_by ? profileMap.get(t.created_by) || 'Unknown' : 'System',
+            }));
+          } else {
+            allTasks = allTasks.map(t => ({ ...t, incharge_name: 'System' }));
+          }
+
           loadedTasks = allTasks;
         }
       }
@@ -144,6 +164,14 @@ export default function StudentTasks() {
     return Array.from(types).sort();
   }, [tasks]);
 
+  const uniqueIncharges = useMemo(() => {
+    const incharges = new Set<string>();
+    tasks.forEach(t => {
+      if (t.incharge_name) incharges.add(t.incharge_name);
+    });
+    return Array.from(incharges).sort();
+  }, [tasks]);
+
   const filteredTasks = useMemo(() => {
     return tasks.filter(task => {
       const matchesSearch = task.task_name?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -157,7 +185,9 @@ export default function StudentTasks() {
 
       if (filterSubject !== 'all' && task.subjects?.name !== filterSubject) return false;
       if (filterTaskType !== 'all' && task.feedback_type?.toUpperCase() !== filterTaskType) return false;
+      if (filterIncharge !== 'all' && task.incharge_name !== filterIncharge) return false;
 
+      if (filter === 'all') return true;
       if (filter === 'submitted') return task.status === 'submitted';
       if (filter === 'completed') return task.status === 'completed' || task.status === 'approved';
       if (filter === 'rejected') return task.status === 'rejected';
@@ -172,14 +202,33 @@ export default function StudentTasks() {
         return isPending && isOverdue;
       }
       return true;
+    }).sort((a, b) => {
+      let aVal: any = a[sortConfig.key as keyof StudentTask] || '';
+      let bVal: any = b[sortConfig.key as keyof StudentTask] || '';
+      
+      if (sortConfig.key === 'deadline') {
+        aVal = a.deadline ? new Date(a.deadline).getTime() : 0;
+        bVal = b.deadline ? new Date(b.deadline).getTime() : 0;
+      }
+
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
     });
-  }, [tasks, searchQuery, selectedMonth, filter, filterSubject, filterTaskType]);
+  }, [tasks, searchQuery, selectedMonth, filter, filterSubject, filterTaskType, filterIncharge, sortConfig]);
 
   const statusBadgeVariant = (status: string) => {
     if (status === 'submitted') return 'secondary';
     if (status === 'approved' || status === 'reviewed' || status === 'completed') return 'default';
     if (status === 'rejected') return 'destructive';
     return 'outline';
+  };
+
+  const handleSort = (key: string) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
   };
 
   return (
@@ -262,21 +311,28 @@ export default function StudentTasks() {
               </Select>
             </div>
           <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-            <Button variant={filter === 'pending' ? 'default' : 'ghost'} onClick={() => setFilter('pending')} size="sm" className="gap-1.5">
-              <History className="h-4 w-4" /> Pending
-            </Button>
-            <Button variant={filter === 'submitted' ? 'default' : 'ghost'} onClick={() => setFilter('submitted')} size="sm" className="gap-1.5">
-              <CheckCircle2 className="h-4 w-4" /> Submitted
-            </Button>
-            <Button variant={filter === 'completed' ? 'default' : 'ghost'} onClick={() => setFilter('completed')} size="sm" className="gap-1.5 text-green-600 hover:text-green-700 hover:bg-green-50">
-              <CheckCircle2 className="h-4 w-4" /> Approved
-            </Button>
-            <Button variant={filter === 'rejected' ? 'default' : 'ghost'} onClick={() => setFilter('rejected')} size="sm" className="gap-1.5 text-amber-600 hover:text-amber-700 hover:bg-amber-50">
-              <AlertCircle className="h-4 w-4" /> Rejected
-            </Button>
-            <Button variant={filter === 'overdue' ? 'default' : 'ghost'} onClick={() => setFilter('overdue')} size="sm" className="gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50">
-              <Clock className="h-4 w-4" /> Overdue
-            </Button>
+            <Select value={filterIncharge} onValueChange={setFilterIncharge}>
+              <SelectTrigger className="w-full sm:w-[150px] shrink-0 bg-muted/50 border-none h-9">
+                <SelectValue placeholder="All Incharge" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Incharge</SelectItem>
+                {uniqueIncharges.map(inc => <SelectItem key={inc} value={inc}>{inc}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={filter} onValueChange={(val: any) => setFilter(val)}>
+              <SelectTrigger className="w-full sm:w-[150px] shrink-0 bg-muted/50 border-none h-9">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="submitted">Submitted</SelectItem>
+                <SelectItem value="completed">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="overdue">Overdue</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -351,9 +407,10 @@ export default function StudentTasks() {
                     </div>
                   )}
                   <div className="flex items-center justify-between pt-4 border-t border-border mt-2">
-                    <div className="text-xs text-muted-foreground font-medium flex gap-3">
+                    <div className="text-[10px] sm:text-xs text-muted-foreground font-medium flex gap-2 sm:gap-3 flex-wrap items-center">
                       <span>TYPE: {task.feedback_type.toUpperCase()}</span>
                         {task.subjects?.name && <span>SUBJECT: {task.subjects.name.toUpperCase()}</span>}
+                        {task.incharge_name && <span>INCHARGE: {task.incharge_name.toUpperCase()}</span>}
                       <span className="text-primary font-bold">&#8377; {task.earning_amount || 5}</span>
                     </div>
                     <Button
@@ -387,6 +444,7 @@ export default function StudentTasks() {
                         <div className="flex items-center gap-1">Type <ArrowUpDown className="h-3 w-3" /></div>
                       </TableHead>
                       <TableHead>Subject</TableHead>
+                      <TableHead>Incharge</TableHead>
                     <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('status')}>
                       <div className="flex items-center gap-1">Status <ArrowUpDown className="h-3 w-3" /></div>
                     </TableHead>
@@ -403,15 +461,8 @@ export default function StudentTasks() {
                   {filteredTasks.map((task) => {
                     const isPast = task.deadline ? new Date(task.deadline) < new Date() : false;
                     const isPending = task.status === 'pending';
-                    
-  const handleSort = (key: string) => {
-    setSortConfig(prev => ({
-      key,
-      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
-    }));
-  };
-  
-return (
+
+                    return (
                       <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/student-tasks/${task.id}`)}>
                         <TableCell className="font-medium">
                           <div className="line-clamp-2" title={task.task_name}>{task.task_name}</div>
@@ -426,6 +477,9 @@ return (
                           </TableCell>
                           <TableCell>
                             <span className="text-xs text-muted-foreground">{task.subjects?.name || '-'}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-xs text-muted-foreground">{task.incharge_name || '-'}</span>
                           </TableCell>
                         <TableCell>
                           <Badge variant={statusBadgeVariant(task.status)}>

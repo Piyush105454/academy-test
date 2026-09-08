@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { GoogleDriveResumableUploader } from '@/utils/GoogleDriveResumableUploader';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
@@ -144,25 +145,17 @@ export default function ResourceHub({ isStudent = false }: { isStudent?: boolean
   const handleFileUpload = async (file: File) => {
     try {
       setUploadingFile(true);
-      const data = new FormData();
-      data.append('file', file);
-      
       const folderPath = ["FELLOW", selectedYear || "Unknown Year", "resourcehub"];
-      data.append('folderPath', JSON.stringify(folderPath));
-      
       const { data: { session } } = await supabase.auth.getSession();
       
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-to-gdrive`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session?.access_token}`
-        },
-        body: data
+      const uploader = new GoogleDriveResumableUploader({
+        file,
+        folderPath,
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+        accessToken: session?.access_token || '',
       });
-      
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Upload failed');
-      
+
+      const result = await uploader.upload();
       return result.webViewLink;
     } catch (error) {
       console.error('File upload error:', error);

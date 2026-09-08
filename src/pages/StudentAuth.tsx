@@ -46,8 +46,9 @@ export function StudentAuth() {
     setLoading(true);
 
     try {
+        const cleanEmail = email.trim();
         // Validate student email first
-        const isStudent = await validateStudentEmail(email);
+        const isStudent = await validateStudentEmail(cleanEmail);
         if (!isStudent) {
           setError('You do not have class email, or your account has been deactivated.');
           setLoading(false);
@@ -55,7 +56,7 @@ export function StudentAuth() {
         }
         
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email,
+          email: cleanEmail,
           password,
         });
   
@@ -89,8 +90,9 @@ export function StudentAuth() {
     setLoading(true);
 
     try {
+      const cleanEmail = email.trim();
       // Validate student email exists in any class
-      const isStudent = await validateStudentEmail(email);
+      const isStudent = await validateStudentEmail(cleanEmail);
       if (!isStudent) {
         setError('You do not have class email');
         setLoading(false);
