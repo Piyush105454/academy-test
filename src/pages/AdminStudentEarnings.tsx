@@ -39,6 +39,7 @@ interface StudentEarning {
   student_id: string;
   student_name: string;
   class_name: string;
+  class_id?: string;
   designation: string;
   total_earned: number;
   last_earned_at: string | null;
@@ -96,9 +97,9 @@ export default function AdminStudentEarnings() {
   const [filterSubject, setFilterSubject] = useState('all');
   const [rewardConfigs, setRewardConfigs] = useState<RewardConfig[]>([]);
   const [isEditingConfigs, setIsEditingConfigs] = useState(false);
-  const [selectedModalClass, setSelectedModalClass] = useState<string>('all');
+  const [selectedModalClass, setSelectedModalClass] = useState<string>('');
   const [editingConfigs, setEditingConfigs] = useState<RewardConfig[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
   const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
   const { selectedYear, getDateRange } = useAcademicYear();
 
@@ -130,57 +131,70 @@ export default function AdminStudentEarnings() {
       return true;
     });
 
-    const matchedRecordIds = new Set<string>();
     const configsToUse = rewardConfigs.length > 0 ? rewardConfigs : DEFAULT_EARNING_POTENTIAL;
 
-    const breakdown = configsToUse.map(config => {
-      const taskTypeLower = (config.task_type || '').toLowerCase();
-      
-      const matchingRecords = filtered.filter(r => {
-        const taskName = ((r as any).student_task_feedback?.task_name || '').toLowerCase();
-        const desc = (r.description || '').toLowerCase();
-        const subj = ((r as any).student_task_feedback?.subjects?.name || '').toLowerCase();
+    // Initialize breakdown buckets
+    const breakdown = configsToUse.map(config => ({
+      ...config,
+      earnedAmount: 0,
+      completedCount: 0,
+    }));
 
-        let isMatch = false;
-        if (taskTypeLower.includes('attendance') && (desc.includes('attendance') || taskName.includes('attendance'))) {
-          isMatch = true;
-        } else if (taskTypeLower.includes('ccc') || taskTypeLower.includes('computer')) {
-          if (desc.includes('ccc') || desc.includes('computer') || taskName.includes('ccc') || taskName.includes('computer') || subj.includes('ccc') || subj.includes('computer')) {
-            isMatch = true;
-          }
-        } else if (taskTypeLower.includes('english') || taskTypeLower.includes('reading') || taskTypeLower.includes('speaking')) {
-          if (desc.includes('english') || desc.includes('reading') || taskName.includes('english') || taskName.includes('reading') || subj.includes('english')) {
-            isMatch = true;
-          }
-        } else if (taskTypeLower.includes('gt') || taskTypeLower.includes('guest teacher') || taskTypeLower.includes('session')) {
-          if (desc.includes('gt') || desc.includes('guest teacher') || desc.includes('session') || taskName.includes('gt') || taskName.includes('guest teacher')) {
-            isMatch = true;
-          }
-        } else if (taskTypeLower.includes('mentor')) {
-          if (desc.includes('mentor') || taskName.includes('mentor')) {
-            isMatch = true;
-          }
-        }
+    let otherEarned = 0;
+    let otherCount = 0;
 
-        if (isMatch) {
-          matchedRecordIds.add(r.id);
+    filtered.forEach(r => {
+      const taskName = ((r as any).student_task_feedback?.task_name || '').toLowerCase();
+      const desc = (r.description || '').toLowerCase();
+      const subj = ((r as any).student_task_feedback?.subjects?.name || '').toLowerCase();
+      const rAmount = parseFloat(r.amount as any || 0);
+
+      // First try to find a match using ONLY the task name (high confidence)
+      let matchIndex = breakdown.findIndex(config => {
+        const taskTypeLower = (config.task_type || '').toLowerCase();
+
+        if (taskTypeLower.includes('attendance') && taskName.includes('attendance')) return true;
+        if ((taskTypeLower.includes('ccc') || taskTypeLower.includes('computer')) && (taskName.includes('ccc') || taskName.includes('computer'))) return true;
+        if ((taskTypeLower.includes('english') || taskTypeLower.includes('reading') || taskTypeLower.includes('speaking')) && (taskName.includes('english') || taskName.includes('reading'))) return true;
+        if (taskTypeLower.includes('mentor') && taskName.includes('mentor')) return true;
+        
+        if (taskTypeLower.includes('gt') || taskTypeLower.includes('guest teacher') || taskTypeLower.includes('session')) {
+          if (taskName.includes('gt') || taskName.includes('guest teacher')) return true;
+          if (taskName.includes('session') && !taskName.includes('mentor') && !taskName.includes('english')) return true;
         }
-        return isMatch;
+        
+        return false;
       });
 
-      const earnedAmount = matchingRecords.reduce((sum, r) => sum + parseFloat(r.amount as any || 0), 0);
-      const completedCount = matchingRecords.length;
+      // If no match found by task name, fallback to description & subject (lower confidence)
+      if (matchIndex === -1) {
+        matchIndex = breakdown.findIndex(config => {
+          const taskTypeLower = (config.task_type || '').toLowerCase();
 
-      return {
-        ...config,
-        earnedAmount,
-        completedCount,
-      };
+          if (taskTypeLower.includes('attendance') && desc.includes('attendance')) return true;
+          if ((taskTypeLower.includes('ccc') || taskTypeLower.includes('computer')) && (desc.includes('ccc') || desc.includes('computer') || subj.includes('ccc') || subj.includes('computer'))) return true;
+          if ((taskTypeLower.includes('english') || taskTypeLower.includes('reading') || taskTypeLower.includes('speaking')) && (desc.includes('english') || desc.includes('reading') || subj.includes('english'))) return true;
+          if (taskTypeLower.includes('mentor') && desc.includes('mentor')) return true;
+          
+          if (taskTypeLower.includes('gt') || taskTypeLower.includes('guest teacher') || taskTypeLower.includes('session')) {
+            if (desc.includes('gt') || desc.includes('guest teacher')) return true;
+            if (desc.includes('session') && !desc.includes('mentor') && !desc.includes('english')) return true;
+          }
+          
+          return false;
+        });
+      }
+
+      if (matchIndex >= 0) {
+        breakdown[matchIndex].earnedAmount += rAmount;
+        breakdown[matchIndex].completedCount += 1;
+      } else {
+        otherEarned += rAmount;
+        otherCount += 1;
+      }
     });
 
-    const otherRecords = filtered.filter(r => !matchedRecordIds.has(r.id));
-    if (otherRecords.length > 0) {
-      const otherEarned = otherRecords.reduce((sum, r) => sum + parseFloat(r.amount as any || 0), 0);
+    if (otherCount > 0) {
       breakdown.push({
         id: 'other',
         task_type: 'Other / Custom Earning Rewards',
@@ -190,12 +204,11 @@ export default function AdminStudentEarnings() {
         potential_monthly: 0,
         how_to_earn: 'Additional custom or bonus rewards assigned directly',
         earnedAmount: otherEarned,
-        completedCount: otherRecords.length,
-      });
+        completedCount: otherCount,
+      } as any);
     }
 
-    return breakdown;
-  }, [selectedStudent, studentRecords, rewardConfigs, selectedMonth]);
+    return breakdown;  }, [selectedStudent, studentRecords, rewardConfigs, selectedMonth]);
 
   const totalPotentialMonthly = useMemo(() => {
     const configsToUse = rewardConfigs.length > 0 ? rewardConfigs : DEFAULT_EARNING_POTENTIAL;
@@ -233,9 +246,9 @@ export default function AdminStudentEarnings() {
         }
       }
 
-      await fetchClasses(role, facClassIds);
-      await fetchStudentEarnings(role, facClassIds);
-      fetchRewardConfigs(selectedModalClass !== "all" ? selectedModalClass : undefined);
+      const defaultClassId = await fetchClasses(role, facClassIds);
+        await fetchStudentEarnings(role, facClassIds);
+        fetchRewardConfigs(selectedModalClass || defaultClassId || undefined);
       fetchSubjects();
     }
     init();
@@ -243,7 +256,7 @@ export default function AdminStudentEarnings() {
 
   useEffect(() => {
     if (isPotentialModalOpen) {
-      fetchRewardConfigs(selectedModalClass !== 'all' ? selectedModalClass : undefined);
+      fetchRewardConfigs(selectedModalClass || undefined);
     }
   }, [selectedModalClass, isPotentialModalOpen]);
 
@@ -257,10 +270,11 @@ export default function AdminStudentEarnings() {
       let query = supabase.from('reward_configurations').select('*');
       
       if (classId && classId !== 'all') {
-        query = query.eq('class_id', classId);
-      } else {
-        query = query.is('class_id', null);
-      }
+          query = query.eq('class_id', classId);
+        } else {
+          // Fallback if somehow no class is provided
+          query = query.is('class_id', null);
+        }
       
       const { data, error } = await query.order('task_type');
 
@@ -306,6 +320,7 @@ export default function AdminStudentEarnings() {
           id,
           name,
           designation,
+          class_id,
           bank_name,
           account_number,
           ifsc_code,
@@ -378,6 +393,7 @@ export default function AdminStudentEarnings() {
           student_id: s.id,
           student_name: s.name,
           class_name: s.classes?.name || 'Unassigned',
+          class_id: s.class_id || undefined,
           designation: s.designation || '-',
           total_earned: total,
           last_earned_at: lastDate,
@@ -488,7 +504,7 @@ export default function AdminStudentEarnings() {
         if (error) throw error;
       }
       toast.success('Reward configurations updated');
-      fetchRewardConfigs(selectedModalClass !== "all" ? selectedModalClass : undefined);
+      fetchRewardConfigs(selectedModalClass || undefined);
       setIsEditingConfigs(false);
     } catch (error: any) {
       console.error('Error saving configs:', error);
@@ -696,7 +712,7 @@ export default function AdminStudentEarnings() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <Button
                 variant="outline"
-                onClick={() => setSelectedStudent(null)}
+                onClick={() => { setSelectedStudent(null); fetchRewardConfigs(selectedModalClass || undefined); }}
                 className="gap-2 bg-background hover:bg-accent font-semibold border-primary/30"
               >
                 <ArrowLeft className="h-4 w-4" /> Back to Student List
@@ -1137,6 +1153,7 @@ export default function AdminStudentEarnings() {
                               onClick={() => {
                                 setSelectedStudent(s);
                                 fetchStudentRecords(s.student_id);
+                                fetchRewardConfigs(s.class_id);
                               }}
                             >
                               View Details
@@ -1212,10 +1229,10 @@ export default function AdminStudentEarnings() {
                       <span className="text-sm font-medium">Configuration for Class:</span>
                       <Select value={selectedModalClass} onValueChange={setSelectedModalClass} disabled={isEditingConfigs}>
                         <SelectTrigger className="w-[200px]">
-                          <SelectValue placeholder="Global Default" />
+                          <SelectValue placeholder="Select Class" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">Global Default</SelectItem>
+                          
                           {classes.map(cls => (
                             <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
                           ))}

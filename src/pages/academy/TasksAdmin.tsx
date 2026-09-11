@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Clock, Plus, Users, Award, FileText, Settings2, MoreHorizontal, X } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Calendar, Clock, Plus, Users, Award, FileText, Settings2, MoreHorizontal, X, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from '@/integrations/supabase/client';
 
@@ -79,10 +81,13 @@ export default function TasksAdmin() {
     setSelectedFacilitators(selectedFacilitators.filter(f => f.id !== id));
   };
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return toast.error("Task Name is required");
     
+    setIsSubmitting(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No user logged in");
@@ -127,6 +132,10 @@ export default function TasksAdmin() {
           .insert(assignments);
           
         if (assignError) throw assignError;
+
+        // 3. Immediately generate tasks for today so they show up in My Work
+        const { error: rpcError } = await supabase.rpc('generate_academy_tasks');
+        if (rpcError) console.error("Error generating initial tasks:", rpcError);
       }
 
       toast.success("Task template created successfully!");
@@ -141,6 +150,8 @@ export default function TasksAdmin() {
       
     } catch (err: any) {
       toast.error("Error creating task: " + err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -177,6 +188,35 @@ export default function TasksAdmin() {
       fetchTemplates();
     }
   }, [isCreating]);
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [templateToDelete, setTemplateToDelete] = useState<any>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteTemplate = async () => {
+    if (!templateToDelete || deleteConfirmText !== "DELETE") return;
+    
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('academy_task_templates')
+        .delete()
+        .eq('id', templateToDelete.id);
+        
+      if (error) throw error;
+      
+      toast.success("Task template deleted successfully");
+      setTemplates(templates.filter(t => t.id !== templateToDelete.id));
+      setDeleteDialogOpen(false);
+      setTemplateToDelete(null);
+      setDeleteConfirmText("");
+    } catch (err: any) {
+      toast.error("Error deleting template: " + err.message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   if (!isCreating) {
     return (
@@ -287,9 +327,33 @@ export default function TasksAdmin() {
                             <div className="truncate max-w-[150px]" title={assignedText}>{assignedText}</div>
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <Button variant="ghost" size="icon" className="text-slate-400 hover:text-slate-900">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="text-slate-400 hover:text-slate-900">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => {
+                                  // Edit functionality placeholder - would load data into form and set isCreating=true
+                                  toast.info("Edit functionality coming soon!");
+                                }}>
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit Task
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                  onClick={() => {
+                                    setTemplateToDelete(task);
+                                    setDeleteConfirmText("");
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </td>
                         </tr>
                       );
@@ -300,6 +364,41 @@ export default function TasksAdmin() {
             </div>
           </div>
         </div>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-red-600">Delete Task Template</DialogTitle>
+              <DialogDescription>
+                This will permanently delete the template <strong>{templateToDelete?.name}</strong> and all its associated assignments and tasks. 
+                This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-3">
+              <Label htmlFor="confirm-delete">
+                Please type <strong>DELETE</strong> to confirm:
+              </Label>
+              <Input 
+                id="confirm-delete"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                autoComplete="off"
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>Cancel</Button>
+              <Button 
+                variant="destructive" 
+                disabled={deleteConfirmText !== 'DELETE' || isDeleting}
+                onClick={handleDeleteTemplate}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Permanently'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DashboardLayout>
     );
   }
@@ -587,8 +686,10 @@ export default function TasksAdmin() {
           </Card>
 
           <div className="flex justify-end gap-4 pt-4 border-t">
-            <Button type="button" variant="outline" className="px-8" onClick={() => setIsCreating(false)}>Cancel</Button>
-            <Button type="submit" className="px-8 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">Create & Assign Task</Button>
+            <Button type="button" variant="outline" className="px-8" onClick={() => setIsCreating(false)} disabled={isSubmitting}>Cancel</Button>
+            <Button type="submit" className="px-8 bg-blue-600 hover:bg-blue-700 text-white rounded-lg" disabled={isSubmitting}>
+              {isSubmitting ? 'Creating...' : 'Create & Assign Task'}
+            </Button>
           </div>
         </form>
       </div>

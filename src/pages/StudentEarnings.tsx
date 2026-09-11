@@ -110,57 +110,69 @@ export default function StudentEarnings() {
   }, [validEarnings]);
 
   const categoryBreakdown = useMemo(() => {
-    const matchedRecordIds = new Set<string>();
     const configsToUse = rewardConfigs.length > 0 ? rewardConfigs : DEFAULT_EARNING_POTENTIAL;
+    
+    // Initialize breakdown buckets
+    const breakdown = configsToUse.map(config => ({
+      ...config,
+      earnedAmount: 0,
+      completedCount: 0,
+    }));
 
-    const breakdown = configsToUse.map(config => {
-      const taskTypeLower = (config.task_type || '').toLowerCase();
-      
-      const matchingRecords = validEarnings.filter(r => {
-        const taskName = (r.task_name || '').toLowerCase();
-        const desc = (r.description || '').toLowerCase();
-        const subj = (r.subject_name || '').toLowerCase();
+    let otherEarned = 0;
+    let otherCount = 0;
 
-        let isMatch = false;
-        if (taskTypeLower.includes('attendance') && (desc.includes('attendance') || taskName.includes('attendance'))) {
-          isMatch = true;
-        } else if (taskTypeLower.includes('ccc') || taskTypeLower.includes('computer')) {
-          if (desc.includes('ccc') || desc.includes('computer') || taskName.includes('ccc') || taskName.includes('computer') || subj.includes('ccc') || subj.includes('computer')) {
-            isMatch = true;
-          }
-        } else if (taskTypeLower.includes('english') || taskTypeLower.includes('reading') || taskTypeLower.includes('speaking')) {
-          if (desc.includes('english') || desc.includes('reading') || taskName.includes('english') || taskName.includes('reading') || subj.includes('english')) {
-            isMatch = true;
-          }
-        } else if (taskTypeLower.includes('gt') || taskTypeLower.includes('guest teacher') || taskTypeLower.includes('session')) {
-          if (desc.includes('gt') || desc.includes('guest teacher') || desc.includes('session') || taskName.includes('gt') || taskName.includes('guest teacher')) {
-            isMatch = true;
-          }
-        } else if (taskTypeLower.includes('mentor')) {
-          if (desc.includes('mentor') || taskName.includes('mentor')) {
-            isMatch = true;
-          }
+    validEarnings.forEach(r => {
+      const taskName = (r.task_name || '').toLowerCase();
+      const desc = (r.description || '').toLowerCase();
+      const subj = (r.subject_name || '').toLowerCase();
+
+            // First try to find a match using ONLY the task name (high confidence)
+      let matchIndex = breakdown.findIndex(config => {
+        const taskTypeLower = (config.task_type || '').toLowerCase();
+
+        if (taskTypeLower.includes('attendance') && taskName.includes('attendance')) return true;
+        if ((taskTypeLower.includes('ccc') || taskTypeLower.includes('computer')) && (taskName.includes('ccc') || taskName.includes('computer'))) return true;
+        if ((taskTypeLower.includes('english') || taskTypeLower.includes('reading') || taskTypeLower.includes('speaking')) && (taskName.includes('english') || taskName.includes('reading'))) return true;
+        if (taskTypeLower.includes('mentor') && taskName.includes('mentor')) return true;
+        
+        if (taskTypeLower.includes('gt') || taskTypeLower.includes('guest teacher') || taskTypeLower.includes('session')) {
+          if (taskName.includes('gt') || taskName.includes('guest teacher')) return true;
+          if (taskName.includes('session') && !taskName.includes('mentor') && !taskName.includes('english')) return true;
         }
-
-        if (isMatch) {
-          matchedRecordIds.add(r.id);
-        }
-        return isMatch;
+        
+        return false;
       });
 
-      const earnedAmount = matchingRecords.reduce((sum, r) => sum + r.amount, 0);
-      const completedCount = matchingRecords.length;
+      // If no match found by task name, fallback to description & subject (lower confidence)
+      if (matchIndex === -1) {
+        matchIndex = breakdown.findIndex(config => {
+          const taskTypeLower = (config.task_type || '').toLowerCase();
 
-      return {
-        ...config,
-        earnedAmount,
-        completedCount,
-      };
+          if (taskTypeLower.includes('attendance') && desc.includes('attendance')) return true;
+          if ((taskTypeLower.includes('ccc') || taskTypeLower.includes('computer')) && (desc.includes('ccc') || desc.includes('computer') || subj.includes('ccc') || subj.includes('computer'))) return true;
+          if ((taskTypeLower.includes('english') || taskTypeLower.includes('reading') || taskTypeLower.includes('speaking')) && (desc.includes('english') || desc.includes('reading') || subj.includes('english'))) return true;
+          if (taskTypeLower.includes('mentor') && desc.includes('mentor')) return true;
+          
+          if (taskTypeLower.includes('gt') || taskTypeLower.includes('guest teacher') || taskTypeLower.includes('session')) {
+            if (desc.includes('gt') || desc.includes('guest teacher')) return true;
+            if (desc.includes('session') && !desc.includes('mentor') && !desc.includes('english')) return true;
+          }
+          
+          return false;
+        });
+      }
+
+      if (matchIndex >= 0) {
+        breakdown[matchIndex].earnedAmount += r.amount;
+        breakdown[matchIndex].completedCount += 1;
+      } else {
+        otherEarned += r.amount;
+        otherCount += 1;
+      }
     });
 
-    const otherRecords = validEarnings.filter(r => !matchedRecordIds.has(r.id));
-    if (otherRecords.length > 0) {
-      const otherEarned = otherRecords.reduce((sum, r) => sum + r.amount, 0);
+    if (otherCount > 0) {
       breakdown.push({
         id: 'other',
         task_type: 'Other / Custom Earning Rewards',
@@ -170,7 +182,7 @@ export default function StudentEarnings() {
         potential_monthly: 0,
         how_to_earn: 'Additional custom or bonus rewards assigned directly',
         earnedAmount: otherEarned,
-        completedCount: otherRecords.length,
+        completedCount: otherCount,
       });
     }
 

@@ -280,39 +280,40 @@ export default function StudentTasks() {
         </div>
 
         {/* Search & Filter Bar */}
-        <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-card p-4 rounded-xl border border-border shadow-sm">
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto flex-1">
-              <div className="relative w-full md:w-80 shrink-0">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search tasks..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 bg-muted/50 border-none focus-visible:ring-primary h-9"
-                />
-              </div>
-              <Select value={filterSubject} onValueChange={setFilterSubject}>
-                <SelectTrigger className="w-full sm:w-[150px] shrink-0 bg-muted/50 border-none h-9">
-                  <SelectValue placeholder="All Subjects" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Subjects</SelectItem>
-                  {uniqueSubjects.map(sub => <SelectItem key={sub} value={sub}>{sub}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={filterTaskType} onValueChange={setFilterTaskType}>
-                <SelectTrigger className="w-full sm:w-[150px] shrink-0 bg-muted/50 border-none h-9">
-                  <SelectValue placeholder="All Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  {uniqueTaskTypes.map(typ => <SelectItem key={typ} value={typ}>{typ}</SelectItem>)}
-                </SelectContent>
-              </Select>
+        <div className="flex flex-col md:flex-row gap-4 items-start justify-between bg-card p-4 rounded-xl border border-border shadow-sm">
+          <div className="grid grid-cols-1 sm:flex sm:flex-row sm:flex-wrap gap-3 w-full">
+            <div className="relative w-full md:w-64 shrink-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 bg-muted/50 border-none focus-visible:ring-primary h-9"
+              />
             </div>
-          <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+            
+            <Select value={filterSubject} onValueChange={setFilterSubject}>
+              <SelectTrigger className="w-full sm:w-[140px] bg-muted/50 border-none h-9">
+                <SelectValue placeholder="All Subjects" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Subjects</SelectItem>
+                {uniqueSubjects.map(sub => <SelectItem key={sub} value={sub}>{sub}</SelectItem>)}
+              </SelectContent>
+            </Select>
+
+            <Select value={filterTaskType} onValueChange={setFilterTaskType}>
+              <SelectTrigger className="w-full sm:w-[140px] bg-muted/50 border-none h-9">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {uniqueTaskTypes.map(typ => <SelectItem key={typ} value={typ}>{typ}</SelectItem>)}
+              </SelectContent>
+            </Select>
+
             <Select value={filterIncharge} onValueChange={setFilterIncharge}>
-              <SelectTrigger className="w-full sm:w-[150px] shrink-0 bg-muted/50 border-none h-9">
+              <SelectTrigger className="w-full sm:w-[140px] bg-muted/50 border-none h-9">
                 <SelectValue placeholder="All Incharge" />
               </SelectTrigger>
               <SelectContent>
@@ -320,17 +321,42 @@ export default function StudentTasks() {
                 {uniqueIncharges.map(inc => <SelectItem key={inc} value={inc}>{inc}</SelectItem>)}
               </SelectContent>
             </Select>
+
             <Select value={filter} onValueChange={(val: any) => setFilter(val)}>
-              <SelectTrigger className="w-full sm:w-[150px] shrink-0 bg-muted/50 border-none h-9">
+              <SelectTrigger className="w-full sm:w-[150px] bg-muted/50 border-none h-9">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="submitted">Submitted</SelectItem>
-                <SelectItem value="completed">Approved</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
+                <SelectItem value="all">
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <div className="w-2 h-2 rounded-full bg-slate-300"></div>All Status
+                  </div>
+                </SelectItem>
+                <SelectItem value="pending">
+                  <div className="flex items-center gap-2 text-orange-600 font-medium">
+                    <div className="w-2 h-2 rounded-full bg-orange-500"></div>Pending
+                  </div>
+                </SelectItem>
+                <SelectItem value="submitted">
+                  <div className="flex items-center gap-2 text-blue-600 font-medium">
+                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>Submitted
+                  </div>
+                </SelectItem>
+                <SelectItem value="completed">
+                  <div className="flex items-center gap-2 text-green-600 font-medium">
+                    <div className="w-2 h-2 rounded-full bg-green-500"></div>Approved
+                  </div>
+                </SelectItem>
+                <SelectItem value="rejected">
+                  <div className="flex items-center gap-2 text-red-500 font-medium">
+                    <div className="w-2 h-2 rounded-full bg-red-500"></div>Rejected
+                  </div>
+                </SelectItem>
+                <SelectItem value="overdue">
+                  <div className="flex items-center gap-2 text-red-700 font-medium">
+                    <div className="w-2 h-2 rounded-full bg-red-700"></div>Overdue
+                  </div>
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>

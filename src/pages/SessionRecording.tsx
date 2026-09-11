@@ -390,17 +390,32 @@ export default function SessionRecording() {
       fetchHoursTracker();
       fetchHomeworkRecords();
       fetchStudents();
-      fetchRewardConfigs();
     }
   }, [sessionId, selectedYear]);
 
-  const fetchRewardConfigs = async () => {
+  const fetchRewardConfigs = async (classId?: string) => {
     try {
-      const { data, error } = await supabase
-        .from('reward_configurations')
-        .select('task_type, rate_per_task')
-        .order('task_type');
-      if (!error && data) setRewardConfigs(data);
+      let query = supabase.from('reward_configurations').select('task_type, rate_per_task');
+      if (classId) {
+        query = query.eq('class_id', classId);
+      } else {
+        query = query.is('class_id', null);
+      }
+      
+      const { data, error } = await query.order('task_type');
+      if (!error && data) {
+        if (classId && data.length === 0) {
+          // Fallback to global defaults if no specific class configs found
+          const { data: fallbackData } = await supabase
+            .from('reward_configurations')
+            .select('task_type, rate_per_task')
+            .is('class_id', null)
+            .order('task_type');
+          if (fallbackData) setRewardConfigs(fallbackData);
+        } else {
+          setRewardConfigs(data);
+        }
+      }
     } catch (e) {
       console.error('Error fetching reward configs:', e);
     }
@@ -701,6 +716,7 @@ export default function SessionRecording() {
       }
       
       const classData = classDataList[0];
+      fetchRewardConfigs(classData.id);
 
       // Fetch students from that class filtered by selected academic year
       const { data: studentsData, error: studentsError } = await supabase
