@@ -56,6 +56,7 @@ export default function TaskEdit() {
   const [saving, setSaving] = useState(false);
   const [taskData, setTaskData] = useState<TaskData | null>(null);
   const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [rewardConfigs, setRewardConfigs] = useState<{ task_type: string; rate_per_task: number }[]>([]);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -63,6 +64,7 @@ export default function TaskEdit() {
     academicYear: '',
     reward: 0,
     classId: '',
+    taskType: '',
     subjectName: '',
     submission_requirements: [] as SubmissionRequirement[],
     created_by: '',
@@ -103,8 +105,8 @@ export default function TaskEdit() {
       setInchargeOptions(profiles.map(p => ({ id: p.id, name: p.full_name || 'Unknown User' })));
     }
     // Fetch classes first, then task data
-    await fetchClasses();
-    await fetchTaskData();
+    const classList = await fetchClasses();
+    await fetchTaskData(classList);
     setLoading(false);
   };
 
@@ -118,9 +120,49 @@ export default function TaskEdit() {
         .order('name');
       
       if (error) throw error;
-      setClasses(data || []);
+      const classList = data || [];
+      setClasses(classList);
+      return classList;
     } catch (error) {
       console.error('Error fetching classes:', error);
+      return [];
+    }
+  };
+
+  const fetchRewardConfigs = async (classId?: string, currentTaskType?: string) => {
+    try {
+      let query = supabase
+        .from('reward_configurations')
+        .select('task_type, rate_per_task');
+
+      if (classId) {
+        query = query.eq('class_id', classId);
+      } else {
+        query = query.is('class_id', null);
+      }
+
+      const { data, error } = await query.order('task_type');
+      let configs = data || [];
+
+      // If queried for a specific class but got no configs, fallback to global configs (class_id IS NULL)
+      if (classId && configs.length === 0) {
+        const { data: fallbackData } = await supabase
+          .from('reward_configurations')
+          .select('task_type, rate_per_task')
+          .is('class_id', null)
+          .order('task_type');
+        if (fallbackData) configs = fallbackData;
+      }
+
+      // If the task already has a feedback_type that's not in the list, include it
+      const existingType = currentTaskType || formData.taskType;
+      if (existingType && !configs.some(c => c.task_type === existingType)) {
+        configs = [{ task_type: existingType, rate_per_task: 0 }, ...configs];
+      }
+
+      setRewardConfigs(configs);
+    } catch (err) {
+      console.error('Error fetching reward configurations:', err);
     }
   };
 
@@ -154,7 +196,7 @@ export default function TaskEdit() {
     return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
   };
 
-  const fetchTaskData = async () => {
+  const fetchTaskData = async (classList?: ClassOption[]) => {
     try {
       const { data, error } = await supabase
         .from('student_task_feedback')
@@ -197,6 +239,23 @@ export default function TaskEdit() {
           }
         }
 
+        // If still no class_id, try from session
+        if (!resolvedClassId && firstRow.session_id) {
+          const { data: sessionData } = await supabase
+            .from('sessions')
+            .select('class_batch')
+            .eq('id', firstRow.session_id)
+            .single();
+          if (sessionData?.class_batch) {
+            const list = classList || classes;
+            const matchedClass = list.find(c => c.name?.toLowerCase().trim() === sessionData.class_batch?.toLowerCase().trim());
+            if (matchedClass) resolvedClassId = matchedClass.id;
+          }
+        }
+
+        const currentTaskType = firstRow.feedback_type || '';
+        await fetchRewardConfigs(resolvedClassId || undefined, currentTaskType);
+
         // Detect subject from task name prefix (SS = Soft Skills, TE = Azure)
         let detectedSubject = '';
         const tn = (firstRow.task_name || '').trim();
@@ -213,6 +272,7 @@ export default function TaskEdit() {
           academicYear: firstRow.academic_year || '',
           reward: firstRow.earning_amount || 0,
           classId: resolvedClassId || '',
+          taskType: currentTaskType,
           subjectName: detectedSubject,
           submission_requirements: parseSubmissionRequirements(firstRow.submission_types),
           created_by: firstRow.created_by || '',
@@ -228,6 +288,11 @@ export default function TaskEdit() {
   const handleSave = async () => {
     if (!formData.title.trim()) {
       toast.error('Task title is required');
+      return;
+    }
+
+    if (!formData.taskType) {
+      toast.error('Task type is required');
       return;
     }
 
@@ -267,6 +332,7 @@ export default function TaskEdit() {
           deadline: formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
           academic_year: formData.academicYear,
           earning_amount: formData.reward,
+          feedback_type: formData.taskType || null,
           submission_types: serializeSubmissionRequirements(formData.submission_requirements),
           created_by: formData.created_by || null,
         })
@@ -297,7 +363,7 @@ export default function TaskEdit() {
         const newRecords = addedStudents.map(studentId => ({
             session_id: taskData.session_id || null,
             student_id: studentId,
-            feedback_type: taskData.feedback_type || 'Custom Task',
+            feedback_type: formData.taskType || taskData.feedback_type || 'Custom Task',
             task_name: formData.title,
             task_description: formData.description || null,
             deadline: formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
@@ -376,7 +442,7 @@ export default function TaskEdit() {
             {/* Title */}
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Task Title
+                Task Title *
               </label>
               <input
                 type="text"
@@ -385,6 +451,60 @@ export default function TaskEdit() {
                 className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="Enter task title"
               />
+            </div>
+
+            {/* Class */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Class
+              </label>
+              <Select
+                value={formData.classId}
+                onValueChange={(value) => {
+                  setFormData({ ...formData, classId: value, taskType: '' });
+                  fetchRewardConfigs(value);
+                }}
+              >
+                <SelectTrigger className="w-full bg-background border-border">
+                  <SelectValue placeholder="Select Class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {classes.map((cls) => (
+                    <SelectItem key={cls.id} value={cls.id}>
+                      {cls.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Task Type */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Task Type *
+              </label>
+              <Select
+                value={formData.taskType}
+                onValueChange={(value) => {
+                  const config = rewardConfigs.find(c => c.task_type === value);
+                  setFormData({
+                    ...formData,
+                    taskType: value,
+                    reward: config && config.rate_per_task > 0 ? config.rate_per_task : formData.reward,
+                  });
+                }}
+              >
+                <SelectTrigger className="w-full bg-background border-border">
+                  <SelectValue placeholder={formData.classId ? "Select Task Type" : "Select Class first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {rewardConfigs.filter(c => c.task_type).map((config) => (
+                    <SelectItem key={config.task_type} value={config.task_type}>
+                      {config.task_type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Description */}

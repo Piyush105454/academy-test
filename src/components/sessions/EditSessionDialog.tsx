@@ -139,7 +139,12 @@ export function EditSessionDialog({
     if (session && open) {
       setFormData(session);
       setSelectedDesignations(session.designations || []);
+      setSelectedTopic(null);
       fetchAllData();
+    } else if (!open) {
+      setSelectedTopic(null);
+      setTopics([]);
+      setModules([]);
     }
   }, [session, open]);
 
@@ -165,9 +170,49 @@ export function EditSessionDialog({
 
   useEffect(() => {
     if (formData?.content_category && formData?.module_name) {
-      fetchTopics(formData.content_category, formData.module_name, selectedClassId || undefined);
+      fetchTopics(formData.content_category, formData.module_name, selectedClassId || undefined, formData.topics_covered || formData.title);
     }
   }, [formData?.content_category, formData?.module_name, selectedClassId]);
+
+  useEffect(() => {
+    if (topics.length > 0 && !selectedTopic) {
+      const isSameModuleAsInitial = 
+        formData?.content_category === session?.content_category && 
+        formData?.module_name === session?.module_name;
+      
+      const targetTopic = formData?.topics_covered || session?.topics_covered || 
+        (isSameModuleAsInitial ? (formData?.title || session?.title) : '');
+
+      if (targetTopic) {
+        const normalizedTarget = targetTopic.trim().toLowerCase();
+        let matched = topics.find(t => 
+          t.topics_covered?.trim().toLowerCase() === normalizedTarget
+        );
+        if (!matched) {
+          matched = topics.find(t => 
+            t.topics_covered?.trim().toLowerCase().includes(normalizedTarget) ||
+            normalizedTarget.includes(t.topics_covered?.trim().toLowerCase())
+          );
+        }
+
+        if (matched) {
+          setSelectedTopic(matched);
+        } else if (!topics.some(t => t.id.startsWith('custom-'))) {
+          const customTopic: CurriculumItem = {
+            id: 'custom-' + targetTopic,
+            content_category: formData?.content_category || session?.content_category || '',
+            module_no: 0,
+            module_name: formData?.module_name || session?.module_name || '',
+            topics_covered: targetTopic,
+            videos: formData?.videos || session?.videos || '',
+            quiz_content_ppt: formData?.quiz_content_ppt || session?.quiz_content_ppt || ''
+          };
+          setTopics(prev => [customTopic, ...prev]);
+          setSelectedTopic(customTopic);
+        }
+      }
+    }
+  }, [topics, formData?.topics_covered, session?.topics_covered, formData?.title, session?.title, formData?.content_category, formData?.module_name, selectedTopic]);
 
   useEffect(() => {
     if (formData?.centre_id) {
@@ -207,7 +252,7 @@ export function EditSessionDialog({
         fetchModules(session.content_category, foundClassId || undefined);
       }
       if (session?.content_category && session?.module_name) {
-        fetchTopics(session.content_category, session.module_name, foundClassId || undefined);
+        fetchTopics(session.content_category, session.module_name, foundClassId || undefined, session.topics_covered || session.title);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -296,7 +341,7 @@ export function EditSessionDialog({
     }
   };
 
-  const fetchTopics = async (category: string, moduleName: string, classId?: string) => {
+  const fetchTopics = async (category: string, moduleName: string, classId?: string, topicToSelect?: string) => {
     try {
       let query: any = supabase
         .from('curriculum')
@@ -327,7 +372,44 @@ export function EditSessionDialog({
         data = fallbackData;
       }
 
-      setTopics(data || []);
+      let topicsList = [...(data || [])];
+      const isSameModule = 
+        category === session?.content_category && 
+        moduleName === session?.module_name;
+
+      const targetTopic = topicToSelect || formData?.topics_covered || session?.topics_covered ||
+        (isSameModule ? (formData?.title || session?.title) : '');
+
+      if (targetTopic && topicsList.length > 0) {
+        const normalizedTarget = targetTopic.trim().toLowerCase();
+        let matched = topicsList.find(t => 
+          t.topics_covered?.trim().toLowerCase() === normalizedTarget
+        );
+        if (!matched) {
+          matched = topicsList.find(t => 
+            t.topics_covered?.trim().toLowerCase().includes(normalizedTarget) ||
+            normalizedTarget.includes(t.topics_covered?.trim().toLowerCase())
+          );
+        }
+
+        if (matched) {
+          setSelectedTopic(matched);
+        } else {
+          const customTopic: CurriculumItem = {
+            id: 'custom-' + targetTopic,
+            content_category: category,
+            module_no: 0,
+            module_name: moduleName,
+            topics_covered: targetTopic,
+            videos: formData?.videos || session?.videos || '',
+            quiz_content_ppt: formData?.quiz_content_ppt || session?.quiz_content_ppt || ''
+          };
+          topicsList = [customTopic, ...topicsList];
+          setSelectedTopic(customTopic);
+        }
+      }
+
+      setTopics(topicsList);
     } catch (error) {
       console.error('Error fetching topics:', error);
     }

@@ -313,10 +313,24 @@ export default function FeedbackSelection() {
         if (aValue == null) return sortDirection === 'asc' ? 1 : -1;
         if (bValue == null) return sortDirection === 'asc' ? -1 : 1;
 
+        // Date comparison
+        if (sortColumn === 'session_date' && typeof aValue === 'string' && typeof bValue === 'string') {
+          const aDate = new Date(aValue).getTime();
+          const bDate = new Date(bValue).getTime();
+          return sortDirection === 'asc' ? aDate - bDate : bDate - aDate;
+        }
+
+        // String comparison (case-insensitive)
         if (typeof aValue === 'string' && typeof bValue === 'string') {
           const comparison = aValue.toLowerCase().localeCompare(bValue.toLowerCase());
           return sortDirection === 'asc' ? comparison : -comparison;
         }
+
+        // Number comparison
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+        }
+
         return 0;
       });
     }
@@ -338,8 +352,10 @@ export default function FeedbackSelection() {
   };
 
   const getSortIndicator = (column: keyof FeedbackSession) => {
-    if (sortColumn !== column) return '↕';
-    return sortDirection === 'asc' ? '↑' : '↓';
+    if (sortColumn !== column) return ' ↕';
+    if (sortDirection === 'asc') return ' ↑';
+    if (sortDirection === 'desc') return ' ↓';
+    return ' ↕';
   };
 
   const getStatusBadge = (status: string | undefined) => {
@@ -804,24 +820,136 @@ export default function FeedbackSelection() {
                 <Table className="text-xs">
                   <TableHeader>
                       <TableRow className="bg-muted/50">
-                        <TableHead className="font-bold min-w-[150px]">Session ID</TableHead>
-                        <TableHead className="min-w-[100px]">Subject</TableHead>
-                        <TableHead className="min-w-[100px]">Category</TableHead>
-                        <TableHead className="min-w-[150px]">Module No & Name</TableHead>
-                        <TableHead className="min-w-[150px]">Topics Covered</TableHead>
-                        <TableHead className="min-w-[80px]">Type</TableHead>
-                        <TableHead className="min-w-[100px]">Volunteer</TableHead>
-                        <TableHead className="min-w-[100px]">Organisation</TableHead>
-                        <TableHead className="min-w-[100px]">Coordinator</TableHead>
-                        <TableHead className="min-w-[100px]">Facilitator</TableHead>
-                        <TableHead className="min-w-[80px]">Class</TableHead>
-                        <TableHead className="min-w-[100px]">Centre</TableHead>
-                        <TableHead className="min-w-[80px]">Strength</TableHead>
-                        <TableHead className="min-w-[100px]">Date</TableHead>
-                        <TableHead className="min-w-[100px]">Time</TableHead>
+                        <TableHead className="font-bold min-w-[150px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('session_id_code')}>
+                          <div className="flex items-center gap-1">
+                            Session ID
+                            <span className={sortColumn === 'session_id_code' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('session_id_code')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[100px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('subject_name')}>
+                          <div className="flex items-center gap-1">
+                            Subject
+                            <span className={sortColumn === 'subject_name' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('subject_name')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[100px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('content_category')}>
+                          <div className="flex items-center gap-1">
+                            Category
+                            <span className={sortColumn === 'content_category' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('content_category')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[150px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('module_name')}>
+                          <div className="flex items-center gap-1">
+                            Module No & Name
+                            <span className={sortColumn === 'module_name' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('module_name')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[150px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('topics_covered')}>
+                          <div className="flex items-center gap-1">
+                            Topics Covered
+                            <span className={sortColumn === 'topics_covered' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('topics_covered')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[80px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('session_type')}>
+                          <div className="flex items-center gap-1">
+                            Type
+                            <span className={sortColumn === 'session_type' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('session_type')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[100px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('volunteer_name')}>
+                          <div className="flex items-center gap-1">
+                            Volunteer
+                            <span className={sortColumn === 'volunteer_name' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('volunteer_name')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[100px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('organization_name')}>
+                          <div className="flex items-center gap-1">
+                            Organisation
+                            <span className={sortColumn === 'organization_name' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('organization_name')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[100px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('coordinator_name')}>
+                          <div className="flex items-center gap-1">
+                            Coordinator
+                            <span className={sortColumn === 'coordinator_name' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('coordinator_name')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[100px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('facilitator_name')}>
+                          <div className="flex items-center gap-1">
+                            Facilitator
+                            <span className={sortColumn === 'facilitator_name' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('facilitator_name')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[80px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('class_batch')}>
+                          <div className="flex items-center gap-1">
+                            Class
+                            <span className={sortColumn === 'class_batch' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('class_batch')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[100px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('centre_name')}>
+                          <div className="flex items-center gap-1">
+                            Centre
+                            <span className={sortColumn === 'centre_name' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('centre_name')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[80px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('session_strength')}>
+                          <div className="flex items-center gap-1">
+                            Strength
+                            <span className={sortColumn === 'session_strength' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('session_strength')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[100px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('session_date')}>
+                          <div className="flex items-center gap-1">
+                            Date
+                            <span className={sortColumn === 'session_date' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('session_date')}
+                            </span>
+                          </div>
+                        </TableHead>
+                        <TableHead className="min-w-[100px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('session_time')}>
+                          <div className="flex items-center gap-1">
+                            Time
+                            <span className={sortColumn === 'session_time' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('session_time')}
+                            </span>
+                          </div>
+                        </TableHead>
                         <TableHead className="min-w-[100px] text-center">Recording</TableHead>
                         <TableHead className="min-w-[100px] text-center">Meeting</TableHead>
-                        <TableHead className="min-w-[120px]">Status</TableHead>
+                        <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('status')}>
+                          <div className="flex items-center gap-1">
+                            Status
+                            <span className={sortColumn === 'status' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('status')}
+                            </span>
+                          </div>
+                        </TableHead>
                         <TableHead className="min-w-[80px]">Delayed</TableHead>
                         <TableHead className="w-[60px]">Actions</TableHead>
                       </TableRow>
