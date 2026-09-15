@@ -35,6 +35,12 @@ export default function TasksAdmin() {
   const [requiresNote, setRequiresNote] = useState(true);
   const [requiresPhoto, setRequiresPhoto] = useState(true);
 
+  // Auto-approval state
+  const [requiresManagerApproval, setRequiresManagerApproval] = useState(true);
+  const [autoApprovePreset, setAutoApprovePreset] = useState("1440");
+  const [autoApproveHours, setAutoApproveHours] = useState(24);
+  const [autoApproveMins, setAutoApproveMins] = useState(0);
+
   // State for facilitators
   const [facilitators, setFacilitators] = useState<Facilitator[]>([]);
   const [selectedFacilitators, setSelectedFacilitators] = useState<Facilitator[]>([]);
@@ -92,23 +98,29 @@ export default function TasksAdmin() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No user logged in");
 
+      const totalAutoApproveMinutes = requiresManagerApproval ? 0 : ((Number(autoApproveHours) || 0) * 60 + (Number(autoApproveMins) || 0));
+      const autoApproveTag = `__AUTOAPPROVE[${requiresManagerApproval ? 'manual' : totalAutoApproveMinutes}]__`;
+      const finalDescription = `${description || ''} ${autoApproveTag}`.trim();
+
       // 1. Insert Template
       const { data: template, error: templateError } = await supabase
         .from('academy_task_templates')
         .insert({
           name,
           category,
-          description,
+          description: finalDescription,
           recurrence,
           recurrence_rule: recurrence !== 'onetime' ? selectedDays.join(',') : null,
           base_reward_amount: baseRewardAmount,
           leaderboard_points: includeLeaderboard ? leaderboardPoints : 0,
           requires_note: requiresNote,
           requires_photo: requiresPhoto,
+          manager_approval_required: requiresManagerApproval,
+          auto_approve_minutes: totalAutoApproveMinutes,
           due_time: dueTime,
           end_date: endDate || null,
           created_by: user.id
-        })
+        } as any)
         .select()
         .single();
 
@@ -675,12 +687,98 @@ export default function TasksAdmin() {
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 pt-4 border-t">
-                <Checkbox id="manager_approval" defaultChecked />
-                <div className="grid gap-1.5 leading-none">
-                  <label htmlFor="manager_approval" className="font-medium text-sm text-red-600">Manager Approval Required</label>
-                  <p className="text-xs text-muted-foreground">If checked, earnings are held pending until a manager approves the submission.</p>
+              <div className="space-y-4 pt-4 border-t">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="manager_approval" 
+                    checked={requiresManagerApproval}
+                    onCheckedChange={(checked) => setRequiresManagerApproval(checked as boolean)}
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <label htmlFor="manager_approval" className="font-medium text-sm text-slate-800 cursor-pointer">
+                      Manager Approval Required
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      If checked, earnings and task completion require manual manager review & approval.
+                    </p>
+                  </div>
                 </div>
+
+                {!requiresManagerApproval && (
+                  <div className="p-4 rounded-lg bg-blue-50/50 border border-blue-100 space-y-3 mt-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-semibold text-blue-900">Auto-Approve Submission After</Label>
+                      <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-medium">
+                        Auto-Approve Enabled
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <Label className="text-xs text-slate-600 mb-1 block">Preset Option</Label>
+                        <Select 
+                          value={autoApprovePreset} 
+                          onValueChange={(val) => {
+                            setAutoApprovePreset(val);
+                            if (val !== "custom") {
+                              const totalMins = parseInt(val, 10) || 0;
+                              setAutoApproveHours(Math.floor(totalMins / 60));
+                              setAutoApproveMins(totalMins % 60);
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="bg-white">
+                            <SelectValue placeholder="Select Duration" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">0 Hours (Immediate)</SelectItem>
+                            <SelectItem value="360">6 Hours</SelectItem>
+                            <SelectItem value="720">12 Hours</SelectItem>
+                            <SelectItem value="1440">24 Hours</SelectItem>
+                            <SelectItem value="2880">48 Hours</SelectItem>
+                            <SelectItem value="4320">72 Hours</SelectItem>
+                            <SelectItem value="custom">Custom Time (Hours & Mins)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs text-slate-600 mb-1 block">Hours (0-999)</Label>
+                        <Input 
+                          type="number"
+                          min={0}
+                          max={999}
+                          value={autoApproveHours}
+                          disabled={autoApprovePreset !== "custom"}
+                          onChange={(e) => setAutoApproveHours(Math.max(0, parseInt(e.target.value) || 0))}
+                          className="bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-xs text-slate-600 mb-1 block">Minutes (0-59)</Label>
+                        <Input 
+                          type="number"
+                          min={0}
+                          max={59}
+                          value={autoApproveMins}
+                          disabled={autoApprovePreset !== "custom"}
+                          onChange={(e) => setAutoApproveMins(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                          className="bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-blue-700">
+                      ⏱ Task submissions will be automatically approved after{' '}
+                      <span className="font-semibold">
+                        {autoApprovePreset === "custom" 
+                          ? `${autoApproveHours}h ${autoApproveMins}m`
+                          : (autoApprovePreset === "0" ? "Immediate (0 mins)" : `${parseInt(autoApprovePreset, 10) / 60} hours`)}
+                      </span> if no manager review occurs.
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

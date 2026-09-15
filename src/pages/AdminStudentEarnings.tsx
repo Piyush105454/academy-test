@@ -73,7 +73,6 @@ const DEFAULT_EARNING_POTENTIAL = [
   { task_type: 'CCC - Computers - Task', expected_tasks: 1, frequency: 'Daily', rate_per_task: 10, potential_monthly: 10, how_to_earn: 'Complete the assigned homework, research and write and earn', reviewer_rate: 0 },
   { task_type: 'GT Session Task', expected_tasks: 1, frequency: 'Daily', rate_per_task: 20, potential_monthly: 20, how_to_earn: 'Complete GT Session task and earn', reviewer_rate: 0 },
   { task_type: 'Mentor connect Task', expected_tasks: 2, frequency: 'Monthly', rate_per_task: 400, potential_monthly: 800, how_to_earn: 'Connect with your mentor complete the mentprhsip sessions as per the agenda share record timey and earn', reviewer_rate: 0 },
-  { task_type: 'Bonus for 100% attendance', expected_tasks: 25, frequency: 'Monthly', rate_per_task: 8, potential_monthly: 200, how_to_earn: 'Achive 100% attendance and earn bonus of 200 rs', reviewer_rate: 0 },
 ];
 
 export default function AdminStudentEarnings() {
@@ -246,13 +245,16 @@ export default function AdminStudentEarnings() {
         }
       }
 
-      const defaultClassId = await fetchClasses(role, facClassIds);
-        await fetchStudentEarnings(role, facClassIds);
-        fetchRewardConfigs(selectedModalClass || defaultClassId || undefined);
-      fetchSubjects();
+      await fetchClasses(role, facClassIds);
+      await fetchStudentEarnings(role, facClassIds);
     }
     init();
   }, [selectedYear, selectedMonth, user?.email]);
+
+  useEffect(() => {
+    fetchRewardConfigs(undefined);
+    fetchSubjects();
+  }, []);
 
   useEffect(() => {
     if (isPotentialModalOpen) {
@@ -334,6 +336,10 @@ export default function AdminStudentEarnings() {
 
       if (role === 4 && allowedClassIds.length > 0) {
         query = query.in('class_id', allowedClassIds);
+      }
+
+      if (selectedYear) {
+        query = query.eq('academic_year', selectedYear);
       }
 
       const { data: students, error: studentError } = await query;
@@ -758,7 +764,7 @@ export default function AdminStudentEarnings() {
                   <div className="flex items-center gap-6 bg-background/80 backdrop-blur-xs p-4 rounded-xl border border-border shadow-xs">
                     <div>
                       <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Total Earned</p>
-                      <p className="text-2xl font-black text-green-600 dark:text-green-400">₹{selectedStudent.total_earned.toLocaleString()}</p>
+                      <p className="text-2xl font-black text-green-600 dark:text-green-400">₹{totalCategoryEarned.toLocaleString()}</p>
                     </div>
                     <div className="h-10 w-px bg-border" />
                     <div>

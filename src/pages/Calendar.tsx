@@ -97,6 +97,16 @@ interface CalendarDay {
   isCurrentMonth: boolean;
 }
 
+export const parseLocalDate = (dateStr: string | null | undefined): Date | null => {
+  if (!dateStr) return null;
+  const clean = dateStr.split('T')[0];
+  const parts = clean.split('-').map(Number);
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+  return new Date(dateStr);
+};
+
 export default function Calendar() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -355,7 +365,7 @@ export default function Calendar() {
         const date = new Date(year, month, i);
         // Format date as YYYY-MM-DD without timezone conversion
         const dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(i).padStart(2, '0');
-        const daySessions = filteredSessions.filter(s => s.session_date === dateStr);
+        const daySessions = filteredSessions.filter(s => (s.session_date ? s.session_date.split('T')[0] : '') === dateStr);
         
         days.push({
           date,
@@ -384,7 +394,7 @@ export default function Calendar() {
         const date = new Date(startOfWeek);
         date.setDate(startOfWeek.getDate() + i);
         const dateStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-        const daySessions = filteredSessions.filter(s => s.session_date === dateStr);
+        const daySessions = filteredSessions.filter(s => (s.session_date ? s.session_date.split('T')[0] : '') === dateStr);
 
         days.push({
           date,
@@ -398,7 +408,7 @@ export default function Calendar() {
         const date = new Date(currentDate);
         date.setDate(currentDate.getDate() + i);
         const dateStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-        const daySessions = filteredSessions.filter(s => s.session_date === dateStr);
+        const daySessions = filteredSessions.filter(s => (s.session_date ? s.session_date.split('T')[0] : '') === dateStr);
 
         days.push({
           date,
@@ -409,7 +419,7 @@ export default function Calendar() {
     } else if (calendarView === '1-day') {
       // 1-day view for currentDate
       const dateStr = currentDate.getFullYear() + '-' + String(currentDate.getMonth() + 1).padStart(2, '0') + '-' + String(currentDate.getDate()).padStart(2, '0');
-      const daySessions = filteredSessions.filter(s => s.session_date === dateStr);
+      const daySessions = filteredSessions.filter(s => (s.session_date ? s.session_date.split('T')[0] : '') === dateStr);
 
       days.push({
         date: currentDate,
@@ -1200,7 +1210,7 @@ export default function Calendar() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Date</p>
-                    <p className="font-medium">{new Date(selectedSession.session_date).toLocaleDateString()}</p>
+                    <p className="font-medium">{parseLocalDate(selectedSession.session_date)?.toLocaleDateString() || selectedSession.session_date}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Time</p>
@@ -1481,7 +1491,7 @@ export default function Calendar() {
           <div className="flex-grow overflow-y-auto mt-4 space-y-3">
             {sessionsListDate && (() => {
               const dateKey = sessionsListDate.toDateString();
-              const daySessions = sessions.filter(s => new Date(s.session_date).toDateString() === dateKey);
+              const daySessions = sessions.filter(s => parseLocalDate(s.session_date)?.toDateString() === dateKey);
               
               return daySessions.map((session) => (
                 <div 

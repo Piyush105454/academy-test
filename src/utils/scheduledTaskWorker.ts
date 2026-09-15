@@ -188,7 +188,69 @@ export async function runScheduledTaskWorker(selectedYear: string): Promise<void
     }
 
     console.log('[Worker] Auto-assignment complete.');
+    // Run auto-approval worker for academy tasks
+    await runAutoApprovalWorker();
   } catch (err) {
     console.error('[Worker] Fatal error in scheduled task worker:', err);
   }
 }
+
+/**
+ * Auto-approval background worker:
+ * Queries all academy_tasks where status = 'submitted' and auto_approve_at <= NOW().
+ * Automatically approves them and updates the corresponding academy_submissions record.
+ */
+export async function runAutoApprovalWorker(): Promise<void> {
+  try {
+    const nowIso = new Date().toISOString();
+
+    // Fetch submitted academy tasks where auto_approve_at is reached
+    const { data: expiredTasks, error } = await (supabase as any)
+      .from('academy_tasks')
+      .select('id, auto_approve_at, auto_approve_minutes, submitted_at, created_at')
+      .eq('status', 'submitted')
+      .lte('auto_approve_at', nowIso);
+
+    if (error) {
+      console.warn('[AutoApprove Worker] Fetch error (schema may not be migrated yet):', error.message);
+      return;
+    }
+
+    if (!expiredTasks || expiredTasks.length === 0) {
+      return;
+    }
+
+    console.log(`[AutoApprove Worker] Found ${expiredTasks.length} tasks ready for auto-approval.`);
+
+    for (const task of expiredTasks) {
+      try {
+        // Update task status to approved
+        const { error: taskErr } = await (supabase as any)
+          .from('academy_tasks')
+          .update({ status: 'approved' })
+          .eq('id', task.id);
+
+        if (taskErr) {
+          console.error(`[AutoApprove Worker] Failed to update task ${task.id}:`, taskErr.message);
+          continue;
+        }
+
+        // Update corresponding submission review status
+        await (supabase as any)
+          .from('academy_submissions')
+          .update({
+            reviewed_at: nowIso,
+            reviewer_comments: 'Auto-Approved after specified duration'
+          })
+          .eq('task_id', task.id);
+
+        console.log(`[AutoApprove Worker] ✓ Auto-approved task ${task.id}`);
+      } catch (err) {
+        console.error(`[AutoApprove Worker] Error approving task ${task.id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.error('[AutoApprove Worker] Fatal error:', err);
+  }
+}
+

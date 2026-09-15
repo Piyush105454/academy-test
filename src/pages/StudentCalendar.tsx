@@ -64,6 +64,16 @@ interface CalendarDay {
   isCurrentMonth: boolean;
 }
 
+export const parseLocalDate = (dateStr: string | null | undefined): Date | null => {
+  if (!dateStr) return null;
+  const clean = dateStr.split('T')[0];
+  const parts = clean.split('-').map(Number);
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+  return new Date(dateStr);
+};
+
 export default function StudentCalendar() {
   const { user } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -240,7 +250,7 @@ export default function StudentCalendar() {
       for (let i = 1; i <= daysInMonth; i++) {
         const date = new Date(year, month, i);
         const dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(i).padStart(2, '0');
-        const daySessions = sessions.filter(s => s.session_date === dateStr);
+        const daySessions = sessions.filter(s => (s.session_date ? s.session_date.split('T')[0] : '') === dateStr);
         
         days.push({
           date,
@@ -268,7 +278,7 @@ export default function StudentCalendar() {
         const date = new Date(startOfWeek);
         date.setDate(startOfWeek.getDate() + i);
         const dateStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-        const daySessions = sessions.filter(s => s.session_date === dateStr);
+        const daySessions = sessions.filter(s => (s.session_date ? s.session_date.split('T')[0] : '') === dateStr);
 
         days.push({
           date,
@@ -281,7 +291,7 @@ export default function StudentCalendar() {
         const date = new Date(currentDate);
         date.setDate(currentDate.getDate() + i);
         const dateStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-        const daySessions = sessions.filter(s => s.session_date === dateStr);
+        const daySessions = sessions.filter(s => (s.session_date ? s.session_date.split('T')[0] : '') === dateStr);
 
         days.push({
           date,
@@ -291,7 +301,7 @@ export default function StudentCalendar() {
       }
     } else if (calendarView === '1-day') {
       const dateStr = currentDate.getFullYear() + '-' + String(currentDate.getMonth() + 1).padStart(2, '0') + '-' + String(currentDate.getDate()).padStart(2, '0');
-      const daySessions = sessions.filter(s => s.session_date === dateStr);
+      const daySessions = sessions.filter(s => (s.session_date ? s.session_date.split('T')[0] : '') === dateStr);
 
       days.push({
         date: currentDate,
@@ -816,7 +826,7 @@ export default function StudentCalendar() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Date</p>
-                    <p className="font-medium">{new Date(selectedSession.session_date).toLocaleDateString()}</p>
+                    <p className="font-medium">{parseLocalDate(selectedSession.session_date)?.toLocaleDateString() || selectedSession.session_date}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Time</p>

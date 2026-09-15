@@ -244,12 +244,29 @@ export default function ClassStudents() {
 
       if (studentsError) throw studentsError;
       
+      const emails = (studentsData || []).map((s: any) => s.email).filter(Boolean);
+      let profileMap = new Map<string, boolean>();
+      if (emails.length > 0) {
+        try {
+          const { data: profiles } = await supabase
+            .from('user_profiles')
+            .select('email, is_active')
+            .in('email', emails);
+          if (profiles) {
+            profileMap = new Map(profiles.map((p: any) => [p.email?.toLowerCase().trim(), p.is_active]));
+          }
+        } catch (e) {
+          console.error('Error fetching user_profiles is_active:', e);
+        }
+      }
+
       const enrichedStudents = (studentsData || []).map((student) => {
+        const isActive = student.email ? profileMap.get(student.email.toLowerCase().trim()) !== false : true;
         if (student.monitor_id) {
           const monitor = studentsData.find(s => s.id === student.monitor_id);
-          return { ...student, monitor_name: monitor ? monitor.name : 'Unknown' };
+          return { ...student, is_active: isActive, monitor_name: monitor ? monitor.name : 'Unknown' };
         }
-        return student;
+        return { ...student, is_active: isActive };
       });
       
       setStudents(enrichedStudents);

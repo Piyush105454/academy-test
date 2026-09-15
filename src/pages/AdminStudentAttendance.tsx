@@ -158,6 +158,10 @@ export default function AdminStudentAttendance() {
         query = query.in('class_id', allowedClassIds);
       }
 
+      if (selectedYear) {
+        query = query.eq('academic_year', selectedYear);
+      }
+
       const { data: students, error: studentError } = await query;
 
       
@@ -316,40 +320,6 @@ export default function AdminStudentAttendance() {
 
       setStudentAttendance(aggregated);
 
-      // Automatically award ₹200 bonus ONLY when month has ended/completed
-      if (isMonthEnded) {
-        const eligible100PctStudents = aggregated.filter(s => s.total_present > 0 && s.total_absent === 0 && s.attendance_percentage === 100);
-
-        if (eligible100PctStudents.length > 0) {
-          const studentIds = eligible100PctStudents.map(s => s.student_id);
-
-          const { data: existingEarnings } = await supabase
-            .from('student_earnings')
-            .select('student_id, earned_at')
-            .in('student_id', studentIds)
-            .ilike('description', '%100% attendance%');
-
-          const alreadyAwardedIds = new Set<string>();
-          (existingEarnings || []).forEach(e => {
-            const earnedDate = new Date(e.earned_at);
-            if (earnedDate.getMonth().toString() === selectedMonth) {
-              alreadyAwardedIds.add(e.student_id);
-            }
-          });
-
-          const toAward = eligible100PctStudents.filter(s => !alreadyAwardedIds.has(s.student_id));
-          if (toAward.length > 0) {
-            const newEntries = toAward.map(s => ({
-              student_id: s.student_id,
-              amount: 200,
-              description: 'Bonus for 100% attendance',
-              earned_at: new Date().toISOString(),
-            }));
-
-            await supabase.from('student_earnings').insert(newEntries);
-          }
-        }
-      }
     } catch (error) {
       console.error('Error fetching attendance:', error);
       toast.error('Failed to load attendance data');

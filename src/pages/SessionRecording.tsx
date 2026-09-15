@@ -721,7 +721,7 @@ export default function SessionRecording() {
       // Fetch students from that class filtered by selected academic year
       const { data: studentsData, error: studentsError } = await supabase
         .from('students')
-        .select('id, name, student_id, designation')
+        .select('id, name, student_id, designation, email')
         .eq('class_id', classData.id)
         .eq('academic_year', selectedYear)
         .order('name', { ascending: true });
@@ -729,6 +729,31 @@ export default function SessionRecording() {
       if (studentsError) throw studentsError;
 
       let finalStudents = studentsData || [];
+
+      // Filter out inactive students
+      try {
+        const emails = finalStudents.map((st: any) => st.email).filter(Boolean);
+        if (emails.length > 0) {
+          const { data: profiles, error: profileError } = await supabase
+            .from('user_profiles')
+            .select('email, is_active')
+            .in('email', emails);
+
+          if (!profileError && profiles) {
+            const profileMap = new Map(
+              profiles.map((p: any) => [p.email?.toLowerCase().trim(), p.is_active])
+            );
+            finalStudents = finalStudents.filter((st: any) => {
+              if ((st as any).is_active === false) return false;
+              if (!st.email) return true;
+              return profileMap.get(st.email.toLowerCase().trim()) !== false;
+            });
+          }
+        }
+      } catch (profileErr) {
+        console.error('Error filtering inactive students:', profileErr);
+      }
+
       if (
         Array.isArray(sessionData?.designations) &&
         sessionData.designations.length > 0
