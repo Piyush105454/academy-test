@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Note Grading Flow — 71-TS Delegating Tasks</title>
+<style>
+  :root{
+    --bg:#faf9f7; --fg:#1c1917; --muted:#6b6560; --line:#d6d3d0;
+    --card:#ffffff; --accent:#b45309; --accent-soft:#fef3c7;
+    --stop:#b91c1c; --stop-soft:#fee2e2;
+  }
+  :root:not([data-theme="light"]){
+    @media (prefers-color-scheme: dark){
+      --bg:#17161a; --fg:#ece9e4; --muted:#a29d97; --line:#3a3733;
+      --card:#211f24; --accent:#f0b34a; --accent-soft:#3a2c10;
+      --stop:#f08a80; --stop-soft:#3a1815;
+    }
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#17161a; --fg:#ece9e4; --muted:#a29d97; --line:#3a3733;
+      --card:#211f24; --accent:#f0b34a; --accent-soft:#3a2c10;
+      --stop:#f08a80; --stop-soft:#3a1815;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#17161a; --fg:#ece9e4; --muted:#a29d97; --line:#3a3733;
+    --card:#211f24; --accent:#f0b34a; --accent-soft:#3a2c10;
+    --stop:#f08a80; --stop-soft:#3a1815;
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--fg); margin:0;
+    font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  .wrap{max-width:1000px;margin:0 auto;padding:40px 24px 80px}
+  h1{font-size:26px;line-height:1.25;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 32px;font-size:14px}
+  h2{font-size:17px;margin:44px 0 10px;letter-spacing:-.005em}
+  p{margin:0 0 14px}
+  figure{margin:20px 0 8px;padding:0}
+  figure svg{max-width:100%;height:auto;display:block;margin:0 auto}
+  figcaption{color:var(--muted);font-size:13px;margin-top:12px;text-align:center}
+
+  /* SVG theming */
+  .box{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+  .box-gate{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2}
+  .box-stop{fill:var(--stop-soft);stroke:var(--stop);stroke-width:1.5}
+  .dia{fill:var(--card);stroke:var(--accent);stroke-width:2}
+  .t{fill:var(--fg);font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;font-weight:600}
+  .d{fill:var(--muted);font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:12px;font-weight:400}
+  .m{fill:var(--fg);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;font-weight:600}
+  .lbl{fill:var(--muted);font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:11.5px;font-style:italic}
+  .arw{stroke:var(--fg);stroke-width:1.6;fill:none}
+  .arw-d{stroke:var(--muted);stroke-width:1.4;fill:none;stroke-dasharray:5 4}
+  .num{fill:var(--muted);font-family:ui-monospace,monospace;font-size:11px}
+
+  .tbl-wrap{overflow-x:auto;margin:16px 0 8px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-weight:600;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+       background:var(--accent-soft);padding:1px 5px;border-radius:3px}
+  .q{color:var(--accent);font-weight:600}
+  .note{border-left:3px solid var(--accent);padding:2px 0 2px 16px;margin:20px 0;color:var(--muted);font-size:14px}
+  .note strong{color:var(--fg)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>How the agent grades this note, step by step</h1>
+<p class="sub">Module <strong>71-TS · Delegating Tasks (Time Management)</strong> — 15 vocabulary rows + 10 action points.
+Every box below is a real call in <code>agentic.py</code>. Orange = a gate that can stop or change the grade.</p>
+
+<h2>Figure 1 — the pipeline</h2>
+
+<figure>
+<svg viewBox="0 0 940 1290" role="img" aria-label="Vertical flow: consent gate, get_module, read_note, check_coverage, could_check decision, check_hindi_answer per row, agent proposes judgements, referee, mean of assessed, output. Three branches lead to stop or suspend outcomes.">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+    </marker>
+  </defs>
+
+  <!-- 1 consent -->
+  <rect class="box-gate" x="40" y="30" width="390" height="74" rx="8"/>
+  <text class="m" x="60" y="58">1 · consent gate</text>
+  <text class="d" x="60" y="78">ConsentRegister.load() — checked before the</text>
+  <text class="d" x="60" y="94">image file is opened at all</text>
+  <line class="arw" x1="430" y1="67" x2="500" y2="67" marker-end="url(#ar)" stroke="var(--stop)"/>
+  <text class="lbl" x="437" y="58">no record</text>
+  <rect class="box-stop" x="502" y="40" width="398" height="54" rx="8"/>
+  <text class="t" x="520" y="63">STOP — file never read</text>
+  <text class="d" x="520" y="82">no partial grade, no “we tried” message</text>
+  <line class="arw" x1="230" y1="104" x2="230" y2="148" marker-end="url(#ar)"/>
+
+  <!-- 2 get_module -->
+  <rect class="box" x="40" y="150" width="390" height="74" rx="8"/>
+  <text class="m" x="60" y="178">2 · get_module("delegating_tasks")</text>
+  <text class="d" x="60" y="198">Loads the answer key and the task text —</text>
+  <text class="d" x="60" y="214">15 English terms, their Hindi, 10 action points</text>
+  <line class="arw-d" x1="430" y1="187" x2="560" y2="187"/>
+  <text class="d" x="566" y="184">expected: प्रभावी ढंग से · वातावरण · … · सशक्त</text>
+  <line class="arw" x1="230" y1="224" x2="230" y2="268" marker-end="url(#ar)"/>
+
+  <!-- 3 read_note -->
+  <rect class="box" x="40" y="270" width="390" height="74" rx="8"/>
+  <text class="m" x="60" y="298">3 · read_note(page image)</text>
+  <text class="d" x="60" y="318">Transcribes all 15 rows and the 10 points.</text>
+  <text class="d" x="60" y="334">Each row carries its own read-confidence.</text>
+  <line class="arw-d" x1="430" y1="307" x2="560" y2="307"/>
+  <text class="d" x="566" y="304">rows 11–15 read low: crossings-out + arrows</text>
+  <line class="arw" x1="230" y1="344" x2="230" y2="388" marker-end="url(#ar)"/>
+
+  <!-- 4 coverage -->
+  <rect class="box-gate" x="40" y="390" width="390" height="74" rx="8"/>
+  <text class="m" x="60" y="418">4 · check_coverage — before any score</text>
+  <text class="d" x="60" y="438">Does the page answer THIS module?</text>
+  <text class="d" x="60" y="454">Result: complete · 15/15 terms · nothing off-module</text>
+  <line class="arw" x1="430" y1="427" x2="500" y2="427" marker-end="url(#ar)" stroke="var(--stop)"/>
+  <text class="lbl" x="435" y="418">off-module</text>
+  <rect class="box-stop" x="502" y="392" width="398" height="70" rx="8"/>
+  <text class="t" x="520" y="415">substantially_different → scoring suspended</text>
+  <text class="d" x="520" y="434">Flagged for a teacher to confirm.</text>
+  <text class="d" x="520" y="450">Never a zero, never “your homework was wrong”.</text>
+  <line class="arw" x1="230" y1="464" x2="230" y2="500" marker-end="url(#ar)"/>
+
+  <!-- diamond could_check -->
+  <polygon class="dia" points="230,502 372,560 230,618 88,560"/>
+  <text class="t" x="230" y="556" text-anchor="middle">could_check?</text>
+  <text class="d" x="230" y="574" text-anchor="middle">did we actually read it</text>
+  <line class="arw" x1="372" y1="560" x2="500" y2="560" marker-end="url(#ar)" stroke="var(--stop)"/>
+  <text class="lbl" x="400" y="551" text-anchor="middle">false</text>
+  <rect class="box-stop" x="502" y="524" width="398" height="70" rx="8"/>
+  <text class="t" x="520" y="547">Nothing may be deducted</text>
+  <text class="d" x="520" y="566">The referee rejects any finding attached to a</text>
+  <text class="d" x="520" y="582">coverage report that says it could not check.</text>
+  <line class="arw" x1="230" y1="618" x2="230" y2="658" marker-end="url(#ar)"/>
+  <text class="lbl" x="240" y="642">true</text>
+
+  <!-- 5 hindi -->
+  <rect class="box" x="40" y="660" width="390" height="74" rx="8"/>
+  <text class="m" x="60" y="688">5 · check_hindi_answer × 15 rows</text>
+  <text class="d" x="60" y="708">Each row decided independently — see Figure 2.</text>
+  <text class="d" x="60" y="724">Result: 9 correct · 1 wrong · 5 abstained</text>
+  <line class="arw-d" x1="430" y1="697" x2="560" y2="697"/>
+  <text class="d" x="566" y="694">row 8 जिम्मेदारियां = जिम्मेदारियाँ → 1.00, not an error</text>
+  <line class="arw" x1="230" y1="734" x2="230" y2="778" marker-end="url(#ar)"/>
+
+  <!-- 6 agent proposes -->
+  <rect class="box" x="40" y="780" width="390" height="74" rx="8"/>
+  <text class="m" x="60" y="808">6 · agent proposes 4 judgements</text>
+  <text class="d" x="60" y="828">completion · accuracy · comprehension · presentation</text>
+  <text class="d" x="60" y="844">each one must carry its evidence sentence</text>
+  <line class="arw" x1="230" y1="854" x2="230" y2="898" marker-end="url(#ar)"/>
+
+  <!-- 7 referee -->
+  <rect class="box-gate" x="40" y="900" width="390" height="90" rx="8"/>
+  <text class="m" x="60" y="928">7 · referee — enforces the guarantees</text>
+  <text class="d" x="60" y="948">evidence present? · forbidden inference about the</text>
+  <text class="d" x="60" y="964">child? · score inside 1–5? · invented parameter? ·</text>
+  <text class="d" x="60" y="980">coverage contradicting itself?</text>
+  <line class="arw" x1="430" y1="945" x2="500" y2="945" marker-end="url(#ar)" stroke="var(--stop)"/>
+  <text class="lbl" x="437" y="936">any fails</text>
+  <rect class="box-stop" x="502" y="908" width="398" height="70" rx="8"/>
+  <text class="t" x="520" y="931">Held — no grade published</text>
+  <text class="d" x="520" y="950">Out-of-range becomes an abstention, never a clamp.</text>
+  <text class="d" x="520" y="966">Invented parameters are dropped, not scored.</text>
+  <line class="arw" x1="230" y1="990" x2="230" y2="1034" marker-end="url(#ar)"/>
+
+  <!-- 8 scoring -->
+  <rect class="box" x="40" y="1036" width="390" height="74" rx="8"/>
+  <text class="m" x="60" y="1064">8 · mean_of_assessed</text>
+  <text class="d" x="60" y="1084">The 5 abstained rows leave the denominator.</text>
+  <text class="d" x="60" y="1100">They are never counted as zeros.</text>
+  <line class="arw-d" x1="430" y1="1073" x2="560" y2="1073"/>
+  <text class="d" x="566" y="1070">accuracy = 9 / 10 readable rows = 90%</text>
+  <line class="arw" x1="230" y1="1110" x2="230" y2="1154" marker-end="url(#ar)"/>
+
+  <!-- 9 output -->
+  <rect class="box" x="40" y="1156" width="390" height="90" rx="8"/>
+  <text class="m" x="60" y="1184">9 · output</text>
+  <text class="d" x="60" y="1204">Bilingual feedback to the student ·</text>
+  <text class="d" x="60" y="1220">flags to the teacher (5 rows to confirm) ·</text>
+  <text class="d" x="60" y="1236">audit log entry, no name, no media path</text>
+  <line class="arw-d" x1="430" y1="1201" x2="560" y2="1201"/>
+  <text class="d" x="566" y="1198">note rating from assessed parameters only</text>
+</svg>
+<figcaption>Figure 1 — Nine steps. The three orange boxes are the gates: consent before reading, coverage before scoring, referee before publishing.</figcaption>
+</figure>
+
+<h2>Figure 2 — how one vocabulary row is decided</h2>
+
+<figure>
+<svg viewBox="0 0 940 350" role="img" aria-label="One row is compared against the expected answer. If read confidence is below 0.75 the result is abstain. Otherwise, similarity at or above 0.85 is correct, below is wrong.">
+  <rect class="box" x="20" y="128" width="180" height="66" rx="8"/>
+  <text class="t" x="38" y="155">one row</text>
+  <text class="d" x="38" y="175">written vs expected</text>
+  <line class="arw" x1="200" y1="161" x2="248" y2="161" marker-end="url(#ar)"/>
+
+  <polygon class="dia" points="370,105 484,161 370,217 256,161"/>
+  <text class="t" x="370" y="157" text-anchor="middle">read confidence</text>
+  <text class="t" x="370" y="175" text-anchor="middle">≥ 0.75 ?</text>
+
+  <line class="arw" x1="370" y1="217" x2="370" y2="266" marker-end="url(#ar)" stroke="var(--accent)"/>
+  <text class="lbl" x="380" y="248">no</text>
+  <rect class="box-gate" x="238" y="268" width="264" height="60" rx="8"/>
+  <text class="t" x="256" y="292">ABSTAIN</text>
+  <text class="d" x="256" y="312">not scored, and not in the denominator</text>
+
+  <line class="arw" x1="484" y1="161" x2="546" y2="161" marker-end="url(#ar)"/>
+  <text class="lbl" x="500" y="152">yes</text>
+
+  <polygon class="dia" points="660,105 770,161 660,217 550,161"/>
+  <text class="t" x="660" y="157" text-anchor="middle">similarity</text>
+  <text class="t" x="660" y="175" text-anchor="middle">≥ 0.85 ?</text>
+
+  <line class="arw" x1="716" y1="133" x2="790" y2="76" marker-end="url(#ar)"/>
+  <text class="lbl" x="742" y="98">yes</text>
+  <rect class="box" x="792" y="48" width="126" height="52" rx="8"/>
+  <text class="t" x="810" y="79">correct</text>
+
+  <line class="arw" x1="716" y1="189" x2="790" y2="246" marker-end="url(#ar)"/>
+  <text class="lbl" x="742" y="232">no</text>
+  <rect class="box" x="792" y="222" width="126" height="52" rx="8"/>
+  <text class="t" x="810" y="253">wrong</text>
+
+  <text class="num" x="20" y="42">On this page: 9 correct · 1 wrong (row 1, similarity 0.83) · 5 abstained (rows 11–15)</text>
+</svg>
+<figcaption>Figure 2 — Two separate numbers. <em>Read confidence</em> is how sure we are what the letters say; <em>similarity</em> is how close that is to the key. Confusing them is how a wrong answer gets forgiven, or a corrected page gets punished.</figcaption>
+</figure>
+
+<h2>Check each step against what you want</h2>
+
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:19%">Step</th><th style="width:41%">What it did on this note</th><th style="width:40%">The decision behind it — tell me if this is wrong</th></tr></thead>
+<tbody>
+<tr><td><strong>1 · Consent</strong></td><td>Checked before the image was opened</td><td class="q">A missing record stops everything. No grade, no message to the student. Should a teacher be able to override this in class?</td></tr>
+<tr><td><strong>2 · get_module</strong></td><td>Loaded the 15-term key and the 10 action points</td><td class="q">The module is the only source of truth for “correct”. Nothing outside it counts against the student.</td></tr>
+<tr><td><strong>3 · read_note</strong></td><td>All 15 rows transcribed; rows 11–15 came back with low read-confidence</td><td class="q">Confidence is per row, not per page. One messy row does not sink the other fourteen.</td></tr>
+<tr><td><strong>4 · check_coverage</strong></td><td><code>complete</code> — 15/15 terms attempted, 10/10 points, nothing off-module</td><td class="q">This runs <em>before</em> scoring, as you asked. Off-module suspends the grade rather than zeroing it.</td></tr>
+<tr><td><strong>5 · Rows</strong></td><td>9 correct · 1 wrong · 5 abstained</td><td class="q">The student’s Hindi column slipped a line from “Synergy” and they corrected it themselves. The agent refuses to score those five rather than mark a self-correction wrong. <strong>Is abstaining right here, or would you rather it attempted a score?</strong></td></tr>
+<tr><td><strong>6 · Judgements</strong></td><td>Completion 4/5 · Accuracy 90% · Comprehension from the action points · Presentation 3/5</td><td class="q">Completion counts rows <em>attempted</em>, independent of whether we could read them. Presentation reports the page, never the child.</td></tr>
+<tr><td><strong>7 · Referee</strong></td><td>Passed — all four scores carried evidence, nothing flagged</td><td class="q">This layer does not second-guess the scores. It only makes the guarantees hold whatever the model returns.</td></tr>
+<tr><td><strong>8 · Scoring</strong></td><td>Accuracy = 9/10, abstentions excluded</td><td class="q">Abstentions never become zeros. That means a rating built on fewer rows — flagged as such.</td></tr>
+<tr><td><strong>9 · Output</strong></td><td>Bilingual feedback + “5 rows for teacher to confirm”</td><td class="q">Five unscored rows out of fifteen is a lot to hand back. <strong>Should this publish to the student directly, or wait in a teacher queue?</strong></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note">
+<strong>Two things I have not settled.</strong>
+Row 1 (प्रभाती दंग से vs प्रभावी ढंग से) sits at 0.83 similarity, just under the 0.85 threshold, so it counts as wrong. Two real letter errors, so “wrong” is probably right — but a verdict that turns on 0.02 means that threshold is a guess, not a measurement. It needs a teacher marking ~50 real pages beside it.
+<br><br>
+And abstaining is only fair if the abstain rate is not systematically higher for some students. A child with messier handwriting getting fewer scored rows every week is being failed differently, not fairly. <code>fairness_report()</code> reports this per group — nobody has looked at it on real data yet.
+</div>
+
+</div>
+</body>
+</html>

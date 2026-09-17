@@ -1,0 +1,21 @@
+{
+  "_comment": "No note uploaded. Overall must equal the video rating and be marked incomplete - the missing half is NOT scored as zero.",
+  "submission_id": "sub-003",
+  "student_id": "STUDENT-C",
+  "module_id": "day12_task2_english",
+  "submitted_at": "2026-05-09",
+
+  "video_evidence": {
+    "duration_seconds": 52.0,
+    "sampled_frame_count": 5,
+    "hands_visible_in_frames": 0,
+    "transcript": {
+      "text": "fear of speaking english confidence pronunciation environment bravery",
+      "duration_seconds": 52.0,
+      "word_count": 71,
+      "filler_count": 5
+    }
+  },
+
+  "note_evidence": null
+}

@@ -1,0 +1,22 @@
+# Dependencies for the grading agent.
+#
+# Almost all of this library is pure standard library on purpose — models,
+# scoring, the Devanagari matcher, the referee's guarantees, consent, binding,
+# teacher edits and calibration all run with nothing installed. That keeps the
+# parts that decide a child's grade auditable and easy to run anywhere.
+#
+# Only two things need a package.
+
+# 1. The agent's typed output contract (grading_agent/agentic.py).
+#    Needed to run the test suite, because the referee tests import it.
+pydantic>=2.9
+
+# 2. Actually calling a model. Not needed for the tests — they feed the referee
+#    fixed output rather than asking a model for it — so install these only when
+#    you have an API key and want a real run.
+openai>=1.40
+openai-agents>=0.0.10
+
+flask
+supabase
+gdown

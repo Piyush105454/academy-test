@@ -1,0 +1,40 @@
+{
+  "_comment": "A complete, solid submission. Both artifacts gradeable.",
+  "submission_id": "sub-001",
+  "student_id": "STUDENT-A",
+  "module_id": "day12_task2_english",
+  "submitted_at": "2026-05-09",
+
+  "video_evidence": {
+    "duration_seconds": 74.0,
+    "sampled_frame_count": 6,
+    "hands_visible_in_frames": 4,
+    "transcript": {
+      "text": "fear of speaking english is common among students confidence grows with practice pronunciation improves environment bravery encourage judgment criticism",
+      "duration_seconds": 74.0,
+      "word_count": 138,
+      "filler_count": 2
+    }
+  },
+
+  "note_evidence": {
+    "rows_expected": 8,
+    "rows_filled": 8,
+    "legible": true,
+    "written_rows": {
+      "Fear": "डर",
+      "Confidence": "आत्मविश्वास",
+      "Pronunciation": "उच्चारण",
+      "Judgment": "निर्णय",
+      "Environment": "वातावरण",
+      "Bravery": "साहस",
+      "Criticism": "आलोचना",
+      "Encourage": "प्रोत्साहित करना"
+    },
+    "action_points": [
+      "Let students speak without fear of mistakes",
+      "Praise effort, not only correct answers",
+      "Use pair work so students feel less nervous"
+    ]
+  }
+}

@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consent & Risk Wireframes</title>
+<style>
+  :root{
+    --bg:#f7f6f4; --fg:#1c1917; --muted:#6f6a65; --line:#c9c5c1; --line2:#e2dfdb;
+    --card:#ffffff; --ink:#2b2825; --note:#b45309; --note-soft:#fdf1da;
+    --stop:#b91c1c; --ok:#0d7a5f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#151418; --fg:#ecebe7; --muted:#a29d97; --line:#4a4640; --line2:#332f2b;
+      --card:#1e1c21; --ink:#d8d4cf; --note:#f0b34a; --note-soft:#382b11;
+      --stop:#f28e84; --ok:#5fd3ac;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#151418; --fg:#ecebe7; --muted:#a29d97; --line:#4a4640; --line2:#332f2b;
+    --card:#1e1c21; --ink:#d8d4cf; --note:#f0b34a; --note-soft:#382b11;
+    --stop:#f28e84; --ok:#5fd3ac;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--fg);margin:0;
+       font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1040px;margin:0 auto;padding:40px 24px 80px}
+  h1{font-size:27px;margin:0 0 6px;letter-spacing:-.015em}
+  .lede{color:var(--muted);margin:0 0 6px;max-width:64ch}
+  .banner{display:flex;gap:12px;align-items:flex-start;background:var(--note-soft);
+          border:2px dashed var(--note);border-radius:10px;padding:14px 18px;margin:22px 0 34px}
+  .banner strong{display:block;margin-bottom:2px}
+  .banner p{margin:0;font-size:13.5px;color:var(--muted)}
+  h2{font-size:18px;margin:44px 0 4px;letter-spacing:-.005em}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 18px}
+
+  /* wireframe primitives — deliberately grey, unstyled, obviously not a design */
+  .screens{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:20px}
+  .screen{background:var(--card);border:1.5px solid var(--line);border-radius:6px;
+          overflow:hidden;display:flex;flex-direction:column}
+  .chrome{background:var(--line2);border-bottom:1.5px solid var(--line);
+          padding:7px 12px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+          color:var(--muted);font-weight:650;display:flex;justify-content:space-between}
+  .body{padding:16px;flex:1;font-size:13px}
+  .wf-h{font-weight:700;font-size:14.5px;margin:0 0 4px;color:var(--ink)}
+  .wf-p{color:var(--muted);margin:0 0 12px;font-size:12.5px}
+  .bar{height:9px;background:var(--line2);border-radius:3px;margin:6px 0}
+  .bar.s{width:58%} .bar.m{width:78%} .bar.xs{width:36%}
+  .field{border:1.5px solid var(--line);border-radius:4px;padding:8px 10px;
+         color:var(--muted);font-size:12px;margin:6px 0;background:transparent}
+  .row{display:flex;gap:8px;align-items:center;margin:9px 0;font-size:12.5px}
+  .cb{width:15px;height:15px;border:1.5px solid var(--line);border-radius:3px;flex:none}
+  .cb.on{background:var(--ok);border-color:var(--ok)}
+  .btn{border:1.5px solid var(--line);border-radius:5px;padding:8px 12px;
+       text-align:center;font-size:12.5px;font-weight:650;margin-top:10px;color:var(--ink)}
+  .btn.pri{background:var(--ink);color:var(--card);border-color:var(--ink)}
+  .btn.dis{border-style:dashed;color:var(--muted)}
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.05em;
+        padding:2px 7px;border-radius:20px;border:1.5px solid var(--line);color:var(--muted)}
+  .pill.blocked{border-color:var(--stop);color:var(--stop)}
+  .pill.ok{border-color:var(--ok);color:var(--ok)}
+  .ann{border-left:2px solid var(--note);padding-left:11px;margin:12px 0 0;
+       font-size:11.5px;color:var(--note)}
+  .tbl-wrap{overflow-x:auto;margin:16px 0}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line2);vertical-align:top}
+  th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:650}
+  .sev{font-weight:700;white-space:nowrap}
+  .sev.h{color:var(--stop)} .sev.m{color:var(--note)} .sev.l{color:var(--muted)}
+  .q{border-left:3px solid var(--note);padding:2px 0 2px 16px;margin:24px 0;
+     color:var(--muted);font-size:14px}
+  .q strong{color:var(--fg)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Wireframes — consent workflow &amp; risk view</h1>
+<p class="lede">Layout and logic only. Grey boxes, no colours, no branding — these are for
+agreeing what the screens <em>do</em>, before anyone designs what they look like.</p>
+
+<div class="banner">
+  <div>
+    <strong>Not implemented. Nothing here is built.</strong>
+    <p>No code exists for these screens and none should be written until the flow below is
+    agreed with WES. The consent <em>gate</em> in the agent is real and already refuses to
+    run without a record — but nothing yet <em>creates</em> that record. That gap is the
+    whole point of this page.</p>
+  </div>
+</div>
+
+<h2>1 · Consent workflow</h2>
+<p class="sub">Four screens. The rule that shapes all of them: consent is collected once
+from the family at enrolment, not clicked through by a teacher before each batch.</p>
+
+<div class="screens">
+
+  <div class="screen">
+    <div class="chrome"><span>1 · Admin</span><span>Enrolment</span></div>
+    <div class="body">
+      <p class="wf-h">Add student</p>
+      <p class="wf-p">Existing enrolment form, one section added.</p>
+      <div class="field">Student name</div>
+      <div class="field">Class / section</div>
+      <div class="field">Guardian name</div>
+      <div class="field">Guardian mobile</div>
+      <div class="bar m"></div><div class="bar s"></div>
+      <div class="btn pri">Send consent request</div>
+      <div class="ann">Sends an SMS or WhatsApp link. Nothing is asked of the teacher.</div>
+    </div>
+  </div>
+
+  <div class="screen">
+    <div class="chrome"><span>2 · Guardian</span><span>Phone</span></div>
+    <div class="body">
+      <p class="wf-h">Permission for AI feedback</p>
+      <p class="wf-p">Plain language, Hindi and English, on a phone.</p>
+      <div class="bar m"></div><div class="bar m"></div><div class="bar s"></div>
+      <div class="row"><span class="cb on"></span> My child's video may be listened to</div>
+      <div class="row"><span class="cb on"></span> My child's written page may be read</div>
+      <div class="row"><span class="cb"></span> Their work may be used to improve the system</div>
+      <div class="ann">Third box separate and optional — bundling it with the first two
+      would make the consent meaningless.</div>
+      <div class="btn pri">I agree</div>
+      <div class="btn">Ask me later</div>
+      <div class="ann">No "agree to continue". Declining must be a real option that
+      leaves the child's schooling untouched.</div>
+    </div>
+  </div>
+
+  <div class="screen">
+    <div class="chrome"><span>3 · Teacher</span><span>Student Details</span></div>
+    <div class="body">
+      <p class="wf-h">Grading queue</p>
+      <div class="row"><span class="pill ok">consent on file</span> Vivek varman</div>
+      <div class="bar s"></div>
+      <div class="row"><span class="pill ok">consent on file</span> Khusi Rajak</div>
+      <div class="bar s"></div>
+      <div class="row"><span class="pill blocked">no consent</span> Aafreen Bee</div>
+      <div class="bar xs"></div>
+      <div class="btn dis">AI feedback unavailable</div>
+      <div class="ann">The teacher can see the state but cannot override it. Marking by
+      hand stays available for that student, exactly as today.</div>
+    </div>
+  </div>
+
+  <div class="screen">
+    <div class="chrome"><span>4 · Guardian</span><span>Any time</span></div>
+    <div class="body">
+      <p class="wf-h">Change your mind</p>
+      <p class="wf-p">Reachable from the same link, forever.</p>
+      <div class="row"><span class="cb on"></span> Keep AI feedback on</div>
+      <div class="btn">Withdraw permission</div>
+      <div class="btn">Delete everything held about my child</div>
+      <div class="ann">Withdrawal must be as easy as granting. This calls
+      <code>StudentLifecycle.on_student_removed()</code>, which already exists in code.</div>
+      <div class="ann">Open question for WES: does deleting also remove the record of past
+      marks, which is what lets a parent query a grade later?</div>
+    </div>
+  </div>
+
+</div>
+
+<h2>2 · Risk &amp; mitigation view</h2>
+<p class="sub">A screen for whoever owns the agent at WES — not for teachers. One row per
+risk, its current state, and who is holding it.</p>
+
+<div class="screen" style="margin-top:8px">
+  <div class="chrome"><span>Admin</span><span>AI Safety · Homework Agent</span></div>
+  <div class="body">
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:26%">Risk</th><th style="width:11%">Severity</th>
+          <th style="width:31%">Mitigation in place</th>
+          <th style="width:15%">State</th><th>Owner</th>
+        </tr></thead>
+        <tbody>
+        <tr><td>Wrong student's work graded</td><td class="sev h">High</td>
+            <td>Binding refuses when files disagree on student</td>
+            <td><span class="pill ok">enforced</span></td><td>Engineering</td></tr>
+        <tr><td>Correct homework called wrong</td><td class="sev h">High</td>
+            <td>Module named aloud and on the page is checked first</td>
+            <td><span class="pill ok">enforced</span></td><td>Engineering</td></tr>
+        <tr><td>Our failure becomes the student's zero</td><td class="sev h">High</td>
+            <td>Unreadable work produces no mark, ever</td>
+            <td><span class="pill ok">enforced</span></td><td>Engineering</td></tr>
+        <tr><td>A judgement about the child</td><td class="sev h">High</td>
+            <td>Blocked wording list, checked before sending</td>
+            <td><span class="pill ok">enforced</span></td><td>Engineering</td></tr>
+        <tr><td>Harsher on one group of students</td><td class="sev m">Medium</td>
+            <td>Monthly report of marks and abstentions per class</td>
+            <td><span class="pill">manual</span></td><td>WES</td></tr>
+        <tr><td>Marks not checked against a teacher</td><td class="sev h">High</td>
+            <td>—</td>
+            <td><span class="pill blocked">open</span></td><td>WES + Product</td></tr>
+        <tr><td>Consent records do not exist</td><td class="sev h">High</td>
+            <td>Agent refuses to run without one</td>
+            <td><span class="pill blocked">blocking</span></td><td>WES</td></tr>
+        <tr><td>Records kept after a student leaves</td><td class="sev m">Medium</td>
+            <td>Erasure built; retention policy not chosen</td>
+            <td><span class="pill blocked">decision</span></td><td>WES</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="ann">Rows marked "enforced" are covered by automatic checks that run on
+    every code change. Rows marked "manual", "open" or "decision" are not — they depend on
+    a person, which is exactly why they are on a screen rather than in a document.</div>
+  </div>
+</div>
+
+<div class="q">
+<strong>Three things to settle before any of this is built.</strong>
+Who sends the consent request — the school office or the class teacher? ·
+What happens to a student whose guardian never responds: hand-marking forever, or a
+reminder cycle? · When a family withdraws consent, do past marks disappear too, or only
+future ones?
+</div>
+
+</div>
+</body>
+</html>

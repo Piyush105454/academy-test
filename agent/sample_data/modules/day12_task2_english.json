@@ -1,0 +1,34 @@
+{
+  "_provenance": {
+    "source": "Screenshot of the portal module page, shared by D (31 Aug and 07 Sep 2026 — identical captures)",
+    "article": "Verbatim from the page. Complete.",
+    "instruction": "Verbatim from the page. Complete.",
+    "word_list": "11 of 20 words. The page states '20 Tough Words' but truncates after Criticism. The remaining 9 have never been seen and are NOT invented here.",
+    "testing_assumption": "D instructed on 07 Sep 2026: treat these 11 words as the whole word list for testing. Coverage and note completion are therefore scored out of 11, not 20. This assumption must be removed before any real student is graded.",
+    "nothing_in_this_file_was_written_by_claude": true
+  },
+  "_spoken_title_anchors": [
+    "day 12", "task 2", "teacher english speaking training",
+    "helping students overcome fear of speaking english"
+  ],
+  "module_id": "day12_task2_english",
+  "title": "DAY 12 - TASK 2 - Teacher English Speaking Training",
+  "instruction": "Use a calm but encouraging voice. Pause after important points. Smile gently. Keep steady eye contact to show reassurance and support.",
+  "reference_content": "Helping Students Overcome Fear of Speaking English. Fear of speaking English is common among students, especially in classrooms where English is not their first language. This fear often comes from worry about mistakes, pronunciation, or being laughed at. Teachers have a powerful role in reducing this fear and helping students speak with confidence and comfort. The first step is creating a safe environment. Students must feel that the classroom is a place of learning, not judgment. Teachers should clearly state that mistakes are part of progress. When teachers respond calmly to errors, students learn that speaking is more important than perfection. Teachers should use simple and clear English while speaking. This makes students feel that English is manageable. Using familiar examples and repeating important phrases helps students understand and feel confident using similar language. Regular speaking practice reduces fear gradually. Short speaking activities, such as answering simple questions or reading aloud, help students practice without pressure. Pair work is especially useful, as students feel less nervous speaking to one classmate than to the entire class. Encouragement makes a strong difference. Teachers should praise effort and bravery. Saying \"Good try\" or \"You spoke clearly\" motivates students to speak again. Harsh correction or public criticism increases fear and silence. Teachers should also model confidence. Speaking clearly, calmly, and positively shows students how to speak English with ease. When teachers enjoy speaking, students feel inspired to try. Fear reduces only with time, patience, and support. Teachers should be consistent and kind in their approach. As fear decreases, confidence grows. Students who overcome speaking fear become active learners and strong communicators. Helping students speak without fear is one of the most valuable gifts a teacher can give, shaping confidence that stays with them beyond the classroom.",
+  "skill_type": "speaking_reading",
+  "expects_handwritten_note": true,
+  "eye_contact_expected": true,
+  "word_list": [
+    {"word": "Fear",          "phonetic": "FEER",                 "meaning": "डर"},
+    {"word": "Confidence",    "phonetic": "KON-fi-dens",          "meaning": "आत्मविश्वास"},
+    {"word": "Pronunciation", "phonetic": "pro-nun-see-AY-shun",  "meaning": "उच्चारण"},
+    {"word": "Judgment",      "phonetic": "JUJ-ment",             "meaning": "निर्णय"},
+    {"word": "Environment",   "phonetic": "en-VAI-run-ment",      "meaning": "वातावरण"},
+    {"word": "Manageable",    "phonetic": "MAN-i-juh-bul",        "meaning": "प्रबंधनीय"},
+    {"word": "Gradually",     "phonetic": "GRAJ-oo-uh-lee",       "meaning": "धीरे-धीरे"},
+    {"word": "Pressure",      "phonetic": "PRESH-er",             "meaning": "दबाव"},
+    {"word": "Encourage",     "phonetic": "en-KUH-rij",           "meaning": "प्रोत्साहित करना"},
+    {"word": "Bravery",       "phonetic": "BRAY-vuh-ree",         "meaning": "साहस"},
+    {"word": "Criticism",     "phonetic": "KRIT-i-siz-um",        "meaning": "आलोचना"}
+  ]
+}

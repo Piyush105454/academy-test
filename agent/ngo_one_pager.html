@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How the Homework Agent Works</title>
+<style>
+  :root{
+    --bg:#faf9f7; --fg:#1c1917; --muted:#6b6560; --line:#d9d5d1;
+    --card:#ffffff; --shield:#0d7a5f; --shield-soft:#d9f2e9;
+    --stop:#b91c1c; --stop-soft:#fdeaea; --accent:#b45309; --accent-soft:#fdf0d5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#16151a; --fg:#eeebe6; --muted:#a5a09a; --line:#37342f;
+      --card:#201e24; --shield:#5fd3ac; --shield-soft:#0d2b23;
+      --stop:#f28e84; --stop-soft:#3a1816; --accent:#f0b34a; --accent-soft:#3a2c10;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#16151a; --fg:#eeebe6; --muted:#a5a09a; --line:#37342f;
+    --card:#201e24; --shield:#5fd3ac; --shield-soft:#0d2b23;
+    --stop:#f28e84; --stop-soft:#3a1816; --accent:#f0b34a; --accent-soft:#3a2c10;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--fg);margin:0;
+       font:16px/1.65 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:940px;margin:0 auto;padding:44px 24px 80px}
+  h1{font-size:30px;line-height:1.2;margin:0 0 8px;letter-spacing:-.015em}
+  .lede{color:var(--muted);font-size:16px;margin:0 0 10px;max-width:62ch}
+  .key{display:flex;gap:18px;flex-wrap:wrap;align-items:center;
+       margin:22px 0 4px;font-size:13.5px;color:var(--muted)}
+  .chip{display:inline-flex;align-items:center;gap:7px}
+  .dot{width:13px;height:13px;border-radius:3px;display:inline-block}
+  .dot.s{background:var(--shield-soft);border:2px solid var(--shield)}
+  .dot.n{background:var(--card);border:1.5px solid var(--line)}
+  h2{font-size:19px;margin:40px 0 6px;letter-spacing:-.005em}
+  h2 .n{color:var(--muted);font-weight:400;margin-right:8px}
+  p{margin:0 0 14px}
+  figure{margin:26px 0 6px;padding:0}
+  figure svg{max-width:100%;height:auto;display:block;margin:0 auto}
+  figcaption{color:var(--muted);font-size:13px;margin-top:12px;text-align:center}
+
+  .box{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+  .box-s{fill:var(--shield-soft);stroke:var(--shield);stroke-width:2.2}
+  .box-x{fill:var(--stop-soft);stroke:var(--stop);stroke-width:1.5}
+  .t{fill:var(--fg);font-size:14.5px;font-weight:650}
+  .d{fill:var(--muted);font-size:12.5px}
+  .sh{fill:var(--shield);font-size:11.5px;font-weight:700;letter-spacing:.05em}
+  .arw{stroke:var(--fg);stroke-width:1.7;fill:none}
+  text{font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin:18px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .card.s{border-color:var(--shield);border-width:2px;background:var(--shield-soft)}
+  .card h3{margin:0 0 6px;font-size:15px}
+  .card p{margin:0;font-size:13.5px;color:var(--muted)}
+  .tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;
+       color:var(--shield);margin-bottom:6px}
+  .tbl-wrap{overflow-x:auto;margin:16px 0}
+  table{border-collapse:collapse;width:100%;font-size:14px;min-width:560px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:650}
+  .never{border-left:3px solid var(--shield);padding:4px 0 4px 16px;margin:22px 0;font-size:15px}
+  .never strong{display:block;margin-bottom:6px}
+  .foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
+        color:var(--muted);font-size:13.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>How the homework agent marks a student's work</h1>
+<p class="lede">One page, plain words. The agent reads a student's video and handwritten
+note, compares them to the module the teacher set, and writes feedback in English and
+Hindi. Everything marked in green is a rule that protects the child.</p>
+
+<div class="key">
+  <span class="chip"><span class="dot s"></span> A rule that protects the student</span>
+  <span class="chip"><span class="dot n"></span> An ordinary step</span>
+</div>
+
+<figure>
+<svg viewBox="0 0 900 1180" role="img" aria-label="Eight steps: permission check, read the module, listen and read, check it is the right homework, check how much was covered, give marks, safety check, send feedback. Four steps are marked as protecting the student.">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+    </marker>
+  </defs>
+
+  <!-- 1 -->
+  <rect class="box-s" x="30" y="24" width="470" height="94" rx="10"/>
+  <text class="sh" x="52" y="50">PROTECTS THE STUDENT</text>
+  <text class="t" x="52" y="74">1 · Do we have permission?</text>
+  <text class="d" x="52" y="95">If the family has not agreed, the agent does not</text>
+  <text class="d" x="52" y="112">even open the video. It stops here.</text>
+  <line class="arw" x1="500" y1="71" x2="560" y2="71" marker-end="url(#ar)" stroke="var(--stop)"/>
+  <rect class="box-x" x="562" y="42" width="308" height="58" rx="10"/>
+  <text class="t" x="582" y="66">Stops. Nothing is read.</text>
+  <text class="d" x="582" y="86">No marks, no message.</text>
+  <line class="arw" x1="265" y1="118" x2="265" y2="158" marker-end="url(#ar)"/>
+
+  <!-- 2 -->
+  <rect class="box" x="30" y="160" width="470" height="88" rx="10"/>
+  <text class="t" x="52" y="192">2 · Read the module</text>
+  <text class="d" x="52" y="213">The agent reads the homework the teacher set —</text>
+  <text class="d" x="52" y="230">the article, the word list, the Hindi meanings.</text>
+  <line class="arw" x1="265" y1="248" x2="265" y2="288" marker-end="url(#ar)"/>
+
+  <!-- 3 -->
+  <rect class="box" x="30" y="290" width="470" height="88" rx="10"/>
+  <text class="t" x="52" y="322">3 · Listen to the video, read the page</text>
+  <text class="d" x="52" y="343">Turns the speech into text, and reads the</text>
+  <text class="d" x="52" y="360">handwriting, including the Hindi.</text>
+  <line class="arw" x1="265" y1="378" x2="265" y2="418" marker-end="url(#ar)"/>
+
+  <!-- 4 -->
+  <rect class="box-s" x="30" y="420" width="470" height="112" rx="10"/>
+  <text class="sh" x="52" y="446">PROTECTS THE STUDENT</text>
+  <text class="t" x="52" y="470">4 · Is this the right homework?</text>
+  <text class="d" x="52" y="491">Students say the module name at the start and</text>
+  <text class="d" x="52" y="508">write it on the page. If it is a different module,</text>
+  <text class="d" x="52" y="525">the work is NOT marked wrong.</text>
+  <line class="arw" x1="500" y1="476" x2="560" y2="476" marker-end="url(#ar)" stroke="var(--shield)"/>
+  <rect class="box-s" x="562" y="436" width="308" height="80" rx="10"/>
+  <text class="t" x="582" y="462">Uploaded in the wrong place</text>
+  <text class="d" x="582" y="482">The student is told to ask the teacher</text>
+  <text class="d" x="582" y="499">to move it. No marks are taken away.</text>
+  <line class="arw" x1="265" y1="532" x2="265" y2="572" marker-end="url(#ar)"/>
+
+  <!-- 5 -->
+  <rect class="box" x="30" y="574" width="470" height="88" rx="10"/>
+  <text class="t" x="52" y="606">5 · How much of the article was read?</text>
+  <text class="d" x="52" y="627">The agent counts it and says the number in the</text>
+  <text class="d" x="52" y="644">feedback. It does not quietly cut marks for it.</text>
+  <line class="arw" x1="265" y1="662" x2="265" y2="702" marker-end="url(#ar)"/>
+
+  <!-- 6 -->
+  <rect class="box" x="30" y="704" width="470" height="106" rx="10"/>
+  <text class="t" x="52" y="736">6 · Give marks, with a reason for each</text>
+  <text class="d" x="52" y="757">Video: confidence, vocabulary, tone, hand gestures,</text>
+  <text class="d" x="52" y="774">speed. Page: completion, accuracy, understanding,</text>
+  <text class="d" x="52" y="791">neatness. Each mark must say what it was based on.</text>
+  <line class="arw" x1="265" y1="810" x2="265" y2="850" marker-end="url(#ar)"/>
+
+  <!-- 7 -->
+  <rect class="box-s" x="30" y="852" width="470" height="112" rx="10"/>
+  <text class="sh" x="52" y="878">PROTECTS THE STUDENT</text>
+  <text class="t" x="52" y="902">7 · Safety check before anything is sent</text>
+  <text class="d" x="52" y="923">Blocks anything that judges the child rather than</text>
+  <text class="d" x="52" y="940">the work. Blocks any mark with no reason given.</text>
+  <text class="d" x="52" y="957">If the agent was unsure, it says so instead of guessing.</text>
+  <line class="arw" x1="500" y1="908" x2="560" y2="908" marker-end="url(#ar)" stroke="var(--stop)"/>
+  <rect class="box-x" x="562" y="878" width="308" height="58" rx="10"/>
+  <text class="t" x="582" y="902">Held for the teacher</text>
+  <text class="d" x="582" y="922">Nothing is sent to the student.</text>
+  <line class="arw" x1="265" y1="964" x2="265" y2="1004" marker-end="url(#ar)"/>
+
+  <!-- 8 -->
+  <rect class="box-s" x="30" y="1006" width="470" height="112" rx="10"/>
+  <text class="sh" x="52" y="1032">PROTECTS THE STUDENT</text>
+  <text class="t" x="52" y="1056">8 · Feedback in English and Hindi</text>
+  <text class="d" x="52" y="1077">Clear, kind, and about the work. Compared only</text>
+  <text class="d" x="52" y="1094">to the student's own past work — never to</text>
+  <text class="d" x="52" y="1111">classmates. Every grading is recorded.</text>
+</svg>
+<figcaption>Eight steps. Four of them exist only to protect the student.</figcaption>
+</figure>
+
+<h2><span class="n">A</span>Where the agent protects the student</h2>
+
+<div class="grid">
+  <div class="card s"><span class="tag">PERMISSION</span>
+    <h3>No consent, no look</h3>
+    <p>The video file is not opened at all until a permission record exists. There is no way to skip this.</p></div>
+  <div class="card s"><span class="tag">FAIRNESS</span>
+    <h3>Never guesses about the child</h3>
+    <p>The agent may never decide a child is clever, lazy, poor, or from any caste or religion. Words like these are blocked before anything is sent.</p></div>
+  <div class="card s"><span class="tag">HONESTY</span>
+    <h3>"I could not tell" is allowed</h3>
+    <p>If the sound is unclear or the writing is hard to read, the agent says so. It never turns "I could not check" into a low mark.</p></div>
+  <div class="card s"><span class="tag">EXPLAINABLE</span>
+    <h3>Every mark has a reason</h3>
+    <p>A mark with no stated reason is rejected. A student who asks "why did I get a 3?" gets an answer.</p></div>
+  <div class="card s"><span class="tag">PERSONAL</span>
+    <h3>Compared only to themselves</h3>
+    <p>"Better than last time" — never "behind the class". Only the last five pieces of work are looked at, so one bad day is not a label.</p></div>
+  <div class="card s"><span class="tag">THE RIGHT TO BE FORGOTTEN</span>
+    <h3>A student can be erased</h3>
+    <p>When a student leaves, everything held about them can be removed with one instruction.</p></div>
+</div>
+
+<h2><span class="n">B</span>When can a student get a zero?</h2>
+
+<p>Only in one situation, and it can be undone.</p>
+
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:38%">What happened</th><th style="width:18%">Mark</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>The student did not upload the note at all</td><td><strong>0</strong></td><td>The work was not done. If the note arrives later, the agent marks it again and the 0 is replaced</td></tr>
+<tr><td>The photo is blurred or the sound is missing</td><td><strong>No mark</strong></td><td>That is our problem, not theirs. The student is asked to upload it again</td></tr>
+<tr><td>The work is for a different module</td><td><strong>Paused</strong></td><td>The teacher moves it to the right place, then it is marked normally</td></tr>
+<tr><td>The agent could not judge one thing</td><td><strong>Left out</strong></td><td>It does not count as a low mark. The average is taken from what could be judged</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="never">
+<strong>Three things the agent will never do</strong>
+Tell a child their homework was wrong when it was simply filed in the wrong place ·
+Give a low mark because our software could not read something ·
+Say anything about a child's family, ability, effort, caste or religion.
+</div>
+
+<h2><span class="n">C</span>What still has to happen before it marks real work</h2>
+
+<div class="tbl-wrap">
+<table>
+<thead><tr><th style="width:34%">Needed</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><strong>Permission from families</strong></td><td>The agent refuses to run without it. This is a paperwork job, not a software one</td></tr>
+<tr><td><strong>Check against a real teacher</strong></td><td>A teacher marks 10 pieces of work, we compare. Until then the agent's marks are untested</td></tr>
+<tr><td><strong>A decision on records</strong></td><td>When a student leaves, do we keep the record of their marks so a parent can still ask about them, or delete everything? This is WES's decision, not ours</td></tr>
+</tbody>
+</table>
+</div>
+
+<p class="foot">Wazir Education Society · Homework Grading Agent · September 2026.
+The agent has 212 automatic checks that run on every change, and the rules above are
+part of those checks — not just promises in a document.</p>
+
+</div>
+</body>
+</html>
