@@ -415,16 +415,18 @@ export default function AdminStudentAttendance() {
           status = 'Absent';
         }
 
-        combinedRecords.push({
-          id: existingPerf?.id || `session-${sess.id}`,
-          sessions: {
-            id: sess.id,
-            title: sess.title,
-            session_date: sess.session_date,
-            session_type: sess.session_type
-          },
-          attendance_status: status
-        });
+        if (status !== 'Upcoming') {
+          combinedRecords.push({
+            id: existingPerf?.id || `session-${sess.id}`,
+            sessions: {
+              id: sess.id,
+              title: sess.title,
+              session_date: sess.session_date,
+              session_type: sess.session_type
+            },
+            attendance_status: status
+          });
+        }
       });
 
       // Add any additional performance records that weren't in relevantSessions

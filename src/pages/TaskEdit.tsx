@@ -179,13 +179,24 @@ export default function TaskEdit() {
   const fetchStudentsByClass = async (classId: string, academicYear: string) => {
     let query = supabase
       .from('students')
-      .select('id, name')
+      .select('id, name, email')
       .eq('class_id', classId)
       .order('name');
       
     // academicYear filter removed so all students in the class load
     const { data, error } = await query;
-    if (!error && data) setStudents(data);
+    if (!error && data) {
+        const emails = data.map(s => s.email).filter(Boolean);
+        let activeData = data;
+        if (emails.length > 0) {
+            const { data: profiles } = await supabase.from('user_profiles').select('email, is_active').in('email', emails);
+            if (profiles) {
+                const profileMap = new Map(profiles.map(p => [p.email?.toLowerCase(), p.is_active]));
+                activeData = data.filter(s => s.email ? profileMap.get(s.email.toLowerCase()) !== false : true);
+            }
+        }
+        setStudents(activeData);
+    }
   };
 
   const formatDatetimeLocal = (dateString?: string) => {

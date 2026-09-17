@@ -321,6 +321,7 @@ export default function AdminStudentEarnings() {
         .select(`
           id,
           name,
+          email,
           designation,
           class_id,
           bank_name,
@@ -373,7 +374,7 @@ export default function AdminStudentEarnings() {
       const isCurrentMonthEnded = today.getDate() === lastDayOfMonth;
 
       const { startDate, endDate } = getDateRange();
-      const aggregated = (students || []).map((s: any) => {
+      const aggregated = (finalStudents || []).map((s: any) => {
         const filteredEarnings = (s.student_earnings || []).filter((e: any) => {
           const earnedAt = new Date(e.earned_at);
           const matchesAcademicYear = earnedAt >= startDate && earnedAt <= endDate;

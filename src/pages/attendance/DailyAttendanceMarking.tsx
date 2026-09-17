@@ -8,13 +8,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 
 interface StudentData {
   id: string;
   name: string;
-    roll_number?: string;
+  roll_number?: string;
   student_id?: string;
   roll_no?: string;
+  email?: string;
 }
 
 interface AttendanceRecord {
@@ -26,6 +28,7 @@ export default function DailyAttendanceMarking() {
   const { classId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { selectedYear } = useAcademicYear();
   
   const [className, setClassName] = useState('');
   const [students, setStudents] = useState<StudentData[]>([]);
@@ -38,7 +41,7 @@ export default function DailyAttendanceMarking() {
   useEffect(() => {
     fetchClassData();
     fetchSettings();
-  }, [classId]);
+  }, [classId, selectedYear]);
 
   useEffect(() => {
     if (students.length > 0) {
@@ -63,8 +66,24 @@ export default function DailyAttendanceMarking() {
       const { data: cls } = await supabase.from('classes').select('name').eq('id', classId).single();
       if (cls) setClassName(cls.name);
 
-      const { data: studs } = await supabase.from('students').select('id, name, roll_number, student_id').eq('class_id', classId).order('name');
-      if (studs) setStudents(studs);
+      const { data: studs } = await supabase
+        .from('students')
+        .select('id, name, roll_number, student_id, email')
+        .eq('class_id', classId)
+        .eq('academic_year', selectedYear)
+        .order('name');
+      if (studs) {
+          const emails = studs.map(s => s.email).filter(Boolean);
+          let activeData = studs;
+          if (emails.length > 0) {
+              const { data: profiles } = await supabase.from('user_profiles').select('email, is_active').in('email', emails);
+              if (profiles) {
+                  const profileMap = new Map(profiles.map(p => [p.email?.toLowerCase(), p.is_active]));
+                  activeData = studs.filter(s => s.email ? profileMap.get(s.email.toLowerCase()) !== false : true);
+              }
+          }
+          setStudents(activeData);
+      }
     } catch (e) {
       console.error(e);
     }
