@@ -40,20 +40,20 @@ def grade_submission():
     Endpoint for React app to call.
     Expects JSON body:
     {
-        "submission_id": "sub_123",
-        "student_id": "STU_123",
-        "module_id": "day12_task2_english",
-        "note_drive_url": "https://drive.google.com/file/d/..."
+        "id": "uuid-of-student_task_feedback-row",
+        "student_id": "uuid-of-student",
+        "task_id": "day12_task2_english", 
+        "submission_link": "https://drive.google.com/file/d/..."
     }
     """
     data = request.json
     if not data:
         return jsonify({"error": "No JSON payload provided"}), 400
 
-    submission_id = data.get('submission_id')
+    submission_id = data.get('id')
     student_id = data.get('student_id')
-    module_id = data.get('module_id')
-    note_drive_url = data.get('note_drive_url')
+    module_id = data.get('task_id')  # Map task_id to module_id
+    note_drive_url = data.get('submission_link')
 
     if not all([submission_id, student_id, module_id, note_drive_url]):
         return jsonify({"error": "Missing required fields"}), 400
@@ -102,14 +102,12 @@ def grade_submission():
 
             # Format the feedback to be sent to Supabase
             results = {
-                "status": "completed",
-                "overall_rating": graded.overall_rating,
-                "note_rating": graded.note.rating,
-                "feedback_json": {
-                    "en": graded.feedback.en if graded.feedback else "No feedback generated.",
-                    "hi": graded.feedback.hi if graded.feedback else ""
-                },
-                "scores": [
+                "status": "ai_evaluated", # Update status to show AI is done
+                "ai_overall_rating": graded.overall_rating,
+                "ai_note_rating": graded.note.rating,
+                "ai_feedback_en": graded.feedback.en if graded.feedback else "No feedback generated.",
+                "ai_feedback_hi": graded.feedback.hi if graded.feedback else "",
+                "ai_scores": [
                     {
                         "parameter": score.parameter,
                         "score": score.value,
@@ -121,7 +119,7 @@ def grade_submission():
 
             # Update Supabase if client is initialized
             if supabase:
-                supabase.table('submissions').update(results).eq('id', submission_id).execute()
+                supabase.table('student_task_feedback').update(results).eq('id', submission_id).execute()
             else:
                 print("WARNING: Supabase credentials not found. Cannot save to database.")
                 print(f"Results: {results}")
@@ -137,9 +135,9 @@ def grade_submission():
         
         # Mark as failed in Supabase
         if supabase:
-            supabase.table('submissions').update({
-                'status': 'failed',
-                'feedback_json': {"error": str(e)}
+            supabase.table('student_task_feedback').update({
+                'status': 'ai_failed',
+                'ai_feedback_en': str(e)
             }).eq('id', submission_id).execute()
 
         return jsonify({"error": str(e)}), 500
