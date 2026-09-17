@@ -20,3 +20,5 @@ openai-agents>=0.0.10
 flask
 supabase
 gdown
+
+gunicorn
