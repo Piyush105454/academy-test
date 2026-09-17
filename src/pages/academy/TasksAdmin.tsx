@@ -17,6 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 interface Facilitator {
   id: string;
   full_name: string;
+  email?: string;
 }
 
 export default function TasksAdmin() {
@@ -58,15 +59,30 @@ export default function TasksAdmin() {
 
   useEffect(() => {
     const fetchFacilitators = async () => {
+      // 1. Fetch emails of currently active facilitators from the facilitators table
+      const { data: activeFacs } = await supabase
+        .from('facilitators')
+        .select('email')
+        .eq('status', 'active');
+        
+      const activeEmails = activeFacs?.map(f => f.email?.toLowerCase()).filter(Boolean) || [];
+
+      // 2. Fetch user_profiles
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, full_name')
+        .select('id, full_name, email')
         .eq('role_id', 4)
         .eq('is_active', true)
         .order('full_name');
         
       if (data) {
-        setFacilitators(data as Facilitator[]);
+        // Filter out profiles that are not in the active facilitators table list
+        const filteredData = data.filter(p => p.email && activeEmails.includes(p.email.toLowerCase()));
+        
+        // Remove duplicates by Email to fix ghost/duplicate entries
+        const uniqueData = Array.from(new Map(filteredData.map(item => [item.email?.toLowerCase(), item])).values());
+        
+        setFacilitators(uniqueData as Facilitator[]);
       }
     };
     fetchFacilitators();
