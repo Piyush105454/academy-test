@@ -83,8 +83,11 @@ def grade_submission():
                 from googleapiclient.http import MediaIoBaseDownload
                 import io
 
-                # Ensure private key is formatted correctly
-                private_key = google_key.replace('\\n', '\n')
+                # Ensure private key is formatted correctly (strip quotes if accidentally included)
+                private_key = google_key.strip('"').strip("'").replace('\\"', '"').replace('\\n', '\n')
+                # If there's an accidental leading slash or space, strip it too
+                if private_key.startswith('\\'):
+                    private_key = private_key[1:]
                 
                 creds = Credentials.from_service_account_info({
                     "client_email": google_email,
