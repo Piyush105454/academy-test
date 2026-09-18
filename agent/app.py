@@ -70,10 +70,39 @@ def grade_submission():
         with tempfile.TemporaryDirectory() as temp_dir:
             note_path = os.path.join(temp_dir, "note.jpg")
             
-            # Download the public image from Google Drive
+            # Download the image from Google Drive
             file_id = extract_file_id(note_drive_url)
-            gdown_url = f'https://drive.google.com/uc?id={file_id}'
-            gdown.download(gdown_url, note_path, quiet=False)
+            
+            google_email = os.environ.get("GOOGLE_SERVICE_ACCOUNT_EMAIL")
+            google_key = os.environ.get("GOOGLE_PRIVATE_KEY")
+            
+            if google_email and google_key:
+                print("Downloading using Google Service Account...")
+                from google.oauth2.service_account import Credentials
+                from googleapiclient.discovery import build
+                from googleapiclient.http import MediaIoBaseDownload
+                import io
+
+                # Ensure private key is formatted correctly
+                private_key = google_key.replace('\\n', '\n')
+                
+                creds = Credentials.from_service_account_info({
+                    "client_email": google_email,
+                    "private_key": private_key,
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                }, scopes=['https://www.googleapis.com/auth/drive.readonly'])
+                
+                service = build('drive', 'v3', credentials=creds)
+                file_request = service.files().get_media(fileId=file_id)
+                with io.FileIO(note_path, 'wb') as fh:
+                    downloader = MediaIoBaseDownload(fh, file_request)
+                    done = False
+                    while not done:
+                        status, done = downloader.next_chunk()
+            else:
+                print("No Google credentials found. Attempting public download via gdown...")
+                gdown_url = f'https://drive.google.com/uc?id={file_id}'
+                gdown.download(gdown_url, note_path, quiet=False)
 
             if not os.path.exists(note_path):
                 return jsonify({"error": "Failed to download image from Google Drive"}), 500
