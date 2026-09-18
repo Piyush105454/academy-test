@@ -8,6 +8,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { AcademicYearProvider } from "@/contexts/AcademicYearContext";
 import { DeveloperModeProvider } from "@/contexts/DeveloperModeContext";
 import { MaintenanceGuard } from "@/components/layout/MaintenanceGuard";
+import { GlobalRouteGuard } from "@/components/layout/GlobalRouteGuard";
 
 // Core Auth & Dashboard Pages (Fast static load)
 import Auth from "./pages/Auth";
@@ -90,9 +91,10 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
               <MaintenanceGuard>
-                <Suspense fallback={<div className="min-h-[50vh] flex items-center justify-center text-sm text-muted-foreground">Loading page...</div>}>
-                  <Routes>
-                    <Route path="/" element={<Navigate to="/auth" replace />} />
+                <GlobalRouteGuard>
+                  <Suspense fallback={<div className="min-h-[50vh] flex items-center justify-center text-sm text-muted-foreground">Loading page...</div>}>
+                    <Routes>
+                      <Route path="/" element={<Navigate to="/auth" replace />} />
                     <Route path="/auth" element={<Auth />} />
                     <Route path="/student-auth" element={<StudentAuth />} />
                     <Route path="/student-dashboard" element={<StudentDashboard />} />
@@ -161,7 +163,8 @@ const App = () => (
                     <Route path="/dev-mode" element={<DeveloperModePage />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
-                </Suspense>
+                  </Suspense>
+                </GlobalRouteGuard>
               </MaintenanceGuard>
             </BrowserRouter>
           </TooltipProvider>
