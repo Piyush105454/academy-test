@@ -84,12 +84,26 @@ def grade_submission():
                 import io
                 import re
 
-                # Extract the exact PEM block using Regex to bypass any quoting/escaping issues
-                match = re.search(r'-----BEGIN PRIVATE KEY-----.*?-----END PRIVATE KEY-----', google_key, re.DOTALL)
-                if match:
-                    private_key = match.group(0).replace('\\n', '\n').replace('\\r', '')
+                print(f"DEBUG: Raw key from Coolify (first 30 chars): {repr(google_key[:30])}")
+                
+                # Ultimate PEM Cleaner: Rebuild the PEM from scratch
+                clean_key = google_key.replace('\\n', '\n').replace('\\"', '').replace('\\', '')
+                
+                start = clean_key.find('BEGIN PRIVATE KEY-----')
+                end = clean_key.find('-----END PRIVATE KEY')
+                
+                if start != -1 and end != -1:
+                    start += 22
+                    b64_content = clean_key[start:end]
+                    # Remove all whitespace and garbage
+                    b64_content = "".join(b64_content.split())
+                    # Wrap exactly at 64 chars per line standard
+                    wrapped = '\n'.join(b64_content[i:i+64] for i in range(0, len(b64_content), 64))
+                    private_key = f"-----BEGIN PRIVATE KEY-----\n{wrapped}\n-----END PRIVATE KEY-----\n"
                 else:
-                    private_key = google_key.strip('"').strip("'").replace('\\n', '\n')
+                    private_key = clean_key
+                    
+                print(f"DEBUG: Cleaned key (first 40 chars): {repr(private_key[:40])}")
                 
                 creds = Credentials.from_service_account_info({
                     "client_email": google_email,
