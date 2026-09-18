@@ -82,12 +82,14 @@ def grade_submission():
                 from googleapiclient.discovery import build
                 from googleapiclient.http import MediaIoBaseDownload
                 import io
+                import re
 
-                # Ensure private key is formatted correctly (strip quotes if accidentally included)
-                private_key = google_key.strip('"').strip("'").replace('\\"', '"').replace('\\n', '\n')
-                # If there's an accidental leading slash or space, strip it too
-                if private_key.startswith('\\'):
-                    private_key = private_key[1:]
+                # Extract the exact PEM block using Regex to bypass any quoting/escaping issues
+                match = re.search(r'-----BEGIN PRIVATE KEY-----.*?-----END PRIVATE KEY-----', google_key, re.DOTALL)
+                if match:
+                    private_key = match.group(0).replace('\\n', '\n').replace('\\r', '')
+                else:
+                    private_key = google_key.strip('"').strip("'").replace('\\n', '\n')
                 
                 creds = Credentials.from_service_account_info({
                     "client_email": google_email,
