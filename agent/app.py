@@ -50,10 +50,17 @@ def grade_submission():
     if not data:
         return jsonify({"error": "No JSON payload provided"}), 400
 
-    submission_id = data.get('id')
-    student_id = data.get('student_id')
-    module_id = data.get('task_id')  # Map task_id to module_id
-    note_drive_url = data.get('submission_link')
+    # If this request came from a Supabase Webhook, the data is inside the "record" key
+    if "record" in data:
+        row_data = data["record"]
+    else:
+        # Otherwise, assume it came directly from the React frontend
+        row_data = data
+
+    submission_id = row_data.get('id')
+    student_id = row_data.get('student_id')
+    module_id = row_data.get('task_id')  # Map task_id to module_id
+    note_drive_url = row_data.get('submission_link')
 
     if not all([submission_id, student_id, module_id, note_drive_url]):
         return jsonify({"error": "Missing required fields"}), 400
