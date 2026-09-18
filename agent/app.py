@@ -203,13 +203,10 @@ def grade_submission():
         import traceback
         traceback.print_exc()
         
-        # Mark as failed in Supabase
-        if supabase:
-            supabase.table('student_task_feedback').update({
-                'status': 'ai_failed',
-                'ai_feedback_en': str(e)
-            }).eq('id', submission_id).execute()
-
+        # We intentionally DO NOT update Supabase here anymore!
+        # If the AI fails (e.g. out of credits, Google Drive blocked), it will just print to the server logs
+        # and leave the database completely alone so the UI doesn't get ruined.
+        
         return jsonify({"error": str(e)}), 500
 
 
