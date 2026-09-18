@@ -451,25 +451,19 @@ export default function TaskDetail() {
         return;
       }
 
-      toast.info("Generating AI feedback in the background...");
+      toast.info("Triggering AI via Supabase...");
       
-      const response = await fetch("https://gfnerhfmvc5q4gn7hen0vdai.20.204.123.168.sslip.io/api/grade", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: task.id,
-          student_id: task.student_id,
-          task_id: taskGroup?.task_id || "default",
-          submission_link: task.submission_link
+      const { error } = await supabase
+        .from('student_task_feedback')
+        .update({ 
+          updated_at: new Date().toISOString() 
         })
-      });
+        .eq('id', task.id);
 
-      if (response.ok) {
-        toast.success("AI feedback generated! Refreshing...");
-        await fetchTaskDetail();
+      if (!error) {
+        toast.success("AI triggered! It will update in the background.");
       } else {
-        const errorData = await response.json();
-        toast.error("AI Error: " + (errorData.error || "Failed to generate"));
+        toast.error("Error triggering AI: " + error.message);
       }
     } catch (error: any) {
       console.error("Failed to generate AI feedback:", error);
