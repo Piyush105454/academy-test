@@ -87,15 +87,29 @@ def grade_submission():
                 note_path=note_path
             )
 
-            # Use local modules from sample_data for lookup
-            # In a real system, you might fetch the module config from Supabase
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            source = FolderSubmissionSource(os.path.join(base_dir, "sample_data"))
-            module = source.load_module(module_id)
+            # Pull the task name and description directly from the Supabase webhook payload
+            task_name = row_data.get('task_name', 'Student Assignment')
+            task_desc = row_data.get('task_description', 'No instructions provided.')
+            
+            from grading_agent.models import Module
+            module = Module(
+                module_id=module_id or "default_module",
+                title=task_name,
+                instruction=task_desc,
+                reference_content="",
+                word_list=(),
+                skill_type="note_taking",
+                expects_handwritten_note=True,
+                eye_contact_expected=False
+            )
+            
             rubric = Rubric.load()
 
+            # Dummy lookup function since we aren't using local JSON files anymore
+            def module_lookup(m_id: str):
+                return module
+
             # Run the AI Agent! (Agentic Evaluator)
-            # We use asyncio.run because `evaluate` is an async function
             graded = asyncio.run(
                 evaluate(
                     submission, 
@@ -103,7 +117,8 @@ def grade_submission():
                     rubric, 
                     video_path=None, 
                     note_path=note_path,
-                    module_lookup=source.load_module
+                    module_lookup=module_lookup,
+                    model="openai/gpt-4o"
                 )
             )
 
