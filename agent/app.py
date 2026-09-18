@@ -118,7 +118,7 @@ def grade_submission():
                     video_path=None, 
                     note_path=note_path,
                     module_lookup=module_lookup,
-                    model="gpt-4o-mini"
+                    model="gemini-1.5-flash"
                 )
             )
 
