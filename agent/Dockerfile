@@ -28,4 +28,5 @@ ENV PORT=5000
 
 # Run the app using gunicorn for production reliability
 # We set a high timeout (120s) because calling OpenAI Vision can take time
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "120", "app:app"]
+# We set max-requests 1 to prevent asyncio event loop caching bugs across requests
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "120", "--max-requests", "1", "app:app"]
