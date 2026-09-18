@@ -453,7 +453,7 @@ export default function TaskDetail() {
 
       toast.info("Generating AI feedback in the background...");
       
-      const response = await fetch("http://gfnerhfmvc5q4gn7hen0vdai.20.204.123.168.sslip.io/api/grade", {
+      const response = await fetch("https://gfnerhfmvc5q4gn7hen0vdai.20.204.123.168.sslip.io/api/grade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
