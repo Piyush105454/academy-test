@@ -772,7 +772,7 @@ def _describe_images(paths: list[str], task: str) -> str:
             content.append({"type": "image_url",
                             "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
         return OpenAI().chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": content}],
         ).choices[0].message.content or ""
     except Exception as exc:                            # noqa: BLE001
