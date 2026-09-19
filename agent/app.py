@@ -73,57 +73,60 @@ def grade_submission():
             # Download the image from Google Drive
             file_id = extract_file_id(note_drive_url)
             
-            google_email = os.environ.get("GOOGLE_SERVICE_ACCOUNT_EMAIL")
-            google_key = os.environ.get("GOOGLE_PRIVATE_KEY")
-            
-            if google_email and google_key:
-                print("Downloading using Google Service Account...")
-                from google.oauth2.service_account import Credentials
-                from googleapiclient.discovery import build
-                from googleapiclient.http import MediaIoBaseDownload
-                import io
-                import re
-
-                print(f"DEBUG: Raw key from Coolify (first 30 chars): {repr(google_key[:30])}")
-                
-                # Ultimate PEM Cleaner: Rebuild the PEM from scratch
-                clean_key = google_key.replace('\\n', '\n').replace('\\"', '').replace('\\', '')
-                
-                start = clean_key.find('BEGIN PRIVATE KEY-----')
-                end = clean_key.find('-----END PRIVATE KEY')
-                
-                if start != -1 and end != -1:
-                    start += 22
-                    b64_content = clean_key[start:end]
-                    # Remove all whitespace and garbage
-                    b64_content = "".join(b64_content.split())
-                    # Wrap exactly at 64 chars per line standard
-                    wrapped = '\n'.join(b64_content[i:i+64] for i in range(0, len(b64_content), 64))
-                    private_key = f"-----BEGIN PRIVATE KEY-----\n{wrapped}\n-----END PRIVATE KEY-----\n"
-                else:
-                    private_key = clean_key
-                    
-                print(f"DEBUG: Cleaned key (first 40 chars): {repr(private_key[:40])}")
-                
-                creds = Credentials.from_service_account_info({
-                    "client_email": google_email,
-                    "private_key": private_key,
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                }, scopes=['https://www.googleapis.com/auth/drive.readonly'])
-                
-                service = build('drive', 'v3', credentials=creds)
-                file_request = service.files().get_media(fileId=file_id)
-                with io.FileIO(note_path, 'wb') as fh:
-                    downloader = MediaIoBaseDownload(fh, file_request)
-                    done = False
-                    while not done:
-                        status, done = downloader.next_chunk()
-            else:
-                print("No Google credentials found. Attempting public download via gdown...")
+            # STEP 1: Always try gdown first!
+            # Why? Because if a file is PUBLIC ("Anyone with link"), the official Google API throws a 403 
+            # for the Service Account if it wasn't explicitly shared with it. But gdown works instantly for public files.
+            try:
+                print("Attempting public download via gdown...")
                 gdown_url = f'https://drive.google.com/uc?id={file_id}'
                 gdown.download(gdown_url, note_path, quiet=False)
+            except Exception as e:
+                print(f"gdown failed (likely a Restricted file): {e}")
+            
+            # STEP 2: If gdown failed to get the file, try the Service Account to bypass the restriction
+            if not os.path.exists(note_path) or os.path.getsize(note_path) < 1000:
+                google_email = os.environ.get("GOOGLE_SERVICE_ACCOUNT_EMAIL")
+                google_key = os.environ.get("GOOGLE_PRIVATE_KEY")
+                
+                if google_email and google_key:
+                    print("Falling back to Google Service Account for restricted file...")
+                    from google.oauth2.service_account import Credentials
+                    from googleapiclient.discovery import build
+                    from googleapiclient.http import MediaIoBaseDownload
+                    import io
+    
+                    # Ultimate PEM Cleaner: Rebuild the PEM from scratch
+                    clean_key = google_key.replace('\\n', '\n').replace('\\"', '').replace('\\', '')
+                    
+                    start = clean_key.find('BEGIN PRIVATE KEY-----')
+                    end = clean_key.find('-----END PRIVATE KEY')
+                    
+                    if start != -1 and end != -1:
+                        start += 22
+                        b64_content = clean_key[start:end]
+                        b64_content = "".join(b64_content.split())
+                        wrapped = '\n'.join(b64_content[i:i+64] for i in range(0, len(b64_content), 64))
+                        private_key = f"-----BEGIN PRIVATE KEY-----\n{wrapped}\n-----END PRIVATE KEY-----\n"
+                    else:
+                        private_key = clean_key
+                        
+                    creds = Credentials.from_service_account_info({
+                        "client_email": google_email,
+                        "private_key": private_key,
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                    }, scopes=['https://www.googleapis.com/auth/drive.readonly'])
+                    
+                    service = build('drive', 'v3', credentials=creds)
+                    file_request = service.files().get_media(fileId=file_id)
+                    with io.FileIO(note_path, 'wb') as fh:
+                        downloader = MediaIoBaseDownload(fh, file_request)
+                        done = False
+                        while not done:
+                            status, done = downloader.next_chunk()
+                else:
+                    print("No Google credentials found, and gdown failed.")
 
-            if not os.path.exists(note_path):
+            if not os.path.exists(note_path) or os.path.getsize(note_path) < 1000:
                 return jsonify({"error": "Failed to download image from Google Drive"}), 500
 
             # Set up the Agent inputs
