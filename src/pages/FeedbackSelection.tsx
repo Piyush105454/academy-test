@@ -940,8 +940,7 @@ export default function FeedbackSelection() {
                             </span>
                           </div>
                         </TableHead>
-                        <TableHead className="min-w-[100px] text-center">Recording</TableHead>
-                        <TableHead className="min-w-[100px] text-center">Meeting</TableHead>
+                        <TableHead className="min-w-[100px] text-center">Session Video Recording</TableHead>
                         <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('status')}>
                           <div className="flex items-center gap-1">
                             Status
@@ -991,16 +990,6 @@ export default function FeedbackSelection() {
                             <a href={session.recording_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-md transition-colors font-medium">
                               <Video className="h-3.5 w-3.5" />
                               View
-                            </a>
-                          ) : (
-                            <span className="text-muted-foreground text-xs italic">-</span>
-                          )}
-                        </TableCell>
-
-                        <TableCell className="text-center">
-                          {session.meeting_link ? (
-                            <a href={session.meeting_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center p-1.5 rounded-full hover:bg-slate-100 transition-colors text-primary" title="Join Meeting">
-                              <Video className="h-4 w-4" />
                             </a>
                           ) : (
                             <span className="text-muted-foreground text-xs italic">-</span>

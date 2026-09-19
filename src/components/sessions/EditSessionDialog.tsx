@@ -554,9 +554,11 @@ Session updated with new details.
           centreEmail: centreData?.email,
         };
 
-        console.log('Sending PATCH request to sync-google-calendar with centre email:', centreData?.email);
+        const isMsTeams = formData.meeting_link && formData.meeting_link.includes('teams.microsoft.com');
+        const syncFunction = isMsTeams ? 'sync-ms-teams' : 'sync-google-calendar';
+        console.log(`Sending PATCH request to ${syncFunction} with centre email:`, centreData?.email);
 
-        await fetch(`${supabaseUrl}/functions/v1/sync-google-calendar`, {
+        await fetch(`${supabaseUrl}/functions/v1/${syncFunction}`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',

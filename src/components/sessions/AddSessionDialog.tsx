@@ -141,6 +141,7 @@ export function AddSessionDialog({
     session_type_option: 'fresh',
     class_batch: '',
     meeting_link: '',
+    meeting_platform: 'google_meet',
   });
 
   const selectedClassObj = classes.find(c => c.id === selectedClass);
@@ -684,6 +685,7 @@ export function AddSessionDialog({
       session_type_option: 'fresh',
       class_batch: '',
       meeting_link: '',
+      meeting_platform: 'google_meet',
     });
     onOpenChange(false);
   };
@@ -928,7 +930,8 @@ For any questions, contact the coordinator.
             
             console.log('Attempting calendar sync with eventId:', calendarEventData.sessionId, 'centreEmail:', calendarEventData.centreEmail);
             
-            const response = await fetch(`${supabaseUrl}/functions/v1/sync-google-calendar`, {
+            const syncFunction = formData.meeting_platform === 'ms_teams' ? 'sync-ms-teams' : 'sync-google-calendar';
+            const response = await fetch(`${supabaseUrl}/functions/v1/${syncFunction}`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -1493,17 +1496,37 @@ For any questions, contact the coordinator.
 
           {/* Meeting Link */}
           <div className="border-t border-border pt-4">
-            <h4 className="font-medium text-sm sm:text-base text-foreground mb-3">Meeting Link</h4>
-            <div className="space-y-2">
-              <Label htmlFor="meeting_link" className="text-sm sm:text-base">Google Meet / Zoom Link</Label>
-              <Input
-                id="meeting_link"
-                placeholder="https://meet.google.com/xxx-xxxx-xxx"
-                value={formData.meeting_link}
-                onChange={(e) => setFormData({ ...formData, meeting_link: e.target.value })}
-                className="text-sm sm:text-base"
-              />
-              <p className="text-xs text-muted-foreground">Paste the actual meeting link here (optional)</p>
+            <h4 className="font-medium text-sm sm:text-base text-foreground mb-3">Meeting Platform</h4>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="meeting_platform" className="text-sm sm:text-base">Select Platform *</Label>
+                <Select value={formData.meeting_platform} onValueChange={(value) => setFormData({ ...formData, meeting_platform: value })}>
+                  <SelectTrigger className="text-sm sm:text-base">
+                    <SelectValue placeholder="Select meeting platform" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="google_meet">Google Meet</SelectItem>
+                    <SelectItem value="ms_teams">Microsoft Teams</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="meeting_link" className="text-sm sm:text-base">Custom Meeting Link</Label>
+                <Input
+                  id="meeting_link"
+                  placeholder="https://meet.google.com/xxx-xxxx-xxx"
+                  value={formData.meeting_link}
+                  onChange={(e) => setFormData({ ...formData, meeting_link: e.target.value })}
+                  className="text-sm sm:text-base"
+                  disabled={formData.meeting_platform === 'ms_teams'}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {formData.meeting_platform === 'ms_teams' 
+                    ? "MS Teams link will be auto-generated." 
+                    : "Paste the actual meeting link here (optional). If left blank, a link will be auto-generated."}
+                </p>
+              </div>
             </div>
           </div>
 

@@ -48,6 +48,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { getCleanTaskId, getScheduledTasks } from '@/utils/scheduledTasksStore';
 
+let globalProfilesMap: Map<string, string> | null = null;
+let globalClassCountsMap: Record<string, number> | null = null;
+let globalClassCountsYear: string | null = null;
+
 const formatDateDisplay = (dateStr?: string) => {
   if (!dateStr || dateStr === '-') return '-';
   const trimmed = dateStr.trim();
@@ -133,11 +137,17 @@ export default function Tasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<TaskItem[]>([]);
   const [taskGroups, setTaskGroups] = useState<TaskGroup[]>([]);
-  const [visibleGroupsCount, setVisibleGroupsCount] = useState(20);
+  const [visibleGroupsCount, setVisibleGroupsCount] = useState(10);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [taskOffset, setTaskOffset] = useState(0);
+  const [totalBackendTasks, setTotalBackendTasks] = useState(0);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const TASK_PAGE_SIZE = 200;
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterClass, setFilterClass] = useState('all');
+  const [filterStudent, setFilterStudent] = useState('all');
   const [filterSession, setFilterSession] = useState('all');
   const [filterSubject, setFilterSubject] = useState('all');
   const [filterTaskType, setFilterTaskType] = useState('all');
@@ -276,10 +286,15 @@ export default function Tasks() {
   }, [user?.id]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
     fetchClasses();
     fetchTasks();
     fetchSubjects();
-  }, [selectedYear, filterMonth]);
+  }, [selectedYear, filterMonth, debouncedSearch]);
 
   useEffect(() => {
     let filtered = tasks;
@@ -288,6 +303,9 @@ export default function Tasks() {
       if (cls) {
         filtered = filtered.filter((t) => t.class_name === cls.name);
       }
+    }
+    if (filterStudent !== 'all') {
+      filtered = filtered.filter((t) => t.student_id === filterStudent);
     }
     if (filterSession !== 'all') {
       filtered = filtered.filter((t) => t.session_id === filterSession);
@@ -506,7 +524,7 @@ export default function Tasks() {
     }
 
     setTaskGroups(finalGroups);
-  }, [tasks, filterClass, filterSession, filterSubject, filterTaskType, filterStatus, filterIncharge, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName, coordinatorAssignedClasses, userRole]);
+  }, [tasks, filterClass, filterStudent, filterSession, filterSubject, filterTaskType, filterStatus, filterIncharge, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName, coordinatorAssignedClasses, userRole]);
 
   const fetchClasses = async () => {
     try {
@@ -565,9 +583,13 @@ export default function Tasks() {
     }
   };
 
-  const fetchTasks = async () => {
+  const fetchTasks = async (isLoadMore = false) => {
     try {
-      setLoading(true);
+      if (isLoadMore) setIsFetchingMore(true);
+      else {
+        setLoading(true);
+        setTaskOffset(0);
+      }
       const { startDate, endDate } = getDateRange();
       const isoStart = startDate.toISOString();
 
@@ -616,49 +638,66 @@ export default function Tasks() {
         } else {
           q = q.or(`academic_year.eq.${selectedYear},created_at.gte.${isoStart}`);
         }
+        
+        if (debouncedSearch.trim()) {
+           q = q.or(`task_name.ilike.%${debouncedSearch.trim()}%,task_id.ilike.%${debouncedSearch.trim()}%`);
+        }
         return isCount ? q : q.order('created_at', { ascending: false });
       };
 
-      // Fetch count first, then fetch pages in parallel
-      const { count, error: countErr } = await buildQuery(true);
-      if (countErr) throw countErr;
-      
-      const totalCount = count || 0;
-      const pageSize = 1000;
-      const promises = [];
-      for (let i = 0; i < totalCount; i += pageSize) {
-        promises.push(buildQuery().range(i, i + pageSize - 1));
-      }
-      
-      const profilesPromise = supabase.from('user_profiles').select('id, full_name');
-      const studentsPromise = supabase.from('students').select('id, class_id, academic_year, classes(name)').eq('academic_year', selectedYear);
-      
-      const [results, profilesRes, studentsRes] = await Promise.all([
-        Promise.all(promises),
-        profilesPromise,
-        studentsPromise
-      ]);
-      
-      let allData: any[] = [];
-      for (const res of results) {
-        if (res.error) throw res.error;
-        allData = allData.concat(res.data || []);
+      let currentOffset = isLoadMore ? taskOffset : 0;
+
+      if (!isLoadMore) {
+        const { count, error: countErr } = await buildQuery(true);
+        if (countErr) throw countErr;
+        setTotalBackendTasks(count || 0);
       }
 
-      const profilesMap = new Map((profilesRes.data || []).map(p => [p.id, p.full_name]));
+      const promises: Promise<any>[] = [
+        buildQuery().range(currentOffset, currentOffset + TASK_PAGE_SIZE - 1)
+      ];
 
-      try {
-        const classCountMap: Record<string, number> = {};
+      if (!globalProfilesMap) {
+        promises.push(supabase.from('user_profiles').select('id, full_name'));
+      }
+      
+      if (globalClassCountsYear !== selectedYear) {
+        promises.push(supabase.from('students').select('id, class_id, academic_year, classes(name)').eq('academic_year', selectedYear));
+      }
+
+      const resultsArr = await Promise.all(promises);
+      const results = resultsArr[0];
+      
+      if (results.error) throw results.error;
+      const allData = results.data || [];
+
+      let pIndex = 1;
+      let profilesMap = globalProfilesMap;
+      if (!profilesMap) {
+        const profilesRes = resultsArr[pIndex++];
+        profilesMap = new Map((profilesRes.data || []).map((p: any) => [p.id, p.full_name]));
+        globalProfilesMap = profilesMap;
+      }
+
+      let classCountMap = globalClassCountsMap;
+      if (globalClassCountsYear !== selectedYear) {
+        const studentsRes = resultsArr[pIndex++];
+        classCountMap = {};
         if (studentsRes.data) {
           studentsRes.data.forEach((st: any) => {
             const cName = st.classes?.name || (Array.isArray(st.classes) && st.classes[0]?.name);
             if (cName) {
               const key = cName.trim().toLowerCase();
-              classCountMap[key] = (classCountMap[key] || 0) + 1;
+              classCountMap![key] = (classCountMap![key] || 0) + 1;
             }
           });
         }
-        setClassStudentCounts(classCountMap);
+        globalClassCountsMap = classCountMap;
+        globalClassCountsYear = selectedYear;
+      }
+      
+      try {
+        if (classCountMap) setClassStudentCounts(classCountMap);
       } catch (e) {
         console.error('Error fetching student counts by class:', e);
       }
@@ -666,7 +705,7 @@ export default function Tasks() {
       const data = allData || [];
 
       const enriched: TaskItem[] = (data || []).map((task: any) => {
-        const creatorName = profilesMap.get(task.created_by) || '';
+        const creatorName = profilesMap?.get(task.created_by) || '';
         const volName = task.sessions?.volunteer_name && task.sessions.volunteer_name !== '-' ? task.sessions.volunteer_name : '';
         const facName = task.sessions?.facilitator_name && task.sessions.facilitator_name !== '-' ? task.sessions.facilitator_name : '';
         const inchargeName = facName || volName || creatorName || '-';
@@ -796,12 +835,19 @@ export default function Tasks() {
         }
       }
 
-      setTasks(enriched);
+      if (isLoadMore) {
+        setTasks(prev => [...prev, ...enriched]);
+        setTaskOffset(currentOffset + TASK_PAGE_SIZE);
+      } else {
+        setTasks(enriched);
+        setTaskOffset(TASK_PAGE_SIZE);
+      }
     } catch (e) {
       console.error('Error fetching tasks:', e);
       toast.error('Failed to load tasks');
     } finally {
       setLoading(false);
+      setIsFetchingMore(false);
     }
   };
 
@@ -828,10 +874,14 @@ export default function Tasks() {
           .eq('class_batch', cls.name)
           .order('session_date', { ascending: false })
           .then(({ data }: any) => setFilterSessions(data || []));
+        fetchStudentsByClass(filterClass);
       }
+      setFilterStudent('all');
     } else {
       setFilterSessions([]);
       setFilterSession('all');
+      setStudents([]);
+      setFilterStudent('all');
     }
   }, [filterClass, classes]);
 
@@ -991,6 +1041,21 @@ export default function Tasks() {
           </div>
 
           <div className="w-full sm:w-48">
+            <label className="text-sm font-medium text-foreground mb-2 block">Filter by Student</label>
+            <Select value={filterStudent} onValueChange={setFilterStudent} disabled={filterClass === 'all'}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Students" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Students</SelectItem>
+                {students.map((student) => (
+                  <SelectItem key={student.id} value={student.id}>{student.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="w-full sm:w-48">
             <label className="text-sm font-medium text-foreground mb-2 block">Filter by Session</label>
             <Select value={filterSession} onValueChange={setFilterSession}>
               <SelectTrigger>
@@ -1079,7 +1144,10 @@ export default function Tasks() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ClipboardList className="h-5 w-5 text-primary" />
-              All Tasks ({taskGroups.length})
+              Tasks List
+              <span className="text-sm font-normal text-muted-foreground ml-2">
+                (Showing {Math.min(visibleGroupsCount, taskGroups.length)} loaded tasks)
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -1230,10 +1298,22 @@ export default function Tasks() {
                   <div className="flex justify-center p-4 border-t border-border bg-muted/20">
                     <Button 
                       variant="outline" 
-                      onClick={() => setVisibleGroupsCount(prev => prev + 20)}
+                      onClick={() => setVisibleGroupsCount(prev => prev + 10)}
                       className="w-full sm:w-auto"
                     >
-                      Load More Tasks
+                      View More Loaded Tasks ({sortedGroups.length - visibleGroupsCount} remaining)
+                    </Button>
+                  </div>
+                )}
+                {visibleGroupsCount >= sortedGroups.length && taskOffset < totalBackendTasks && (
+                  <div className="flex justify-center p-4 border-t border-border bg-muted/20">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => fetchTasks(true)}
+                      disabled={isFetchingMore}
+                      className="w-full sm:w-auto"
+                    >
+                      {isFetchingMore ? 'Loading from Server...' : 'Load Older Tasks from Server'}
                     </Button>
                   </div>
                 )}

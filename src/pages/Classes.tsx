@@ -51,6 +51,7 @@ import { AddClassDialog } from '@/components/classes/AddClassDialog';
 import { EditClassDialog } from '@/components/classes/EditClassDialog';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { BulkStudentImportDialog } from '@/components/classes/BulkStudentImportDialog';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Class {
   id: string;
@@ -60,15 +61,19 @@ interface Class {
   created_at: string;
   updated_at: string;
   student_count?: number;
+  active_count?: number;
+  inactive_count?: number;
   allow_profile_edit?: boolean;
 }
 
 export default function Classes() {
   const navigate = useNavigate();
   const { selectedYear } = useAcademicYear();
+  const { user } = useAuth();
 
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState<number | null>(null);
 
   const [isAddClassOpen, setIsAddClassOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
@@ -89,30 +94,94 @@ export default function Classes() {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
+      let roleId = userRole;
+      if (!roleId && user?.email) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('role_id')
+          .ilike('email', user.email)
+          .maybeSingle();
+        if (profile?.role_id) {
+          roleId = profile.role_id;
+          setUserRole(roleId);
+        }
+      }
+
+      let query = supabase
         .from('classes')
         .select('id, name, description, email, allow_profile_edit, created_at, updated_at')
         .neq('id', '00000000-0000-0000-0000-000000000000')
         .neq('name', '__SYSTEM_DEV_MODE__')
         .order('name', { ascending: true });
 
+      if (roleId === 4 && user?.email) {
+          const { data: fac } = await supabase
+            .from('facilitators')
+            .select('id')
+            .ilike('email', user.email)
+            .maybeSingle();
+            
+          if (fac) {
+            const { data: facClasses } = await supabase
+              .from('facilitator_classes')
+              .select('class_id')
+              .eq('facilitator_id', fac.id);
+            
+            if (facClasses && facClasses.length > 0) {
+              const classIds = facClasses.map(fc => fc.class_id);
+              query = query.in('id', classIds);
+            } else {
+              setClasses([]);
+              return;
+            }
+          }
+      }
+
+      const { data, error } = await query;
+
       if (error) throw error;
 
-      // Fetch student count for each class, filtered by academic year
-      const classesWithCounts = await Promise.all(
-        (data || []).map(async (classItem) => {
-          const { count, error: countError } = await supabase
-            .from('students')
-            .select('*', { count: 'exact', head: true })
-            .eq('class_id', classItem.id)
-            .eq('academic_year', selectedYear);
+      const classIds = (data || []).map(c => c.id);
+      
+      const { data: studentsData } = await supabase
+        .from('students')
+        .select('class_id, email')
+        .in('class_id', classIds)
+        .eq('academic_year', selectedYear);
 
-          return {
-            ...classItem,
-            student_count: countError ? 0 : (count || 0),
-          };
-        })
-      );
+      let profileMap = new Map<string, boolean>();
+      if (studentsData && studentsData.length > 0) {
+        const emails = [...new Set(studentsData.map(s => s.email).filter(Boolean))];
+        if (emails.length > 0) {
+          const { data: profiles } = await supabase
+            .from('user_profiles')
+            .select('email, is_active')
+            .in('email', emails);
+          if (profiles) {
+            profileMap = new Map(profiles.map(p => [p.email?.toLowerCase().trim(), p.is_active]));
+          }
+        }
+      }
+
+      const classesWithCounts = (data || []).map(classItem => {
+        const classStudents = studentsData?.filter(s => s.class_id === classItem.id) || [];
+        const total = classStudents.length;
+        let active = 0;
+        let inactive = 0;
+        
+        classStudents.forEach(s => {
+          const isActive = s.email ? profileMap.get(s.email.toLowerCase().trim()) !== false : true;
+          if (isActive) active++;
+          else inactive++;
+        });
+
+        return {
+          ...classItem,
+          student_count: total,
+          active_count: active,
+          inactive_count: inactive
+        };
+      });
 
       setClasses(classesWithCounts);
     } catch (error) {
@@ -170,22 +239,26 @@ export default function Classes() {
               View Students
             </Button>
 
-            <Button
-              variant="outline"
-              onClick={() => setIsBulkImportOpen(true)}
-              className="gap-2"
-            >
-              <Upload className="h-4 w-4" />
-              Import Students
-            </Button>
+            {userRole !== 4 && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsBulkImportOpen(true)}
+                  className="gap-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  Import Students
+                </Button>
 
-            <Button
-              onClick={() => setIsAddClassOpen(true)}
-              className="gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Add Class
-            </Button>
+                <Button
+                  onClick={() => setIsAddClassOpen(true)}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Class
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -237,10 +310,18 @@ export default function Classes() {
                       </TableCell>
 
                       <TableCell>
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-sm font-medium">
-                          <Users className="h-4 w-4" />
-                          {classItem.student_count || 0}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className="inline-flex w-fit items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
+                            <Users className="h-3 w-3" />
+                            {classItem.student_count || 0} Total
+                          </span>
+                          <span className="inline-flex w-fit items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
+                            {classItem.active_count || 0} Active
+                          </span>
+                          <span className="inline-flex w-fit items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">
+                            {classItem.inactive_count || 0} Inactive
+                          </span>
+                        </div>
                       </TableCell>
 
                       <TableCell>
@@ -270,15 +351,17 @@ export default function Classes() {
                           <DropdownMenuContent align="end">
 
                             {/* EDIT */}
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setClassToEdit(classItem);
-                                setEditDialogOpen(true);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
+                            {userRole !== 4 && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setClassToEdit(classItem);
+                                  setEditDialogOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                            )}
 
                             {/* STUDENTS */}
                             <DropdownMenuItem
@@ -289,16 +372,18 @@ export default function Classes() {
                             </DropdownMenuItem>
 
                             {/* DELETE */}
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setClassToDelete(classItem);
-                                setDeleteDialogOpen(true);
-                              }}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
+                            {userRole !== 4 && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setClassToDelete(classItem);
+                                  setDeleteDialogOpen(true);
+                                }}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            )}
 
                           </DropdownMenuContent>
                         </DropdownMenu>

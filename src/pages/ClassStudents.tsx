@@ -94,6 +94,7 @@ export default function ClassStudents() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>(selectedYear);
   const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   useEffect(() => {
@@ -169,6 +170,8 @@ export default function ClassStudents() {
   const filteredStudents = students.filter(student => {
     if (selectedAcademicYear !== 'all' && student.academic_year !== selectedAcademicYear) return false;
     if (selectedDesignation !== 'all' && student.designation !== selectedDesignation) return false;
+    if (statusFilter === 'active' && student.is_active === false) return false;
+    if (statusFilter === 'inactive' && student.is_active !== false) return false;
     
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
@@ -191,6 +194,10 @@ export default function ClassStudents() {
     if (typeof aValue === 'string' && typeof bValue === 'string') {
       const comparison = aValue.toLowerCase().localeCompare(bValue.toLowerCase());
       return sortDirection === 'asc' ? comparison : -comparison;
+    }
+
+    if (typeof aValue === 'boolean' && typeof bValue === 'boolean') {
+      return sortDirection === 'asc' ? (aValue === bValue ? 0 : aValue ? -1 : 1) : (aValue === bValue ? 0 : aValue ? 1 : -1);
     }
 
     return 0;
@@ -398,6 +405,17 @@ export default function ClassStudents() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2 bg-muted/10 p-2 rounded-lg border border-border/60">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-9 w-[150px] text-xs bg-transparent">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Select value={selectedAcademicYear} onValueChange={setSelectedAcademicYear}>
             <SelectTrigger className="h-9 w-[180px] text-xs bg-transparent">
               <SelectValue placeholder="Academic Year" />
@@ -438,7 +456,18 @@ export default function ClassStudents() {
         <Card className="shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              Students ({filteredStudents.length})
+              <span className="inline-flex items-center gap-2">
+                Students
+                <Badge variant="secondary" className="ml-2 font-mono">
+                  {filteredStudents.length} Total
+                </Badge>
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 font-mono">
+                  {filteredStudents.filter(s => s.is_active !== false).length} Active
+                </Badge>
+                <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200 font-mono">
+                  {filteredStudents.filter(s => s.is_active === false).length} Inactive
+                </Badge>
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -477,14 +506,54 @@ export default function ClassStudents() {
                         >
                           <div className="flex items-center gap-1">Gender <span className="text-muted-foreground ml-1">{getSortIndicator('gender')}</span></div>
                         </TableHead>
-                        <TableHead className="w-[90px]">Status</TableHead>
-                          <TableHead className="w-[100px]">DOB</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Phone</TableHead>
-                        <TableHead className="w-[120px]">Class Monitor</TableHead>
-                        <TableHead className="w-[120px]">Subject</TableHead>
-                        <TableHead className="w-[120px]">Academic Year</TableHead>
-                        <TableHead className="w-[150px]">Designation</TableHead>
+                        <TableHead 
+                          className="w-[90px] cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => handleColumnSort('is_active')}
+                        >
+                          <div className="flex items-center gap-1">Status <span className="text-muted-foreground ml-1">{getSortIndicator('is_active')}</span></div>
+                        </TableHead>
+                        <TableHead 
+                          className="w-[100px] cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => handleColumnSort('dob')}
+                        >
+                          <div className="flex items-center gap-1">DOB <span className="text-muted-foreground ml-1">{getSortIndicator('dob')}</span></div>
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => handleColumnSort('email')}
+                        >
+                          <div className="flex items-center gap-1">Email <span className="text-muted-foreground ml-1">{getSortIndicator('email')}</span></div>
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => handleColumnSort('phone_number')}
+                        >
+                          <div className="flex items-center gap-1">Phone <span className="text-muted-foreground ml-1">{getSortIndicator('phone_number')}</span></div>
+                        </TableHead>
+                        <TableHead 
+                          className="w-[120px] cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => handleColumnSort('monitor_name')}
+                        >
+                          <div className="flex items-center gap-1">Class Monitor <span className="text-muted-foreground ml-1">{getSortIndicator('monitor_name')}</span></div>
+                        </TableHead>
+                        <TableHead 
+                          className="w-[120px] cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => handleColumnSort('subject')}
+                        >
+                          <div className="flex items-center gap-1">Subject <span className="text-muted-foreground ml-1">{getSortIndicator('subject')}</span></div>
+                        </TableHead>
+                        <TableHead 
+                          className="w-[120px] cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => handleColumnSort('academic_year')}
+                        >
+                          <div className="flex items-center gap-1">Academic Year <span className="text-muted-foreground ml-1">{getSortIndicator('academic_year')}</span></div>
+                        </TableHead>
+                        <TableHead 
+                          className="w-[150px] cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => handleColumnSort('designation')}
+                        >
+                          <div className="flex items-center gap-1">Designation <span className="text-muted-foreground ml-1">{getSortIndicator('designation')}</span></div>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -505,10 +574,12 @@ export default function ClassStudents() {
                                   <Info className="h-4 w-4 mr-2" />
                                   Info
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handlePromoteClick(student)}>
-                                  <ArrowUpRight className="h-4 w-4 mr-2" />
-                                  Promote
-                                </DropdownMenuItem>
+                                {userRole !== 4 && (
+                                  <DropdownMenuItem onClick={() => handlePromoteClick(student)}>
+                                    <ArrowUpRight className="h-4 w-4 mr-2" />
+                                    Promote
+                                  </DropdownMenuItem>
+                                )}
                                 {isAdmin && <DropdownMenuItem onClick={() => handleEditStudent(student)}><Edit className="h-4 w-4 mr-2" />Edit</DropdownMenuItem>}
                                 <DropdownMenuItem onClick={() => {
                                   setStudentForMonitor(student);
@@ -668,15 +739,17 @@ export default function ClassStudents() {
                           <Info className="h-4 w-4 mr-1" />
                           Info
                         </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handlePromoteClick(student)}
-                          className="flex-1 min-w-[45%]"
-                          variant="outline"
-                        >
-                          <ArrowUpRight className="h-4 w-4 mr-1" />
-                          Promote
-                        </Button>
+                        {userRole !== 4 && (
+                          <Button
+                            size="sm"
+                            onClick={() => handlePromoteClick(student)}
+                            className="flex-1 min-w-[45%]"
+                            variant="outline"
+                          >
+                            <ArrowUpRight className="h-4 w-4 mr-1" />
+                            Promote
+                          </Button>
+                        )}
                         {isAdmin && <Button
                             size="sm"
                             onClick={() => handleEditStudent(student)}

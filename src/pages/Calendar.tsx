@@ -437,12 +437,16 @@ export default function Calendar() {
     }
 
     try {
-      // Try to remove from Google Calendar first
+      // Try to remove from calendar first
       try {
+        const sessionToDelete = sessions.find(s => s.id === sessionId);
+        const isMsTeams = sessionToDelete?.meeting_link?.includes('teams.microsoft.com');
+        const syncFunction = isMsTeams ? 'sync-ms-teams' : 'sync-google-calendar';
+        
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
         
-        const response = await fetch(supabaseUrl + '/functions/v1/sync-google-calendar', {
+        const response = await fetch(`${supabaseUrl}/functions/v1/${syncFunction}`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
@@ -477,12 +481,16 @@ export default function Calendar() {
 
   const handleDeleteSession = async (sessionId: string) => {
     try {
-      // Try to remove from Google Calendar first
+      // Try to remove from calendar first
       try {
+        const sessionToDelete = sessions.find(s => s.id === sessionId);
+        const isMsTeams = sessionToDelete?.meeting_link?.includes('teams.microsoft.com');
+        const syncFunction = isMsTeams ? 'sync-ms-teams' : 'sync-google-calendar';
+
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
         
-        const response = await fetch(supabaseUrl + '/functions/v1/sync-google-calendar', {
+        const response = await fetch(`${supabaseUrl}/functions/v1/${syncFunction}`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',

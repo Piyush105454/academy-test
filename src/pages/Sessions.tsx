@@ -999,6 +999,14 @@ export default function Sessions() {
                             </span>
                           </div>
                         </TableHead>
+                        <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('meeting_link')}>
+                          <div className="flex items-center gap-1">
+                            Meeting Link
+                            <span className={sortColumn === 'meeting_link' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                              {getSortIndicator('meeting_link')}
+                            </span>
+                          </div>
+                        </TableHead>
                         <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('facilitator_feedback_status')}>
                           <div className="flex items-center gap-1">
                             Facilitator Status
@@ -1068,6 +1076,14 @@ export default function Sessions() {
                           <TableCell className="text-center">{session.session_strength ?? '-'}</TableCell>
                           <TableCell>{new Date(session.session_date).toLocaleDateString("en-GB")}</TableCell>
                           <TableCell>{session.session_time || '-'}</TableCell>
+                          <TableCell>
+                            {session.meeting_link && session.meeting_link !== '-' ? (
+                              <a href={session.meeting_link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1 truncate max-w-[120px]" title={session.meeting_link}>
+                                <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                                <span className="truncate">Link</span>
+                              </a>
+                            ) : '-'}
+                          </TableCell>
                           <TableCell>
                             <Badge className={getStatusColor(session.facilitator_feedback_status || session.status)}>
                               {(session.facilitator_feedback_status || session.status).toUpperCase()}

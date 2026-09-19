@@ -78,8 +78,8 @@ export default function DailyAttendanceMarking() {
           if (emails.length > 0) {
               const { data: profiles } = await supabase.from('user_profiles').select('email, is_active').in('email', emails);
               if (profiles) {
-                  const profileMap = new Map(profiles.map(p => [p.email?.toLowerCase(), p.is_active]));
-                  activeData = studs.filter(s => s.email ? profileMap.get(s.email.toLowerCase()) !== false : true);
+                  const profileMap = new Map(profiles.map(p => [p.email?.toLowerCase().trim(), p.is_active]));
+                  activeData = studs.filter(s => s.email ? profileMap.get(s.email.toLowerCase().trim()) !== false : true);
               }
           }
           setStudents(activeData);
