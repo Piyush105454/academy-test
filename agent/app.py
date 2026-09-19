@@ -117,7 +117,11 @@ def grade_submission():
                     }, scopes=['https://www.googleapis.com/auth/drive.readonly'])
                     
                     service = build('drive', 'v3', credentials=creds)
-                    file_request = service.files().get_media(fileId=file_id)
+                    file_request = service.files().get_media(
+                        fileId=file_id, 
+                        acknowledgeAbuse=True, 
+                        supportsAllDrives=True
+                    )
                     with io.FileIO(note_path, 'wb') as fh:
                         downloader = MediaIoBaseDownload(fh, file_request)
                         done = False
