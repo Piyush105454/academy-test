@@ -438,7 +438,7 @@ def build_output_guardrail():
 
 
 def build_agent(module_lookup, video_path, note_path, history_lookup,
-                model: str = "gpt-4o-mini"):
+                model: str = "google/gemini-2.0-flash-exp:free"):
     """Assemble the evaluating agent for one submission."""
     from agents import Agent
 
@@ -678,7 +678,7 @@ async def evaluate(
     module_lookup=None,
     history_lookup=None,
     previous_ratings: tuple[float, ...] = (),
-    model: str = "gpt-4o-mini",
+    model: str = "google/gemini-2.0-flash-exp:free",
 ) -> GradedSubmission:
     """Evaluate one submission with the agent, then referee the result."""
     from agents import Runner
@@ -772,7 +772,7 @@ def _describe_images(paths: list[str], task: str) -> str:
             content.append({"type": "image_url",
                             "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
         return OpenAI().chat.completions.create(
-            model="gpt-4o-mini",
+            model="google/gemini-2.0-flash-exp:free",
             messages=[{"role": "user", "content": content}],
         ).choices[0].message.content or ""
     except Exception as exc:                            # noqa: BLE001
