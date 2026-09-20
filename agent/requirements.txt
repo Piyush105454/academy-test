@@ -18,6 +18,7 @@ openai>=1.40
 openai-agents>=0.0.10
 
 flask
+flask-cors
 supabase
 gdown
 
