@@ -256,7 +256,12 @@ def grade_submission():
             }
 
             if supabase:
-                supabase.table('student_task_feedback').update(results).eq('id', submission_id).execute()
+                try:
+                    db_result = supabase.table('student_task_feedback').update(results).eq('id', submission_id).execute()
+                    print(f"Supabase update OK for {submission_id}: status={results['status']}, overall={results['ai_overall_rating']}")
+                except Exception as db_err:
+                    print(f"ERROR: Supabase update FAILED for {submission_id}: {db_err}")
+                    raise
             else:
                 print("WARNING: Supabase not configured. Results:")
                 print(results)

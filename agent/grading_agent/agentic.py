@@ -782,25 +782,110 @@ def _extract_frames(video_path: str, at_seconds, out_dir: str) -> list[str]:
     return paths
 
 
+def _pdf_to_images(pdf_path: str) -> list[str]:
+    """Convert PDF pages to JPEG image files using PyMuPDF (fitz).
+    
+    Returns paths to the generated images. If fitz is not installed or fails,
+    returns an empty list so the caller can fall back to text extraction.
+    Students often upload handwritten note scans as PDFs — this ensures the
+    vision model can actually read the content.
+    """
+    try:
+        import fitz  # PyMuPDF
+        import tempfile
+        out_dir = tempfile.mkdtemp(prefix="pdf_pages_")
+        doc = fitz.open(pdf_path)
+        paths = []
+        for i, page in enumerate(doc[:6]):  # max 6 pages
+            mat = fitz.Matrix(2.0, 2.0)  # 2x zoom for clarity
+            pix = page.get_pixmap(matrix=mat)
+            out_path = os.path.join(out_dir, f"page_{i}.jpg")
+            pix.save(out_path)
+            paths.append(out_path)
+        doc.close()
+        print(f"PDF converted to {len(paths)} images for vision model")
+        return paths
+    except Exception as e:
+        print(f"PDF-to-image conversion failed ({e}), will try text extraction")
+        return []
+
+
+def _pdf_to_text(pdf_path: str) -> str:
+    """Extract text from PDF as fallback when image conversion fails.
+    
+    Works for digitally typed PDFs. For scanned/handwritten PDFs, returns empty.
+    """
+    try:
+        import fitz
+        doc = fitz.open(pdf_path)
+        text = "\n".join(page.get_text() for page in doc)
+        doc.close()
+        return text.strip()
+    except Exception:
+        return ""
+
+
+def _is_pdf(path: str) -> bool:
+    """Check if a file is a PDF by reading its magic bytes."""
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) == b"%PDF"
+    except Exception:
+        return False
+
+
 def _describe_images(paths: list[str], task: str) -> str:
     """Ask a vision model what is in these images.
 
-    Deliberately narrow: it reports what is visible and nothing more. The
-    judging happens in the main agent, against the module.
+    Handles PDFs by converting them to images first using PyMuPDF.
+    Uses llm_config for the client so Azure/Gemini work correctly.
     """
     import base64
 
     try:
-        from openai import OpenAI
+        from .llm_config import get_sync_client, vision_model_name
+
+        # Expand any PDFs into their page images
+        expanded: list[str] = []
+        for p in paths:
+            if _is_pdf(p):
+                page_images = _pdf_to_images(p)
+                if page_images:
+                    expanded.extend(page_images)
+                else:
+                    # Fallback: extract text from PDF and send as text
+                    text = _pdf_to_text(p)
+                    if text:
+                        task = task + f"\n\n[PDF text content]:\n{text[:3000]}"
+                    else:
+                        task = task + "\n\n[NOTE: A PDF was uploaded but could not be converted to an image. Treat note as not assessable.]"
+            else:
+                expanded.append(p)
+
         content: list[dict] = [{"type": "text", "text": task}]
-        for p in paths[:8]:
+        for p in expanded[:8]:
             b64 = base64.b64encode(Path(p).read_bytes()).decode()
+            # Detect real MIME type from bytes
+            with open(p, "rb") as f:
+                head = f.read(16)
+            if head.startswith(b"\xff\xd8\xff"):
+                mime = "image/jpeg"
+            elif head.startswith(b"\x89PNG"):
+                mime = "image/png"
+            elif head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+                mime = "image/webp"
+            else:
+                mime = "image/jpeg"
             content.append({"type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
-        return OpenAI().chat.completions.create(
-            model="google/gemini-2.0-flash-exp:free",
+                            "image_url": {"url": f"data:{mime};base64,{b64}"}})
+
+        result = get_sync_client().chat.completions.create(
+            model=vision_model_name(),
             messages=[{"role": "user", "content": content}],
         ).choices[0].message.content or ""
+        print(f"Vision model read {len(expanded)} image(s) successfully")
+        return result
     except Exception as exc:                            # noqa: BLE001
         return (f"IMAGE READING UNAVAILABLE ({exc}). Treat anything needing sight as "
                 f"not assessable rather than guessing.")
+

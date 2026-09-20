@@ -21,6 +21,7 @@ flask
 flask-cors
 supabase
 gdown
+pymupdf          # PDF-to-image conversion for student handwritten note PDFs
 
 gunicorn
 google-api-python-client
