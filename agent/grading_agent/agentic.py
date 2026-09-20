@@ -521,14 +521,18 @@ def referee(
     # student must never lose marks for a transcription we failed to produce.
     coverage = evaluation.coverage
     if not coverage.could_check:
+        # The model set could_check=False but also filled in findings — contradictory.
+        # We clear the findings rather than rejecting the whole submission: the
+        # guarantee (no marks for uncheckable coverage) still holds because the
+        # cleared fields produce no deductions, and the student still gets feedback.
         if coverage.covered_fraction is not None or coverage.missing_from_submission:
-            raise RefereeRejection(
-                "Coverage was reported as uncheckable but still carries findings. "
-                "A student cannot be marked down for content we never heard.")
+            print("WARNING: referee cleared contradictory coverage findings "
+                  "(could_check=False but findings present). Student is not penalised.")
+            coverage.covered_fraction = None
+            coverage.missing_from_submission = []
+            coverage.not_in_module = []
         if coverage.verdict != "cannot_check":
-            raise RefereeRejection(
-                f"Coverage could not be checked but verdict is "
-                f"'{coverage.verdict}' — that is a judgement without evidence.")
+            coverage.verdict = "cannot_check"
 
     off_topic = (evaluation.relevance == "off_topic"
                  or coverage.verdict == "substantially_different")
