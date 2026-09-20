@@ -437,10 +437,32 @@ def build_output_guardrail():
     return no_judgement_of_the_child
 
 
-def build_agent(module_lookup, video_path, note_path, history_lookup,
-                model: str = "google/gemini-2.0-flash-exp:free"):
-    """Assemble the evaluating agent for one submission."""
-    from agents import Agent
+def build_agent(module_lookup, video_path, note_path, history_lookup, model=None):
+    """Assemble the evaluating agent for one submission.
+    
+    ``model`` may be an OpenAIChatCompletionsModel object, a plain string, or None.
+    When None, the model is built from env vars via llm_config:
+        LLM_API_KEY   + LLM_BASE_URL   (any OpenAI-compatible provider, e.g. Azure)
+        GEMINI_API_KEY                 (Google Gemini)
+        GRADING_MODEL                  (model name, e.g. gpt-4.1-mini)
+    """
+    from agents import Agent, set_default_openai_api, set_tracing_disabled
+    set_default_openai_api("chat_completions")
+    set_tracing_disabled(True)
+
+    if model is None:
+        from .llm_config import get_agent_model
+        model = get_agent_model()
+    elif isinstance(model, str):
+        # Wrap plain string in a model object to bypass SDK prefix parsing
+        from agents import OpenAIChatCompletionsModel
+        from openai import AsyncOpenAI
+        import os
+        client = AsyncOpenAI(
+            api_key=os.environ.get("LLM_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENAI_API_KEY", ""),
+            base_url=os.environ.get("LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
+        )
+        model = OpenAIChatCompletionsModel(model=model, openai_client=client)
 
     return Agent(
         name="Homework Evaluator",
