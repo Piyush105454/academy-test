@@ -65,13 +65,47 @@ def _build_service_account_creds():
 def download_from_drive(file_id: str, dest: str):
     """Download a file from Google Drive.
     
-    On Coolify (server IP), gdown is usually blocked by Google.
-    So we try the Service Account FIRST (works from any IP), 
-    then fall back to gdown (works on local PC for public files).
+    Method order:
+    1. requests with browser headers via drive.usercontent.google.com  
+       → Works for PUBLIC files from any IP (bypasses bot detection)
+    2. Service Account API  
+       → Works for RESTRICTED files explicitly shared with the SA
+    3. gdown fallback  
+       → Last resort, often blocked on server IPs
     """
     reasons = []
 
-    # STEP 1: Try Service Account first (works from server IPs, no Google IP blocking)
+    # METHOD 1: requests with browser-like headers (best for public files on servers)
+    try:
+        import requests
+        print("Trying requests download (public file bypass)...")
+        session = requests.Session()
+        # Use Google's newer usercontent endpoint which is less aggressive about bot detection
+        url = f"https://drive.usercontent.google.com/download?id={file_id}&export=download&confirm=t&authuser=0"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://drive.google.com/',
+        }
+        response = session.get(url, headers=headers, stream=True, allow_redirects=True, timeout=120)
+        response.raise_for_status()
+        with open(dest, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=32768):
+                if chunk:
+                    f.write(chunk)
+        if os.path.exists(dest) and os.path.getsize(dest) > 5000:
+            print(f"requests download OK ({os.path.getsize(dest)} bytes)")
+            return
+        reasons.append(f"requests: file too small ({os.path.getsize(dest) if os.path.exists(dest) else 0} bytes - likely Google login page)")
+        if os.path.exists(dest):
+            os.remove(dest)
+    except Exception as e:
+        reasons.append(f"requests: {type(e).__name__}: {str(e)[:200]}")
+        if os.path.exists(dest):
+            os.remove(dest)
+
+    # METHOD 2: Service Account (for restricted files explicitly shared with SA)
     creds = _build_service_account_creds()
     if creds:
         try:
@@ -96,7 +130,7 @@ def download_from_drive(file_id: str, dest: str):
             if os.path.exists(dest):
                 os.remove(dest)
 
-    # STEP 2: Fall back to gdown (works for public files on local PC)
+    # METHOD 3: gdown (last resort, often blocked on server IPs)
     try:
         print("Trying gdown public download...")
         gdown.download(id=file_id, output=dest, quiet=False)
