@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+﻿import React, { useEffect, useState, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { useNavigate } from 'react-router-dom';
@@ -77,7 +77,7 @@ export default function AttendanceManagement() {
 
   const fetchClassesAndStudents = async () => {
     try {
-      const { data: clsData } = await supabase.from('classes').select('id, name').neq('name', '__SYSTEM_DEV_MODE__').order('name');
+      const { data: clsData } = await supabase.from('classes').select('id, name').neq('name', '__SYSTEM_DEV_MODE__').not('is_attendance_enabled', 'eq', false).order('name');
       if (clsData) setClasses(clsData);
 
       const { data: stdData } = await supabase.from('students').select('id, name, class_id, gender');

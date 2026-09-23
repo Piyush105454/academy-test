@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { useNavigate } from 'react-router-dom';
@@ -32,7 +32,7 @@ export default function DailyRegister() {
           .maybeSingle();
 
         const roleId = profile?.role_id;
-        let query = supabase.from('classes').select('id, name').neq('name', '__SYSTEM_DEV_MODE__').order('name');
+        let query = supabase.from('classes').select('id, name').neq('name', '__SYSTEM_DEV_MODE__').not('is_attendance_enabled', 'eq', false).order('name');
 
         if (roleId === 4) {
           // Facilitator: only show assigned classes

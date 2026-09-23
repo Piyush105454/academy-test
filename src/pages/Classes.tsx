@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, MoreVertical, BookOpen, Users, Upload, Pencil, Eye } from 'lucide-react';
+import { Plus, Trash2, MoreVertical, BookOpen, Users, Upload, Pencil, Eye, Lock, Unlock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -63,7 +63,7 @@ interface Class {
   student_count?: number;
   active_count?: number;
   inactive_count?: number;
-  allow_profile_edit?: boolean;
+  allow_profile_edit?: boolean; is_attendance_enabled?: boolean;
 }
 
 export default function Classes() {
@@ -109,7 +109,7 @@ export default function Classes() {
 
       let query = supabase
         .from('classes')
-        .select('id, name, description, email, allow_profile_edit, created_at, updated_at')
+        .select('id, name, description, email, allow_profile_edit, is_attendance_enabled, created_at, updated_at')
         .neq('id', '00000000-0000-0000-0000-000000000000')
         .neq('name', '__SYSTEM_DEV_MODE__')
         .order('name', { ascending: true });
@@ -192,23 +192,60 @@ export default function Classes() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDeleteClass = async () => {
+    if (!classToDelete) return;
+    if (deleteConfirmText !== classToDelete.name) {
+      toast.error('Class name does not match');
+      return;
+    }
+
     try {
-      const { error } = await supabase.from('classes').delete().eq('id', id);
+      setIsDeleting(true);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('classes')
+        .delete()
+        .eq('id', classToDelete.id);
 
       if (error) throw error;
 
-      const targetClass = classes.find(c => c.id === id);
-      await logActivity('DELETE', 'Classes', `Deleted class: ${targetClass ? targetClass.name : id}`);
+      await logActivity(
+        user.id,
+        'Class Deleted',
+        `Deleted class: ${classToDelete.name}`,
+        'delete',
+        'classes'
+      );
 
-      toast.success('Class deleted');
-      setClasses(classes.filter((c) => c.id !== id));
-
+      toast.success('Class deleted successfully');
       setDeleteDialogOpen(false);
-      setClassToDelete(null);
+      fetchClasses();
     } catch (error) {
-      console.error(error);
-      toast.error('Failed to delete class');
+      console.error('Error deleting class:', error);
+      toast.error('Failed to delete class. Make sure it has no students attached.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const toggleAttendance = async (classItem: Class) => {
+    try {
+      const newValue = classItem.is_attendance_enabled === false ? true : false;
+      const { error } = await supabase
+        .from('classes')
+        .update({ is_attendance_enabled: newValue })
+        .eq('id', classItem.id);
+
+      if (error) throw error;
+
+      toast.success(`Attendance ${newValue ? 'enabled' : 'disabled'} for ${classItem.name}`);
+      fetchClasses();
+    } catch (error) {
+      console.error('Error toggling attendance:', error);
+      toast.error('Failed to update attendance setting');
     }
   };
 
@@ -324,17 +361,17 @@ export default function Classes() {
                         </div>
                       </TableCell>
 
-                      <TableCell>
-                        {classItem.allow_profile_edit !== false ? (
-                          <Badge variant="outline" className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200">
-                            🔓 Unlocked
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-red-50 text-red-700 hover:bg-red-100 border-red-200">
-                            🔒 Locked
-                          </Badge>
-                        )}
-                      </TableCell>
+                        <TableCell>
+                          {classItem.allow_profile_edit !== false ? (
+                            <Badge variant="outline" className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200">
+                              <Unlock className="w-3 h-3 mr-1" /> Unlocked
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-red-50 text-red-700 hover:bg-red-100 border-red-200">
+                              <Lock className="w-3 h-3 mr-1" /> Locked
+                            </Badge>
+                          )}
+                        </TableCell>
 
                       <TableCell>
                         {new Date(classItem.created_at).toLocaleDateString()}
@@ -370,6 +407,16 @@ export default function Classes() {
                               <Users className="h-4 w-4 mr-2" />
                               Students
                             </DropdownMenuItem>
+
+                            {/* TOGGLE ATTENDANCE */}
+                            {userRole !== 4 && (
+                              <DropdownMenuItem
+                                onClick={() => toggleAttendance(classItem)}
+                              >
+                                <BookOpen className="h-4 w-4 mr-2" />
+                                {classItem.is_attendance_enabled === false ? 'Enable Attendance' : 'Disable Attendance'}
+                              </DropdownMenuItem>
+                            )}
 
                             {/* DELETE */}
                             {userRole !== 4 && (

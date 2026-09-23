@@ -292,11 +292,21 @@ export default function Sessions() {
         centre_location: session.centres?.location || null,
         centre_email: session.centres?.email || null,
         slot_day: session.centre_time_slots?.day || null,
-        slot_start_time: session.centre_time_slots?.start_time || null,
-        slot_end_time: session.centre_time_slots?.end_time || null,
-        subject_name: session.subjects && !Array.isArray(session.subjects) ? session.subjects.name : 
-                     Array.isArray(session.subjects) && session.subjects.length > 0 ? session.subjects[0].name : null,
-      }));
+          slot_start_time: session.centre_time_slots?.start_time || null,
+          slot_end_time: session.centre_time_slots?.end_time || null,
+          subject_name: session.subjects && !Array.isArray(session.subjects) ? session.subjects.name : 
+                       Array.isArray(session.subjects) && session.subjects.length > 0 ? session.subjects[0].name : 
+                       (() => {
+                          const tn = (session.title || '').trim().toLowerCase();
+                          if (tn.includes('ss ') || tn.startsWith('ss-')) return 'English Com and Soft Skill';
+                          if (tn.includes('se ') || tn.startsWith('se-')) return 'English Com and Soft Skill';
+                          if (tn.includes('te ') || tn.startsWith('te-')) return 'Azure (Specialization)';
+                          if (tn.includes('ai') || tn.includes('artificial intelligence')) return 'Artificial Intelligence';
+                          if (tn.includes('ps ') || tn.startsWith('ps-')) return 'Problem Solving';
+                          if (tn.includes('cc') || tn.includes('certified') || tn.includes('computer course')) return 'Certified Computer Course';
+                          return null;
+                       })(),
+        }));
 
       const processedWithCodes = attachSessionIdCodes(transformedData);
       

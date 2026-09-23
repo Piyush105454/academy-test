@@ -162,6 +162,10 @@ export default function AdminStudentEarnings() {
           if (taskName.includes('session') && !taskName.includes('mentor') && !taskName.includes('english')) return true;
         }
         
+        // Flexible fallback for custom types
+        if (taskTypeLower && taskName.includes(taskTypeLower)) return true;
+        if (taskTypeLower && subj.includes(taskTypeLower)) return true;
+
         return false;
       });
 
@@ -180,6 +184,9 @@ export default function AdminStudentEarnings() {
             if (desc.includes('session') && !desc.includes('mentor') && !desc.includes('english')) return true;
           }
           
+          // Flexible fallback for custom types
+          if (taskTypeLower && desc.includes(taskTypeLower)) return true;
+
           return false;
         });
       }
@@ -976,11 +983,20 @@ export default function AdminStudentEarnings() {
                                 )}
                               </TableCell>
                               <TableCell>
-                                {(r as any).student_task_feedback?.subjects?.name ? (
-                                  <Badge variant="outline" className="text-[10px] uppercase font-bold">
-                                    {(r as any).student_task_feedback?.subjects?.name}
-                                  </Badge>
-                                ) : '-'}
+                                {(() => {
+                                  const tName = ((r as any).student_task_feedback?.task_name || '').toLowerCase();
+                                  const subj = (r as any).student_task_feedback?.subjects?.name;
+                                  if (subj) return <Badge variant="outline" className="text-[10px] uppercase font-bold">{subj}</Badge>;
+                                  
+                                  let mapped = '-';
+                                  if (tName.includes('ss ') || tName.startsWith('ss-') || tName.includes('se ') || tName.startsWith('se-')) mapped = 'English Com and Soft Skill';
+                                  else if (tName.includes('te ') || tName.startsWith('te-')) mapped = 'Azure (Specialization)';
+                                  else if (tName.includes('ai') || tName.includes('artificial intelligence')) mapped = 'Artificial Intelligence';
+                                  else if (tName.includes('ps ') || tName.startsWith('ps-')) mapped = 'Problem Solving';
+                                  else if (tName.includes('cc') || tName.includes('certified') || tName.includes('computer course')) mapped = 'Certified Computer Course';
+
+                                  return mapped !== '-' ? <Badge variant="outline" className="text-[10px] uppercase font-bold">{mapped}</Badge> : '-';
+                                })()}
                               </TableCell>
                               <TableCell className="text-xs truncate max-w-[120px]">
                                 {(r as any).student_task_feedback?.sessions?.title || '-'}

@@ -747,12 +747,13 @@ export default function Tasks() {
               ? task.sessions.subjects[0].name : null;
             if (fromSession) return fromSession;
             // 3. For scheduled tasks: detect from task name prefix
-            const tn = (task.task_name || '').trim();
-            if (tn.match(/^SS\s/i)) return 'English Com and Soft Skill';
-            if (tn.match(/^SE\s/i)) return 'English Com and Soft Skill';
-            if (tn.match(/^TE\s/i)) return 'Azure (Specialization)';
-            if (tn.match(/^AI\s/i)) return 'Artificial Intelligence';
-            if (tn.match(/^PS\s/i)) return 'Problem Solving';
+            const tn = (task.task_name || '').trim().toLowerCase();
+            if (tn.includes('ss ') || tn.startsWith('ss-')) return 'English Com and Soft Skill';
+            if (tn.includes('se ') || tn.startsWith('se-')) return 'English Com and Soft Skill';
+            if (tn.includes('te ') || tn.startsWith('te-')) return 'Azure (Specialization)';
+            if (tn.includes('ai') || tn.includes('artificial intelligence')) return 'Artificial Intelligence';
+            if (tn.includes('ps ') || tn.startsWith('ps-')) return 'Problem Solving';
+            if (tn.includes('cc') || tn.includes('certified') || tn.includes('computer course')) return 'Certified Computer Course';
             return '-';
           })(),
         };

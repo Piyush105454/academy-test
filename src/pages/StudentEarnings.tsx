@@ -293,7 +293,16 @@ export default function StudentEarnings() {
           task_id_code: taskData?.task_id,
           task_name: taskData?.task_name,
           deadline: taskData?.deadline,
-          subject_name: taskData?.subject?.name,
+          subject_name: taskData?.subject?.name || (taskData?.session?.subjects ? (Array.isArray(taskData.session.subjects) ? taskData.session.subjects[0]?.name : taskData.session.subjects.name) : null) || (() => {
+            const tn = (taskData?.task_name || '').trim().toLowerCase();
+            if (tn.includes('ss ') || tn.startsWith('ss-')) return 'English Com and Soft Skill';
+            if (tn.includes('se ') || tn.startsWith('se-')) return 'English Com and Soft Skill';
+            if (tn.includes('te ') || tn.startsWith('te-')) return 'Azure (Specialization)';
+            if (tn.includes('ai') || tn.includes('artificial intelligence')) return 'Artificial Intelligence';
+            if (tn.includes('ps ') || tn.startsWith('ps-')) return 'Problem Solving';
+            if (tn.includes('cc') || tn.includes('certified') || tn.includes('computer course')) return 'Certified Computer Course';
+            return null;
+          })(),
           session_title: taskData?.session?.title || item.description
         };
       });

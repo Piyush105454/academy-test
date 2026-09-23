@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { Users, Search, ArrowUpDown, CalendarCheck, Gift, Sparkles, Award } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
@@ -126,7 +126,7 @@ export default function AdminStudentAttendance() {
 
   const fetchClasses = async (role: number | null, allowedClassIds: string[]) => {
     let query = supabase.from('classes').select('id, name')
-      .neq('name', '__SYSTEM_DEV_MODE__')
+      .neq('name', '__SYSTEM_DEV_MODE__').not('is_attendance_enabled', 'eq', false)
       .neq('id', '00000000-0000-0000-0000-000000000000')
       .order('name');
       
@@ -500,7 +500,7 @@ export default function AdminStudentAttendance() {
               Student Attendance Management
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Monitor session attendance (100% attendance ₹200 bonus is automatically awarded every month)
+              Monitor session attendance (100% attendance â‚¹200 bonus is automatically awarded every month)
             </p>
           </div>
         </div>
@@ -610,7 +610,7 @@ export default function AdminStudentAttendance() {
                         {s.total_present > 0 && s.attendance_percentage === 100 ? (
                           isMonthEnded ? (
                             <Badge className="bg-emerald-600 text-white font-bold text-[10px] gap-1">
-                              <Sparkles className="h-3 w-3" /> 100% Perfect (₹200 Auto-Awarded)
+                              <Sparkles className="h-3 w-3" /> 100% Perfect (â‚¹200 Auto-Awarded)
                             </Badge>
                           ) : (
                             <Badge variant="outline" className="border-emerald-600 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] gap-1">
