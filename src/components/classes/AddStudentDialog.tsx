@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import {
   Dialog,
@@ -51,6 +51,44 @@ export function AddStudentDialog({
     account_number: '',
     ifsc_code: '',
   });
+
+  // Fetch the next available Student ID when dialog opens
+  useEffect(() => {
+    if (open) {
+      const fetchNextId = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('students')
+            .select('student_id')
+            .ilike('student_id', 'STU%')
+            .order('student_id', { ascending: false })
+            .limit(1);
+
+          if (!error && data && data.length > 0) {
+            const lastId = data[0].student_id;
+            const match = lastId.match(/STU(\d+)/);
+            if (match) {
+              const nextNum = parseInt(match[1], 10) + 1;
+              setNewStudent(prev => ({
+                ...prev,
+                student_id: `STU${String(nextNum).padStart(3, '0')}`
+              }));
+              return;
+            }
+          }
+          // Default if no STU found or error
+          setNewStudent(prev => ({ ...prev, student_id: 'STU001' }));
+        } catch (e) {
+          console.error('Error fetching next student ID:', e);
+          setNewStudent(prev => ({ ...prev, student_id: 'STU001' }));
+        }
+      };
+      
+      if (!newStudent.student_id) {
+        fetchNextId();
+      }
+    }
+  }, [open]);
 
   const handleAddStudent = async () => {
     if (!newStudent.name.trim()) {
@@ -108,7 +146,7 @@ export function AddStudentDialog({
       const { error } = await (supabase as any).from('students').insert([
         {
           class_id: classId,
-          student_id: newStudent.student_id.trim() || `STU-${Date.now()}`,
+          student_id: newStudent.student_id.trim() || 'STU001',
           name: newStudent.name.trim(),
           gender: newStudent.gender || null,
           dob: newStudent.dob || null,

@@ -24,7 +24,21 @@ export default function Auth() {
 
   useEffect(() => {
     if (user) {
-      navigate('/dashboard');
+      supabase
+        .from('user_profiles')
+        .select('role_id')
+        .eq('id', user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data?.role_id === 5) {
+            navigate('/student-dashboard');
+          } else {
+            navigate('/dashboard');
+          }
+        })
+        .catch(() => {
+          navigate('/dashboard');
+        });
     }
   }, [user, navigate]);
 

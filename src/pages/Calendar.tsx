@@ -1267,15 +1267,26 @@ export default function Calendar() {
                 <div className="space-y-3">
                   {selectedSession.meeting_link && (
                     <div className="bg-indigo-50 border border-indigo-200 rounded p-3 mb-2">
-                      <h4 className="font-semibold text-sm text-indigo-900 mb-1">🔗 Google Meet Link</h4>
-                      <a 
-                        href={selectedSession.meeting_link} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium text-sm break-all"
-                      >
-                        {selectedSession.meeting_link}
-                      </a>
+                      <h4 className="font-semibold text-sm text-indigo-900 mb-1">🔗 Meeting Link</h4>
+                      {(() => {
+                        let url = selectedSession.meeting_link;
+                        if (url && url.includes('_meet/whoops')) {
+                          url = url.replace('/_meet/whoops', '');
+                        }
+                        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+                          url = `https://${url}`;
+                        }
+                        return (
+                          <a 
+                            href={url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium text-sm"
+                          >
+                            Join Meeting
+                          </a>
+                        );
+                      })()}
                     </div>
                   )}
                   
@@ -1336,36 +1347,7 @@ export default function Calendar() {
                     </div>
                   )}
 
-                  {selectedSession.meeting_link && (
-                    <div className="bg-cyan-50 border border-cyan-200 rounded p-3">
-                      <p className="text-xs text-muted-foreground">🔗 Meeting Link</p>
-                      {(() => {
-                        let url = selectedSession.meeting_link;
-                        // Fix malformed Google Meet URLs
-                        if (url && url.includes('_meet/whoops')) {
-                          // Extract meeting code if embedded, or show raw link
-                          url = url.replace('/_meet/whoops', '');
-                        }
-                        // Ensure URL has protocol
-                        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
-                          url = `https://${url}`;
-                        }
-                        return (
-                          <>
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-cyan-600 hover:text-cyan-800 hover:underline text-sm font-medium break-all"
-                            >
-                              Join Meeting
-                            </a>
-                            <p className="text-xs text-muted-foreground mt-1 break-all">{url}</p>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  )}
+
                 </div>
               </div>
             )}

@@ -31,35 +31,96 @@ export function TodayClassAttendanceWidget({
       try {
         const { data: records, error } = await supabase
           .from('daily_attendance')
-          .select('class_id, status')
+          .select('class_id, status, student_id, students(designation)')
           .eq('date', selectedDate);
 
         if (error) throw error;
 
-        // Group by class_id
-        const grouped: Record<string, { P: number, LT: number, A: number, L: number, H: number }> = {};
+        // Filter enabled classes
+        const enabledClasses = classes.filter((c: any) => c.is_attendance_enabled !== false);
+
+        const statsBase = () => ({ P: 0, LT: 0, A: 0, L: 0, H: 0 });
         
-        classes.forEach(c => {
-          grouped[c.id] = { P: 0, LT: 0, A: 0, L: 0, H: 0 };
+        const classStats: Record<string, any> = {};
+        const designationStats: Record<string, any> = {
+          '1. CCC': statsBase(),
+          '2. Junior Fellow': statsBase(),
+          '3. Senior Fellow': statsBase()
+        };
+
+        enabledClasses.forEach(c => {
+          classStats[c.id] = statsBase();
         });
 
         records?.forEach(record => {
-          if (grouped[record.class_id]) {
-            const status = record.status as keyof typeof grouped[string];
-            if (grouped[record.class_id][status] !== undefined) {
-              grouped[record.class_id][status]++;
-            }
+          const status = record.status as 'P' | 'LT' | 'A' | 'L' | 'H';
+          
+          if (classStats[record.class_id]) {
+            classStats[record.class_id][status]++;
+          }
+          
+          const cls = enabledClasses.find(c => c.id === record.class_id);
+          if (cls && cls.name === 'CCC EMP Fellow' && record.students?.designation) {
+             const desig = record.students.designation;
+             if (designationStats[desig]) {
+               designationStats[desig][status]++;
+             }
           }
         });
 
-        let formattedData = classes.map(c => ({
-          id: c.id,
-          name: c.name,
-          stats: grouped[c.id] || { P: 0, LT: 0, A: 0, L: 0, H: 0 }
-        })).sort((a, b) => a.name.localeCompare(b.name));
-
-        if (selectedClass !== 'all') {
-          formattedData = formattedData.filter(c => c.id === selectedClass);
+        let formattedData: any[] = [];
+        
+        if (selectedClass === 'all') {
+          // Standard overview mode
+          const juniorClasses = enabledClasses
+            .filter(c => c.name !== 'CCC EMP Fellow')
+            .sort((a, b) => b.name.localeCompare(a.name)); // WESa 10, WESa 9...
+            
+          let juniorsTotal = statsBase();
+          
+          juniorClasses.forEach(c => {
+             const stats = classStats[c.id];
+             formattedData.push({ id: c.id, name: c.name, stats });
+             ['P', 'LT', 'A', 'L', 'H'].forEach(k => juniorsTotal[k as keyof typeof juniorsTotal] += stats[k]);
+          });
+          
+          formattedData.push({ id: 'juniors-total', name: 'Juniors Total', stats: juniorsTotal, isTotalRow: true });
+          
+          let seniorsTotal = statsBase();
+          const designationsToShow = [
+            { key: '1. CCC', label: 'CCC' },
+            { key: '2. Junior Fellow', label: 'Junior Fellow' },
+            { key: '3. Senior Fellow', label: 'Senior Fellow' }
+          ];
+          
+          designationsToShow.forEach(d => {
+             const stats = designationStats[d.key];
+             formattedData.push({ id: `desig-${d.key}`, name: d.label, stats, isDesignation: true });
+             ['P', 'LT', 'A', 'L', 'H'].forEach(k => seniorsTotal[k as keyof typeof seniorsTotal] += stats[k]);
+          });
+          
+          formattedData.push({ id: 'seniors-total', name: 'Seniors Total', stats: seniorsTotal, isTotalRow: true });
+        } else {
+          // Single class selected mode
+          const cls = enabledClasses.find(c => c.id === selectedClass);
+          if (cls) {
+            if (cls.name === 'CCC EMP Fellow') {
+               const designationsToShow = [
+                 { key: '1. CCC', label: 'CCC' },
+                 { key: '2. Junior Fellow', label: 'Junior Fellow' },
+                 { key: '3. Senior Fellow', label: 'Senior Fellow' }
+               ];
+               let seniorsTotal = statsBase();
+               designationsToShow.forEach(d => {
+                  const stats = designationStats[d.key];
+                  formattedData.push({ id: `desig-${d.key}`, name: d.label, stats, isDesignation: true });
+                  ['P', 'LT', 'A', 'L', 'H'].forEach(k => seniorsTotal[k as keyof typeof seniorsTotal] += stats[k]);
+               });
+               formattedData.push({ id: 'seniors-total', name: 'Seniors Total', stats: seniorsTotal, isTotalRow: true });
+            } else {
+               formattedData.push({ id: cls.id, name: cls.name, stats: classStats[cls.id] });
+            }
+          }
         }
 
         setAttendanceData(formattedData);
@@ -77,13 +138,17 @@ export function TodayClassAttendanceWidget({
     }
   }, [selectedDate, classes, selectedClass]);
 
-  const allTotal = attendanceData.reduce((acc, curr) => ({
-    P: acc.P + curr.stats.P,
-    LT: acc.LT + curr.stats.LT,
-    A: acc.A + curr.stats.A,
-    L: acc.L + curr.stats.L,
-    H: acc.H + curr.stats.H,
-  }), { P: 0, LT: 0, A: 0, L: 0, H: 0 });
+  // For the header 'ALL TOTAL', sum only non-total rows
+  const allTotal = attendanceData.reduce((acc, curr) => {
+    if (curr.isTotalRow) return acc;
+    return {
+      P: acc.P + curr.stats.P,
+      LT: acc.LT + curr.stats.LT,
+      A: acc.A + curr.stats.A,
+      L: acc.L + curr.stats.L,
+      H: acc.H + curr.stats.H,
+    };
+  }, { P: 0, LT: 0, A: 0, L: 0, H: 0 });
 
   const totalExpected = allTotal.P + allTotal.LT + allTotal.A + allTotal.L + allTotal.H;
   const presentPercent = totalExpected > 0 ? ((allTotal.P + allTotal.LT) / totalExpected * 100).toFixed(1) : '0.0';
@@ -138,21 +203,26 @@ export function TodayClassAttendanceWidget({
               </tr>
             </thead>
             <tbody className="bg-white">
-              <tr className="bg-slate-50/80 border-b">
-                <td colSpan={6} className="p-2 py-2 text-left font-bold text-slate-700 tracking-wide uppercase">
-                  INSTITUTE CLASSES
-                </td>
-              </tr>
-              {attendanceData.map((cls) => (
-                <tr key={cls.id} className="border-b last:border-0 hover:bg-slate-50 transition-colors">
-                  <td className="p-2 font-semibold text-slate-700">{cls.name}</td>
-                  <td className={`p-2 text-center ${cls.stats.P > 0 ? 'text-emerald-600 font-semibold' : 'text-slate-700 font-semibold'}`}>{cls.stats.P}</td>
-                  <td className={`p-2 text-center ${cls.stats.LT > 0 ? 'text-rose-500 font-semibold' : 'text-slate-700 font-semibold'}`}>{cls.stats.LT}</td>
-                  <td className={`p-2 text-center ${cls.stats.A > 0 ? 'text-red-600 font-semibold' : 'text-slate-700 font-semibold'}`}>{cls.stats.A}</td>
-                  <td className={`p-2 text-center ${cls.stats.L > 0 ? 'text-blue-600 font-semibold' : 'text-slate-700 font-semibold'}`}>{cls.stats.L}</td>
-                  <td className={`p-2 text-center ${cls.stats.H > 0 ? 'text-slate-600 font-semibold' : 'text-slate-700 font-semibold'}`}>{cls.stats.H}</td>
-                </tr>
-              ))}
+              {attendanceData.map((cls) => {
+                const isTotal = cls.isTotalRow;
+                const isDesig = cls.isDesignation;
+                const rowClass = isTotal 
+                  ? "bg-amber-50/70 border-b last:border-0 hover:bg-amber-100/70 transition-colors" 
+                  : "border-b last:border-0 hover:bg-slate-50 transition-colors";
+                
+                return (
+                  <tr key={cls.id} className={rowClass}>
+                    <td className={`p-2 font-semibold ${isTotal ? 'text-slate-800' : 'text-slate-700'}`}>
+                      {cls.name}
+                    </td>
+                    <td className={`p-2 text-center font-semibold ${cls.stats.P > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>{cls.stats.P}</td>
+                    <td className={`p-2 text-center font-semibold ${cls.stats.LT > 0 ? 'text-rose-500' : 'text-slate-500'}`}>{cls.stats.LT}</td>
+                    <td className={`p-2 text-center font-semibold ${cls.stats.A > 0 ? 'text-red-600' : 'text-slate-500'}`}>{cls.stats.A}</td>
+                    <td className={`p-2 text-center font-semibold ${cls.stats.L > 0 ? 'text-blue-600' : 'text-slate-500'}`}>{cls.stats.L}</td>
+                    <td className={`p-2 text-center font-semibold ${cls.stats.H > 0 ? 'text-slate-600' : 'text-slate-500'}`}>{cls.stats.H}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

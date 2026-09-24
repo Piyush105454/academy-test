@@ -146,11 +146,15 @@ export default function AdminStudentEarnings() {
       const taskName = ((r as any).student_task_feedback?.task_name || '').toLowerCase();
       const desc = (r.description || '').toLowerCase();
       const subj = ((r as any).student_task_feedback?.subjects?.name || '').toLowerCase();
+      const feedbackType = ((r as any).student_task_feedback?.feedback_type || '').toLowerCase();
       const rAmount = parseFloat(r.amount as any || 0);
 
       // First try to find a match using ONLY the task name (high confidence)
       let matchIndex = breakdown.findIndex(config => {
         const taskTypeLower = (config.task_type || '').toLowerCase();
+
+        // Exact match via feedback_type if available
+        if (feedbackType && (feedbackType === taskTypeLower || taskTypeLower.includes(feedbackType) || feedbackType.includes(taskTypeLower))) return true;
 
         if (taskTypeLower.includes('attendance') && taskName.includes('attendance')) return true;
         if ((taskTypeLower.includes('ccc') || taskTypeLower.includes('computer')) && (taskName.includes('ccc') || taskName.includes('computer'))) return true;
@@ -173,6 +177,9 @@ export default function AdminStudentEarnings() {
       if (matchIndex === -1) {
         matchIndex = breakdown.findIndex(config => {
           const taskTypeLower = (config.task_type || '').toLowerCase();
+
+          // Exact match via feedback_type if available
+          if (feedbackType && (feedbackType === taskTypeLower || taskTypeLower.includes(feedbackType) || feedbackType.includes(taskTypeLower))) return true;
 
           if (taskTypeLower.includes('attendance') && desc.includes('attendance')) return true;
           if ((taskTypeLower.includes('ccc') || taskTypeLower.includes('computer')) && (desc.includes('ccc') || desc.includes('computer') || subj.includes('ccc') || subj.includes('computer'))) return true;
@@ -438,6 +445,7 @@ export default function AdminStudentEarnings() {
             task_name,
             task_id,
             deadline,
+            feedback_type,
             subjects(name),
             sessions(title)
           )

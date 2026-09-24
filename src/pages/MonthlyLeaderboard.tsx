@@ -25,6 +25,8 @@ export default function MonthlyLeaderboard() {
   const [totalSessions, setTotalSessions] = useState<number>(0);
   
   const [facilitators, setFacilitators] = useState<FacilitatorPerformance[]>([]);
+  const [classPerformance, setClassPerformance] = useState<FacilitatorPerformance[]>([]);
+  const [categoryPerformance, setCategoryPerformance] = useState<FacilitatorPerformance[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -33,6 +35,10 @@ export default function MonthlyLeaderboard() {
   const [savingGlobal, setSavingGlobal] = useState(false);
 
   const [editingFacilitator, setEditingFacilitator] = useState<FacilitatorPerformance | null>(null);
+  
+  const [editingOtherTarget, setEditingOtherTarget] = useState<{ name: string, planned: number, type: 'class' | 'category' } | null>(null);
+  const [editingOtherTargetValue, setEditingOtherTargetValue] = useState('');
+  const [savingOtherTarget, setSavingOtherTarget] = useState(false);
 
   const currentMonthStr = format(new Date(), 'yyyy-MM');
 
@@ -89,15 +95,56 @@ export default function MonthlyLeaderboard() {
         console.warn('facilitator_targets table might be missing');
       }
 
-      // 5. Compute actuals per facilitator
+      // Fetch Class Targets
+      let classTargetsMap: Record<string, number> = {};
+      try {
+        const { data: cTargets } = await supabase
+          .from('class_targets')
+          .select('class_name, target_sessions')
+          .eq('month', currentMonthStr);
+        if (cTargets) {
+          cTargets.forEach(t => classTargetsMap[t.class_name] = t.target_sessions || 0);
+        }
+      } catch (e) {
+        console.warn('class_targets table might be missing');
+      }
+
+      // Fetch Category Targets
+      let categoryTargetsMap: Record<string, number> = {};
+      try {
+        const { data: catTargets } = await supabase
+          .from('category_targets')
+          .select('category_name, target_sessions')
+          .eq('month', currentMonthStr);
+        if (catTargets) {
+          catTargets.forEach(t => categoryTargetsMap[t.category_name] = t.target_sessions || 0);
+        }
+      } catch (e) {
+        console.warn('category_targets table might be missing');
+      }
+
+      // 5. Compute actuals
       const actuals: Record<string, number> = {};
+      const classActualsMap: Record<string, number> = {};
+      const categoryActualsMap: Record<string, number> = {};
+
       sessions?.forEach(s => {
         if (s.facilitator_name) {
           actuals[s.facilitator_name.trim().toLowerCase()] = (actuals[s.facilitator_name.trim().toLowerCase()] || 0) + 1;
         }
+        if (s.class_batch) {
+          const cName = s.class_batch.trim();
+          classActualsMap[cName] = (classActualsMap[cName] || 0) + 1;
+        }
+        if (s.session_type) {
+          let catName = s.session_type.trim();
+          // Capitalize first letter and replace underscores for better display
+          catName = catName.split('_').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+          categoryActualsMap[catName] = (categoryActualsMap[catName] || 0) + 1;
+        }
       });
 
-      // 6. Build final array
+      // 6. Build final arrays
       if (facs) {
         const perfData = facs.map(f => {
           const actual = actuals[f.name.trim().toLowerCase()] || 0;
@@ -110,6 +157,47 @@ export default function MonthlyLeaderboard() {
         }).sort((a, b) => b.actual - a.actual);
         setFacilitators(perfData);
       }
+
+      // Fetch All Classes
+      let allClassNames: string[] = [];
+      try {
+        const { data: classesData } = await supabase.from('classes').select('name').neq('name', '__SYSTEM_DEV_MODE__');
+        if (classesData) {
+          allClassNames = classesData.map(c => c.name);
+        }
+      } catch (e) {
+        console.warn('Could not fetch classes');
+      }
+
+      // Build class performance
+      const classNames = Array.from(new Set([...allClassNames, ...Object.keys(classActualsMap), ...Object.keys(classTargetsMap)]));
+      const classPerf = classNames.map(name => ({
+        id: name,
+        name: name,
+        planned: classTargetsMap[name] || 0,
+        actual: classActualsMap[name] || 0,
+      })).sort((a, b) => {
+        // Sort by actual descending, then alphabetically
+        if (b.actual !== a.actual) return b.actual - a.actual;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      setClassPerformance(classPerf);
+
+      // Define standard categories to always show
+      const standardCategories = ['Guest Teacher', 'Local Teacher', 'Hybrid', 'Online', 'Offline', 'Ccc Emp Fellow'];
+      
+      // Build category performance
+      const catNames = Array.from(new Set([...standardCategories, ...Object.keys(categoryActualsMap), ...Object.keys(categoryTargetsMap)]));
+      const catPerf = catNames.map(name => ({
+        id: name,
+        name: name,
+        planned: categoryTargetsMap[name] || 0,
+        actual: categoryActualsMap[name] || 0,
+      })).sort((a, b) => {
+        if (b.actual !== a.actual) return b.actual - a.actual;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      setCategoryPerformance(catPerf);
 
     } catch (e) {
       console.error(e);
@@ -140,6 +228,39 @@ export default function MonthlyLeaderboard() {
       toast.error('Failed to update target');
     } finally {
       setSavingGlobal(false);
+    }
+  };
+
+  const handleSaveOtherTarget = async () => {
+    if (!editingOtherTarget) return;
+    try {
+      setSavingOtherTarget(true);
+      const val = parseInt(editingOtherTargetValue, 10);
+      if (isNaN(val) || val < 0) {
+        toast.error('Please enter a valid number');
+        return;
+      }
+      
+      const tableName = editingOtherTarget.type === 'class' ? 'class_targets' : 'category_targets';
+      const nameCol = editingOtherTarget.type === 'class' ? 'class_name' : 'category_name';
+      
+      const { error } = await supabase
+        .from(tableName)
+        .upsert(
+          { month: currentMonthStr, [nameCol]: editingOtherTarget.name, target_sessions: val },
+          { onConflict: `${nameCol}, month` }
+        );
+      
+      if (error) throw error;
+      
+      toast.success(`${editingOtherTarget.type === 'class' ? 'Class' : 'Category'} target updated`);
+      setEditingOtherTarget(null);
+      fetchData();
+    } catch (e) {
+      toast.error('Failed to update target. Ensure the SQL migration was run.');
+      console.error(e);
+    } finally {
+      setSavingOtherTarget(false);
     }
   };
 
@@ -315,19 +436,157 @@ export default function MonthlyLeaderboard() {
         </TabsContent>
 
         <TabsContent value="class">
-          <Card className="border-dashed py-12">
-            <CardContent className="flex flex-col items-center justify-center text-center">
-              <p className="text-lg font-medium text-muted-foreground">Class breakdowns coming soon</p>
-            </CardContent>
-          </Card>
+          <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <h3 className="font-bold text-lg">Class performance</h3>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider">Class</TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-center">Monthly Planned</TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-center">Actual</TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-center">+ / -</TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider w-48">Achievement</TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {classPerformance.map((f, i) => {
+                    const varVal = f.actual - f.planned;
+                    const ach = f.planned > 0 ? Math.min(100, (f.actual / f.planned) * 100) : 0;
+                    return (
+                      <TableRow key={f.id} className="hover:bg-muted/30">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
+                              {i + 1}
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm">{f.name}</p>
+                              <p className="text-xs text-muted-foreground">Class</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center font-bold">{f.planned}</TableCell>
+                        <TableCell className="text-center font-bold">{f.actual}</TableCell>
+                        <TableCell className="text-center">
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${varVal >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {varVal > 0 ? '+' : ''}{varVal}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Progress value={ach} className="h-1.5 flex-1" indicatorColor="bg-blue-500" />
+                            <span className="text-xs font-bold w-8">{f.planned > 0 ? Math.round(ach) : 0}%</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-8 text-blue-600 border-blue-200 hover:bg-blue-50"
+                            onClick={() => {
+                              setEditingOtherTarget({ name: f.name, planned: f.planned, type: 'class' });
+                              setEditingOtherTargetValue(f.planned.toString());
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {classPerformance.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        {loading ? 'Loading performance data...' : 'No classes found.'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="category">
-          <Card className="border-dashed py-12">
-            <CardContent className="flex flex-col items-center justify-center text-center">
-              <p className="text-lg font-medium text-muted-foreground">Category breakdowns coming soon</p>
-            </CardContent>
-          </Card>
+          <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <h3 className="font-bold text-lg">Category performance</h3>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider">Category</TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-center">Monthly Planned</TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-center">Actual</TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-center">+ / -</TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider w-48">Achievement</TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {categoryPerformance.map((f, i) => {
+                    const varVal = f.actual - f.planned;
+                    const ach = f.planned > 0 ? Math.min(100, (f.actual / f.planned) * 100) : 0;
+                    return (
+                      <TableRow key={f.id} className="hover:bg-muted/30">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs">
+                              {i + 1}
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm">{f.name}</p>
+                              <p className="text-xs text-muted-foreground">Category</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center font-bold">{f.planned}</TableCell>
+                        <TableCell className="text-center font-bold">{f.actual}</TableCell>
+                        <TableCell className="text-center">
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${varVal >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {varVal > 0 ? '+' : ''}{varVal}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Progress value={ach} className="h-1.5 flex-1" indicatorColor="bg-purple-500" />
+                            <span className="text-xs font-bold w-8">{f.planned > 0 ? Math.round(ach) : 0}%</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-8 text-purple-600 border-purple-200 hover:bg-purple-50"
+                            onClick={() => {
+                              setEditingOtherTarget({ name: f.name, planned: f.planned, type: 'category' });
+                              setEditingOtherTargetValue(f.planned.toString());
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {categoryPerformance.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        {loading ? 'Loading performance data...' : 'No categories found.'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -375,6 +634,38 @@ export default function MonthlyLeaderboard() {
           }}
         />
       )}
+
+      {/* Class/Category Target Modal */}
+      <Dialog open={!!editingOtherTarget} onOpenChange={(open) => !open && setEditingOtherTarget(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Edit Target for {editingOtherTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label className="text-right text-sm font-medium">Month</label>
+              <div className="col-span-3 text-sm font-semibold">{format(new Date(currentMonthStr + '-01'), 'MMMM yyyy')}</div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="other-target" className="text-right text-sm font-medium">Target Sessions</label>
+              <Input
+                id="other-target"
+                type="number"
+                min="0"
+                value={editingOtherTargetValue}
+                onChange={(e) => setEditingOtherTargetValue(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingOtherTarget(null)}>Cancel</Button>
+            <Button onClick={handleSaveOtherTarget} disabled={savingOtherTarget}>
+              {savingOtherTarget ? 'Saving...' : 'Save changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
     </DashboardLayout>
   );
