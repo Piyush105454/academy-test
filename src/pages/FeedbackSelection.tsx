@@ -146,10 +146,7 @@ export default function FeedbackSelection() {
   });
   const [sortColumn, setSortColumn] = useState<keyof FeedbackSession | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null);
-  const [facilitatorStatusFilter, setFacilitatorStatusFilter] = useState<string | null>(null);
-  const [coordinatorStatusFilter, setCoordinatorStatusFilter] = useState<string | null>(null);
-  const [supervisorStatusFilter, setSupervisorStatusFilter] = useState<string | null>(null);
-  const { selectedYear, getDateRange } = useAcademicYear();
+        const { selectedYear, getDateRange } = useAcademicYear();
 
   const [isAddFeedbackDialogOpen, setIsAddFeedbackDialogOpen] = useState(false);
   const [committedSessions, setCommittedSessions] = useState<FeedbackSession[]>([]);
@@ -293,16 +290,7 @@ export default function FeedbackSelection() {
     }
     if (coordinatorFilter) filtered = filtered.filter(s => s.coordinator_name === coordinatorFilter);
 
-    // New status filters
-    if (facilitatorStatusFilter) {
-      filtered = filtered.filter(s => (s.facilitator_feedback_status || 'pending') === facilitatorStatusFilter);
-    }
-    if (coordinatorStatusFilter) {
-      filtered = filtered.filter(s => (s.coordinator_feedback_status || 'pending') === coordinatorStatusFilter);
-    }
-    if (supervisorStatusFilter) {
-      filtered = filtered.filter(s => (s.supervisor_feedback_status || 'pending') === supervisorStatusFilter);
-    }
+    
 
     // Sorting
     if (sortColumn && sortDirection) {
@@ -740,58 +728,37 @@ export default function FeedbackSelection() {
                 </Select>
               </div>
 
-              <div className="flex items-end text-xs text-muted-foreground pb-2">
+                              <div>
+                  <label className="text-xs font-medium mb-1 block">Status</label>
+                  <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? null : v)}>
+                    <SelectTrigger className="h-9 truncate"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="canceled">Canceled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end text-xs text-muted-foreground pb-2">
                 Showing {filteredSessions.length} of {feedbackSessions.length} results
               </div>
             </div>
 
             {/* Status Filter Row */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-border pt-4">
-              <div>
-                <label className="text-xs font-medium mb-1 block">Facilitator Status</label>
-                <Select value={facilitatorStatusFilter || 'all'} onValueChange={(v) => setFacilitatorStatusFilter(v === 'all' ? null : v)}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="All Status" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="done">Done</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              
 
-              <div>
-                <label className="text-xs font-medium mb-1 block">Coordinator Status</label>
-                <Select value={coordinatorStatusFilter || 'all'} onValueChange={(v) => setCoordinatorStatusFilter(v === 'all' ? null : v)}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="All Status" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="done">Done</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              
 
-              <div>
-                <label className="text-xs font-medium mb-1 block">Supervisor Status</label>
-                <Select value={supervisorStatusFilter || 'all'} onValueChange={(v) => setSupervisorStatusFilter(v === 'all' ? null : v)}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="All Status" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="done">Done</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              
 
               <div className="flex items-end pb-1">
                 <Button 
                   variant="ghost" 
                   size="sm" 
                   onClick={() => {
-                    setFacilitatorStatusFilter(null);
-                    setCoordinatorStatusFilter(null);
-                    setSupervisorStatusFilter(null);
-                    setSearchQuery('');
+                                                                                setSearchQuery('');
                     setSubjectFilter(null);
                     setTimeFilter(null);
                     setSessionTypeFilter(null);
@@ -1056,3 +1023,7 @@ export default function FeedbackSelection() {
     </DashboardLayout>
   );
 }
+
+
+
+

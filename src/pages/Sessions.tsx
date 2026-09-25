@@ -194,7 +194,9 @@ export default function Sessions() {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [newStatus, setNewStatus] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [facilitatorStatusFilter, setFacilitatorStatusFilter] = useState<string | null>(null);
+  const [coordinatorStatusFilter, setCoordinatorStatusFilter] = useState<string | null>(null);
+  const [supervisorStatusFilter, setSupervisorStatusFilter] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<string | null>(null);
   const [volunteerFilter, setVolunteerFilter] = useState<string | null>(null);
   const [facilitatorFilter, setFacilitatorFilter] = useState<string | null>(null);
@@ -406,9 +408,15 @@ export default function Sessions() {
       );
     }
 
-    // Apply status filter
-    if (statusFilter) {
-      filtered = filtered.filter(s => s.status === statusFilter);
+    // Apply status filters
+    if (facilitatorStatusFilter) {
+      filtered = filtered.filter(s => (s.facilitator_feedback_status || 'pending') === facilitatorStatusFilter);
+    }
+    if (coordinatorStatusFilter) {
+      filtered = filtered.filter(s => (s.coordinator_feedback_status || 'pending') === coordinatorStatusFilter);
+    }
+    if (supervisorStatusFilter) {
+      filtered = filtered.filter(s => (s.supervisor_feedback_status || 'pending') === supervisorStatusFilter);
     }
 
     // Apply time filter
@@ -672,30 +680,60 @@ export default function Sessions() {
 
                   {/* Filter Row 1: Status, Time, Date Range */}
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-                    {/* Status Filter */}
-                    <div className="w-full sm:w-48">
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Filter by Status
+                                        {/* Facilitator Status Filter */}
+                    <div className="flex-1 min-w-[150px]">
+                      <label className="text-xs font-medium text-blue-600 mb-1 block">
+                        Facilitator Status
                       </label>
-                      <Select value={statusFilter || 'all'} onValueChange={(value) => setStatusFilter(value === 'all' ? null : value)}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select status" />
+                      <Select value={facilitatorStatusFilter || 'all'} onValueChange={(value) => setFacilitatorStatusFilter(value === 'all' ? null : value)}>
+                        <SelectTrigger className="bg-blue-50/50 border-blue-200 text-xs h-9">
+                          <SelectValue placeholder="All Status" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All Statuses</SelectItem>
-                          <SelectItem value="committed">Committed</SelectItem>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                          <SelectItem value="rescheduled">Rescheduled</SelectItem>
-                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="done">Done</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Coordinator Status Filter */}
+                    <div className="flex-1 min-w-[150px]">
+                      <label className="text-xs font-medium text-purple-600 mb-1 block">
+                        Coordinator Status
+                      </label>
+                      <Select value={coordinatorStatusFilter || 'all'} onValueChange={(value) => setCoordinatorStatusFilter(value === 'all' ? null : value)}>
+                        <SelectTrigger className="bg-purple-50/50 border-purple-200 text-xs h-9">
+                          <SelectValue placeholder="All Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="done">Done</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Supervisor Status Filter */}
+                    <div className="flex-1 min-w-[150px]">
+                      <label className="text-xs font-medium text-green-600 mb-1 block">
+                        Supervisor Status
+                      </label>
+                      <Select value={supervisorStatusFilter || 'all'} onValueChange={(value) => setSupervisorStatusFilter(value === 'all' ? null : value)}>
+                        <SelectTrigger className="bg-green-50/50 border-green-200 text-xs h-9">
+                          <SelectValue placeholder="All Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="done">Done</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
                     {/* Time Filter */}
                     <div className="w-full sm:w-48">
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Filter by Time
+                      <label className="text-sm font-medium text-foreground mb-2 block">Time
                       </label>
                       <Select value={timeFilter || 'all'} onValueChange={(value) => setTimeFilter(value === 'all' ? null : value)}>
                         <SelectTrigger className="w-full">
@@ -724,8 +762,7 @@ export default function Sessions() {
 
                     {/* Session Type Filter */}
                     <div className="w-full sm:w-48">
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Filter by Type
+                      <label className="text-sm font-medium text-foreground mb-2 block">Type
                       </label>
                       <Select value={sessionTypeFilter || 'all'} onValueChange={(value) => setSessionTypeFilter(value === 'all' ? null : value)}>
                         <SelectTrigger className="w-full">
@@ -745,8 +782,7 @@ export default function Sessions() {
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
                     {/* Volunteer Filter */}
                     <div className="w-full sm:w-48">
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Filter by Volunteer
+                      <label className="text-sm font-medium text-foreground mb-2 block">Volunteer
                       </label>
                       <Select value={volunteerFilter || 'all'} onValueChange={(value) => setVolunteerFilter(value === 'all' ? null : value)}>
                         <SelectTrigger className="w-full">
@@ -765,8 +801,7 @@ export default function Sessions() {
 
                     {/* Facilitator Filter */}
                     <div className="w-full sm:w-48">
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Filter by Facilitator
+                      <label className="text-sm font-medium text-foreground mb-2 block">Facilitator
                       </label>
                       <Select 
                         value={userRole === 4 ? (userName || 'locked') : (facilitatorFilter || 'all')} 
@@ -797,8 +832,7 @@ export default function Sessions() {
 
                     {/* Coordinator Filter */}
                     <div className="w-full sm:w-48">
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Filter by Coordinator
+                      <label className="text-sm font-medium text-foreground mb-2 block">Coordinator
                       </label>
                       <Select value={coordinatorFilter || 'all'} onValueChange={(value) => setCoordinatorFilter(value === 'all' ? null : value)}>
                         <SelectTrigger className="w-full">
@@ -851,8 +885,7 @@ export default function Sessions() {
 
                     {/* Subject Filter */}
                     <div className="w-full sm:w-48">
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Filter by Subject
+                      <label className="text-sm font-medium text-foreground mb-2 block">Subject
                       </label>
                       <Select value={subjectFilter || 'all'} onValueChange={(value) => setSubjectFilter(value === 'all' ? null : value)}>
                         <SelectTrigger className="w-full">
@@ -870,7 +903,7 @@ export default function Sessions() {
                     </div>
 
                     {/* Active Filters Summary */}
-                    {(searchQuery || statusFilter || timeFilter || dateFromFilter || dateToFilter || volunteerFilter || facilitatorFilter || coordinatorFilter || categorySort || subjectFilter) && (
+                    {(searchQuery || facilitatorStatusFilter || coordinatorStatusFilter || supervisorStatusFilter || timeFilter || dateFromFilter || dateToFilter || volunteerFilter || facilitatorFilter || coordinatorFilter || categorySort || subjectFilter) && (
                       <div className="text-sm text-muted-foreground mt-2 sm:mt-0 w-full sm:w-auto">
                         Showing {filteredSessions.length} of {sessions.length} sessions
                       </div>
@@ -1040,6 +1073,14 @@ export default function Sessions() {
                               {getSortIndicator('supervisor_feedback_status')}
                             </span>
                           </div>
+                        </TableHead>
+                        <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('status')}>
+                            <div className="flex items-center gap-1">
+                              Status
+                              <span className={sortColumn === 'status' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
+                                {getSortIndicator('status')}
+                              </span>
+                            </div>
                         </TableHead>
                         <TableHead className="min-w-[80px]">Delayed</TableHead>
                         <TableHead className="min-w-[80px]">Actions</TableHead>
@@ -1525,3 +1566,4 @@ export default function Sessions() {
     </DashboardLayout>
   );
 }
+
