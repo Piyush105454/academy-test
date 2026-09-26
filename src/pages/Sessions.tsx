@@ -1150,6 +1150,16 @@ export default function Sessions() {
                               {(session.supervisor_feedback_status || 'pending').toUpperCase()}
                             </Badge>
                           </TableCell>
+                          <TableCell>
+                            <Badge variant={
+                              session.status === 'completed' ? 'default' :
+                              session.status === 'rescheduled' ? 'secondary' :
+                              session.status === 'cancelled' ? 'destructive' :
+                              'outline'
+                            }>
+                              {session.status}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-center">
                             {isDelayed(session) ? <Badge variant="destructive">Yes</Badge> : <Badge variant="secondary">No</Badge>}
                           </TableCell>
@@ -1566,4 +1576,6 @@ export default function Sessions() {
     </DashboardLayout>
   );
 }
+
+
 
