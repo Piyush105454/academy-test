@@ -201,7 +201,7 @@ export default function Sessions() {
   const [volunteerFilter, setVolunteerFilter] = useState<string | null>(null);
   const [facilitatorFilter, setFacilitatorFilter] = useState<string | null>(null);
   const [coordinatorFilter, setCoordinatorFilter] = useState<string | null>(null);
-  const [categorySort, setCategorySort] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [dateFromFilter, setDateFromFilter] = useState<string>(initialBounds.fromStr);
   const [dateToFilter, setDateToFilter] = useState<string>(initialBounds.toStr);
@@ -255,17 +255,17 @@ export default function Sessions() {
   }, []);
 
   useEffect(() => {
-    if (categorySort && subjectFilter) {
+    if (categoryFilter && subjectFilter) {
       const availableCategories = [...new Set(sessions
         .filter(s => s.subject_name === subjectFilter)
         .map(s => s.content_category)
         .filter(Boolean)
       )];
-      if (!availableCategories.includes(categorySort)) {
-        setCategorySort(null);
+      if (!availableCategories.includes(categoryFilter)) {
+        setCategoryFilter(null);
       }
     }
-  }, [subjectFilter, sessions, categorySort]);
+  }, [subjectFilter, sessions, categoryFilter]);
 
   const fetchSessions = async () => {
     try {
@@ -484,13 +484,9 @@ export default function Sessions() {
       filtered = filtered.filter(s => s.coordinator_name === coordinatorFilter);
     }
 
-    // Apply category sort - selected category sessions first, then others
-    if (categorySort) {
-      filtered = filtered.sort((a, b) => {
-        const aMatches = a.content_category === categorySort ? 0 : 1;
-        const bMatches = b.content_category === categorySort ? 0 : 1;
-        return aMatches - bMatches;
-      });
+    // Apply category filter
+    if (categoryFilter) {
+      filtered = filtered.filter(s => s.content_category === categoryFilter);
     }
 
     // Apply column sorting
@@ -859,30 +855,6 @@ export default function Sessions() {
                       </div>
                     </div>
 
-                    {/* Category Sort */}
-                    <div className="w-full sm:w-48">
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Sort by Category
-                      </label>
-                      <Select value={categorySort || 'all'} onValueChange={(value) => setCategorySort(value === 'all' ? null : value)}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Categories</SelectItem>
-                          {[...new Set(sessions
-                            .filter(s => !subjectFilter || s.subject_name === subjectFilter)
-                            .map(s => s.content_category)
-                            .filter(Boolean)
-                          )].sort().map((category) => (
-                            <SelectItem key={category} value={category || ''}>
-                              {category}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
                     {/* Subject Filter */}
                     <div className="w-full sm:w-48">
                       <label className="text-sm font-medium text-foreground mb-2 block">Subject
@@ -902,8 +874,32 @@ export default function Sessions() {
                       </Select>
                     </div>
 
+                    {/* Category Filter */}
+                    <div className="w-full sm:w-48">
+                      <label className="text-sm font-medium text-foreground mb-2 block">
+                        Category
+                      </label>
+                      <Select value={categoryFilter || 'all'} onValueChange={(value) => setCategoryFilter(value === 'all' ? null : value)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Categories</SelectItem>
+                          {[...new Set(sessions
+                            .filter(s => !subjectFilter || s.subject_name === subjectFilter)
+                            .map(s => s.content_category)
+                            .filter(Boolean)
+                          )].sort().map((category) => (
+                            <SelectItem key={category} value={category || ''}>
+                              {category}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     {/* Active Filters Summary */}
-                    {(searchQuery || facilitatorStatusFilter || coordinatorStatusFilter || supervisorStatusFilter || timeFilter || dateFromFilter || dateToFilter || volunteerFilter || facilitatorFilter || coordinatorFilter || categorySort || subjectFilter) && (
+                    {(searchQuery || facilitatorStatusFilter || coordinatorStatusFilter || supervisorStatusFilter || timeFilter || dateFromFilter || dateToFilter || volunteerFilter || facilitatorFilter || coordinatorFilter || categoryFilter || subjectFilter) && (
                       <div className="text-sm text-muted-foreground mt-2 sm:mt-0 w-full sm:w-auto">
                         Showing {filteredSessions.length} of {sessions.length} sessions
                       </div>
@@ -1576,6 +1572,8 @@ export default function Sessions() {
     </DashboardLayout>
   );
 }
+
+
 
 
 
