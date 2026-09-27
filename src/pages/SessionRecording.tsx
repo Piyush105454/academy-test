@@ -2573,10 +2573,63 @@ export default function SessionRecording() {
                         placeholder="please paste link the record sheet(physical) of sesssion(pdf)"
                         className="mt-1"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Paste the link to the session record sheet
-                      </p>
-                    </div>
+                                              <p className="text-xs text-muted-foreground mt-1">
+                          Paste the link to the session record sheet
+                        </p>
+                      </div>
+                      
+                      <div className="mt-4 pt-4 border-t">
+                        <Label className="text-sm">Upload Session Pictures (Max 3)</Label>
+                        <div className="mt-2 flex items-center gap-3">
+                          <Button 
+                            variant="outline" 
+                            type="button" 
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadingPictures || ((formData as any).session_pictures?.length || 0) >= 3}
+                          >
+                            {uploadingPictures ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <UploadCloud className="h-4 w-4 mr-2" />}
+                            Upload Pictures
+                          </Button>
+                          <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            className="hidden" 
+                            multiple 
+                            accept="image/*"
+                            onChange={handlePictureUpload} 
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {((formData as any).session_pictures?.length || 0)} / 3 uploaded
+                          </span>
+                        </div>
+                        {((formData as any).session_pictures?.length > 0) && (
+                          <div className="mt-3 flex gap-2 flex-wrap">
+                            {((formData as any).session_pictures).map((pic: string, index: number) => (
+                              <div key={index} className="relative group border rounded p-1">
+                                <a href={pic} target="_blank" rel="noopener noreferrer">
+                                  <img src={pic.replace('/view', '/preview')} alt="Session Picture" className="h-20 w-32 object-cover rounded" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded">
+                                    <ExternalLink className="h-5 w-5 text-white" />
+                                  </div>
+                                </a>
+                                <Button 
+                                  variant="destructive" 
+                                  size="icon" 
+                                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full" 
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    const newPics = [...(formData as any).session_pictures];
+                                    newPics.splice(index, 1);
+                                    setFormData({ ...formData, session_pictures: newPics } as any);
+                                  }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     {(formData as any).record_sheet_link && (
                       <a
                         href={(formData as any).record_sheet_link}
@@ -3395,6 +3448,7 @@ export default function SessionRecording() {
     </DashboardLayout>
   );
 }
+
 
 
 
