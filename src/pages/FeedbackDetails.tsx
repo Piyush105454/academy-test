@@ -330,7 +330,7 @@ export default function FeedbackDetails() {
     if (allStudents.length > 0) {
       allStudents.forEach((student) => {
         const perfData = studentPerformance.find(
-          (sp) => (sp.student_name || '').trim() === student.name.trim()
+          (sp) => (sp.student_name || '').trim().toLowerCase() === student.name.trim().toLowerCase()
         );
         if (perfData && perfData.attendance_status !== 'Absent') {
           const finalRating = Math.max(
@@ -403,7 +403,7 @@ export default function FeedbackDetails() {
              <p><strong>Session Type:</strong> {getFormattedSessionType(feedback.session_type)}</p>
              <p><strong>Category:</strong> {feedback.content_category || '-'}</p>
              <p><strong>Module:</strong> {feedback.module_name || '-'}</p>
-             <p className="col-span-3"><strong>Topic:</strong> {feedback.topics_covered || '-'}</p>
+             <p className="col-span-3"><strong>Topic:</strong> {feedback.topics_covered || '-'}</p>`n             <p className="col-span-3"><strong>View in Hub:</strong> <a href={window.location.href} className="text-blue-600 underline" target="_blank" rel="noreferrer">{window.location.href}</a></p>
           </div>
         </div>
 
@@ -839,7 +839,7 @@ export default function FeedbackDetails() {
                   {allStudents.length > 0 ? (
                     // Show all students from class with their performance data
                     allStudents.map((student, index) => {
-                      const perfData = studentPerformance.find(sp => (sp.student_name || '').trim() === student.name.trim());
+                      const perfData = studentPerformance.find(sp => (sp.student_name || '').trim().toLowerCase() === student.name.trim().toLowerCase());
                       const isAbsent = perfData?.attendance_status === 'Absent';
                       const hasData = !!perfData;
                       
@@ -1123,3 +1123,4 @@ export default function FeedbackDetails() {
     </DashboardLayout>
   );
 }
+

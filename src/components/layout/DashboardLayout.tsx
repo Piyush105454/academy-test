@@ -225,7 +225,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   // User is authenticated and role is loaded, render the dashboard
   return (
-    <div className="min-h-screen bg-muted/30 flex w-full">
+    <div className="min-h-screen print:min-h-0 bg-muted/30 flex w-full">
       <div className="print:hidden h-full flex">
         {userRole === 5 ? (
           <StudentSidebar collapsed={isSidebarCollapsed} />
@@ -233,7 +233,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <AppSidebar collapsed={isSidebarCollapsed} />
         )}
       </div>
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex flex-col min-w-0 print:block">
         {/* Top Header with Profile */}
         <div className="bg-card border-b border-border px-4 md:px-8 h-[72px] flex items-center justify-between print:hidden">
           <div className="flex-1 flex items-center gap-2">
@@ -318,10 +318,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 p-4 md:p-8 overflow-x-hidden">
+        <div className="flex-1 p-4 md:p-8 overflow-x-hidden print:overflow-visible print:p-0">
           {children}
         </div>
       </main>
     </div>
   );
 }
+
