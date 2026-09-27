@@ -23,6 +23,7 @@ export type Database = {
           modules: string | null
           quiz_content_ppt: string | null
           record_sheet_link: string | null
+            session_pictures: string[] | null
           s_no: number | null
           session_date: string
           session_status: string | null
@@ -43,6 +44,7 @@ export type Database = {
           modules?: string | null
           quiz_content_ppt?: string | null
           record_sheet_link?: string | null
+            session_pictures?: string[] | null
           s_no?: number | null
           session_date: string
           session_status?: string | null
@@ -63,6 +65,7 @@ export type Database = {
           modules?: string | null
           quiz_content_ppt?: string | null
           record_sheet_link?: string | null
+            session_pictures?: string[] | null
           s_no?: number | null
           session_date?: string
           session_status?: string | null
@@ -271,3 +274,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+

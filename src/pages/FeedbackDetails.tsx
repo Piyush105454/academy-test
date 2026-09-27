@@ -1000,15 +1000,28 @@ export default function FeedbackDetails() {
                     )}
                     {feedback.record_sheet_link && (
                       <TableRow>
-                        <TableCell className="font-semibold">Record Sheet Link</TableCell>
+                        <TableCell className="font-semibold">Record PPT Slide Link</TableCell>
                         <TableCell>
                           <a href={feedback.record_sheet_link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline inline-flex items-center gap-1">
-                            View Record Sheet
+                            View Record PPT Slide
                           </a>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {feedback.coordinator_mic_sound_rating && (
+                        </TableCell>                        </TableRow>
+                      )}
+                      {(feedback as any).session_pictures && (feedback as any).session_pictures.length > 0 && (
+                        <TableRow>
+                          <TableCell className="font-semibold">Session Pictures</TableCell>
+                          <TableCell>
+                            <div className="flex gap-2 flex-wrap">
+                              {((feedback as any).session_pictures).map((pic: string, index: number) => (
+                                <a key={index} href={pic} target="_blank" rel="noopener noreferrer">
+                                  <img src={pic.replace('/view', '/preview')} alt="Session Picture" className="h-16 w-24 object-cover rounded border border-gray-200" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                </a>
+                              ))}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {feedback.coordinator_mic_sound_rating && (
                       <TableRow>
                         <TableCell className="font-semibold">Coordinator Mic/Sound Rating</TableCell>
                         <TableCell className="font-medium">{feedback.coordinator_mic_sound_rating}/10</TableCell>
@@ -1124,4 +1137,7 @@ export default function FeedbackDetails() {
     </DashboardLayout>
   );
 }
+
+
+
 

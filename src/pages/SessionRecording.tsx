@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Save, ChevronRight, ChevronLeft, Plus, Trash2, Shield, ExternalLink, Mic, MicOff, CheckCircle, Info, Calendar, Search, Edit, Check, ChevronsUpDown, X, ArrowUpDown } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { ArrowLeft, Save, ChevronRight, ChevronLeft, Plus, Trash2, Shield, ExternalLink, Mic, MicOff, CheckCircle, Info, Calendar, Search, Edit, Check, ChevronsUpDown, X, ArrowUpDown, UploadCloud, Loader2 } from 'lucide-react';
 import { parseSubmissionRequirements, serializeSubmissionRequirements, type SubmissionRequirement } from "../utils/submissionUtils";
 import { useNavigate, useParams } from 'react-router-dom';
 import { logActivity } from '@/utils/activityLogger';
 import { cn } from '@/lib/utils';
+import { GoogleDriveResumableUploader } from '@/utils/GoogleDriveResumableUploader';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -98,6 +99,8 @@ export default function SessionRecording() {
   const { selectedYear } = useAcademicYear();
   const [userRole, setUserRole] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+    const [uploadingPictures, setUploadingPictures] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [savingStudents, setSavingStudents] = useState(false);
   const [session, setSession] = useState<SessionRecording | null>(null);
@@ -476,6 +479,7 @@ export default function SessionRecording() {
         incharge_reviewer_feedback: (sessionData as any).incharge_reviewer_feedback || '',
         recording_url: (sessionData as any).recording_url || '',
         record_sheet_link: (sessionData as any).record_sheet_link || '',
+          session_pictures: (sessionData as any).session_pictures || [],
         mic_sound_rating: (sessionData as any).mic_sound_rating || 5,
         seating_view_rating: (sessionData as any).seating_view_rating || 5,
         session_strength: (sessionData as any).session_strength || 5,
@@ -901,6 +905,47 @@ export default function SessionRecording() {
     setFormData({ ...formData, best_performer: updatedNames.join(', ') });
   };
 
+    const handlePictureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    
+    const filesArray = Array.from(files).slice(0, 3);
+    
+    try {
+      setUploadingPictures(true);
+      const folderPath = ["FELLOW", selectedYear || "Unknown Year", "session_pictures", sessionId || "unknown"];
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      
+      const newLinks: string[] = [];
+      
+      for (const file of filesArray) {
+        const uploader = new GoogleDriveResumableUploader({
+          file,
+          folderPath,
+          supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+          accessToken: authSession?.access_token || '',
+        });
+        const result = await uploader.upload();
+        newLinks.push(result.webViewLink);
+      }
+      
+      setFormData(prev => ({
+        ...prev,
+        session_pictures: [...((prev as any).session_pictures || []), ...newLinks]
+      } as any));
+      
+      toast.success("Pictures uploaded successfully!");
+    } catch (error) {
+      console.error('File upload error:', error);
+      toast.error('Failed to upload pictures');
+    } finally {
+      setUploadingPictures(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const handleSaveFeedback = async () => {
     if (isFeedbackLocked) { toast.error('Feedback is locked. Please contact an admin to unlock.'); return; }
     if (!sessionId) return;
@@ -992,6 +1037,7 @@ export default function SessionRecording() {
         incharge_reviewer_feedback: formData.incharge_reviewer_feedback,
         recording_url: formData.recording_url,
         record_sheet_link: (formData as any).record_sheet_link || null,
+          session_pictures: (formData as any).session_pictures || [],
         mic_sound_rating: Number(formData.mic_sound_rating) || 5,
         seating_view_rating: Number(formData.seating_view_rating) || 5,
         session_strength: Number(formData.session_strength) || 5,
@@ -2513,12 +2559,12 @@ export default function SessionRecording() {
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
                       <ExternalLink className="h-4 w-4" />
-                      Record Sheet Link <span className="text-destructive">*</span>
+                      Record PPT Slide Link and picture <span className="text-destructive">*</span>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div>
-                      <Label htmlFor="record_sheet_link" className="text-sm">Record Sheet <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="record_sheet_link" className="text-sm">Record PPT Slide Link <span className="text-destructive">*</span></Label>
                       <Input
                         id="record_sheet_link"
                         type="url"
@@ -3349,3 +3395,7 @@ export default function SessionRecording() {
     </DashboardLayout>
   );
 }
+
+
+
+
