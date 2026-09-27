@@ -66,10 +66,10 @@ export default function MonthlyLeaderboard() {
       // 2. Fetch Sessions for this month
       const { data: sessions, error: sessionsError } = await supabase
         .from('sessions')
-        .select('id, facilitator_name')
-        .gte('session_date', monthStart)
-        .lte('session_date', monthEnd)
-        .neq('status', 'cancelled');
+        .select('id, facilitator_name, class_batch, session_type')
+          .gte('session_date', monthStart)
+          .lte('session_date', monthEnd)
+          .eq('status', 'completed');
       
       if (!sessionsError && sessions) {
         setTotalSessions(sessions.length);
@@ -184,10 +184,10 @@ export default function MonthlyLeaderboard() {
       setClassPerformance(classPerf);
 
       // Define standard categories to always show
-      const standardCategories = ['Guest Teacher', 'Local Teacher', 'Hybrid', 'Online', 'Offline', 'Ccc Emp Fellow'];
+      const standardCategories = ['Guest Teacher', 'Guest Speaker', 'Local Teacher'];
       
       // Build category performance
-      const catNames = Array.from(new Set([...standardCategories, ...Object.keys(categoryActualsMap), ...Object.keys(categoryTargetsMap)]));
+      const catNames = standardCategories;
       const catPerf = catNames.map(name => ({
         id: name,
         name: name,
@@ -670,3 +670,5 @@ export default function MonthlyLeaderboard() {
     </DashboardLayout>
   );
 }
+
+
