@@ -569,7 +569,6 @@ export default function Dashboard() {
                   <SelectItem value="all">All Designations</SelectItem>
                   <SelectItem value="1. CCC">1. CCC</SelectItem>
                   <SelectItem value="2. Junior Fellow">2. Junior Fellow</SelectItem>
-                  <SelectItem value="3. Senior Fellow">3. Senior Fellow</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -48,6 +48,7 @@ interface UserProfile {
   email: string;
   full_name: string | null;
   role_id: number | null;
+  assigned_roles: number[] | null;
   is_active: boolean;
   created_at: string;
 }
@@ -72,6 +73,7 @@ export default function AdminPanel() {
     email: '',
     full_name: '',
     role_id: '',
+    assigned_roles: [] as number[],
     password: '',
     new_password: '',
   });
@@ -180,7 +182,7 @@ export default function AdminPanel() {
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
-        .in('role_id', [1, 2]) // Admin and Supervisor accounts only
+        // Fetch all users, filter out students client-side
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -209,8 +211,9 @@ export default function AdminPanel() {
         email: '',
         full_name: '',
         role_id: '',
-        password: '',
-        new_password: '',
+    assigned_roles: [] as number[],
+    password: '',
+    new_password: '',
       });
     }
     setDialogOpen(true);
@@ -223,8 +226,9 @@ export default function AdminPanel() {
       email: '',
       full_name: '',
       role_id: '',
-      password: '',
-      new_password: '',
+    assigned_roles: [] as number[],
+    password: '',
+    new_password: '',
     });
   };
 
@@ -243,6 +247,7 @@ export default function AdminPanel() {
             email: formData.email,
             full_name: formData.full_name,
             role_id: parseInt(formData.role_id),
+            assigned_roles: formData.assigned_roles,
             updated_at: new Date().toISOString(),
           })
           .eq('id', editingUser.id);
@@ -306,6 +311,7 @@ export default function AdminPanel() {
             email: formData.email,
             full_name: formData.full_name || null,
             role_id: parseInt(formData.role_id),
+            assigned_roles: formData.assigned_roles,
             is_active: true,
           }]);
 
@@ -407,19 +413,19 @@ export default function AdminPanel() {
               <Shield className="h-8 w-8" />
               Admin & Supervisor Management
             </h1>
-            <p className="text-muted-foreground mt-1">Manage system administrators and supervisors</p>
+            <p className="text-muted-foreground mt-1">Manage staff, administrators, and supervisors</p>
           </div>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => handleOpenDialog()} className="gap-2">
                 <Plus className="h-4 w-4" />
-                Add Admin / Supervisor
+                Add Staff Account
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
-                  {editingUser ? 'Edit Admin / Supervisor' : 'Add New Admin / Supervisor'}
+                  {editingUser ? 'Edit Staff Account' : 'Add New Staff Account'}
                 </DialogTitle>
                 <DialogDescription>
                   {editingUser
@@ -466,7 +472,7 @@ export default function AdminPanel() {
                       <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
                     <SelectContent>
-                      {roles.filter(r => r.id === 1 || r.id === 2).map((role) => (
+                      {roles.filter(r => r.name.toLowerCase() !== 'student').map((role) => (
                         <SelectItem key={role.id} value={role.id.toString()}>
                           {role.name}
                         </SelectItem>
@@ -513,7 +519,25 @@ export default function AdminPanel() {
                   >
                     Cancel
                   </Button>
-                  <Button onClick={handleSaveUser}>
+                                    <div>
+                    <Label className="mb-2 block">Additional Roles (Switch Role Feature)</Label>
+                    <div className="flex flex-col gap-2 p-3 border rounded-md bg-muted/30">
+                      {roles.map(role => (
+                        <label key={role.id} className="flex items-center gap-2 cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            className="w-4 h-4 rounded border-gray-300"
+                            checked={formData.assigned_roles?.includes(role.id) || false} 
+                            onChange={(e) => {
+                             if(e.target.checked) setFormData({...formData, assigned_roles: [...(formData.assigned_roles || []), role.id]})
+                             else setFormData({...formData, assigned_roles: (formData.assigned_roles || []).filter(id => id !== role.id)})
+                          }} />
+                          <span className="text-sm font-medium">{role.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                    <Button onClick={handleSaveUser}>
                     {editingUser ? 'Update User' : 'Add User'}
                   </Button>
                 </div>
@@ -527,9 +551,9 @@ export default function AdminPanel() {
           <CardHeader>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <CardTitle>Admin & Supervisor Accounts</CardTitle>
+                <CardTitle>Staff Accounts</CardTitle>
                 <CardDescription>
-                  Manage system administrators and supervisors
+                  Manage staff, administrators, and supervisors
                 </CardDescription>
               </div>
               <div className="flex flex-col sm:flex-row items-center gap-2">
@@ -554,8 +578,8 @@ export default function AdminPanel() {
                     <SelectValue placeholder="Filter by Role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Admin/Supervisor Roles</SelectItem>
-                    {roles.filter(r => r.id === 1 || r.id === 2).map((role) => (
+                    <SelectItem value="all">All Staff Roles</SelectItem>
+                    {roles.filter(r => r.name.toLowerCase() !== 'student').map((role) => (
                       <SelectItem key={role.id} value={role.id.toString()}>
                         {role.name}
                       </SelectItem>
@@ -787,3 +811,10 @@ export default function AdminPanel() {
     </DashboardLayout>
   );
 }
+
+
+
+
+
+
+

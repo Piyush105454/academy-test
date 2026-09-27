@@ -403,7 +403,8 @@ export default function FeedbackDetails() {
              <p><strong>Session Type:</strong> {getFormattedSessionType(feedback.session_type)}</p>
              <p><strong>Category:</strong> {feedback.content_category || '-'}</p>
              <p><strong>Module:</strong> {feedback.module_name || '-'}</p>
-             <p className="col-span-3"><strong>Topic:</strong> {feedback.topics_covered || '-'}</p>`n             <p className="col-span-3"><strong>View in Hub:</strong> <a href={window.location.href} className="text-blue-600 underline" target="_blank" rel="noreferrer">{window.location.href}</a></p>
+             <p className="col-span-3"><strong>Topic:</strong> {feedback.topics_covered || '-'}</p>
+             <p className="col-span-3"><strong>View in Hub:</strong> <a href={window.location.href} className="text-blue-600 underline" target="_blank" rel="noreferrer">Click here to view record</a></p>
           </div>
         </div>
 

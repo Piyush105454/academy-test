@@ -45,7 +45,6 @@ export function TodayClassAttendanceWidget({
         const designationStats: Record<string, any> = {
           '1. CCC': statsBase(),
           '2. Junior Fellow': statsBase(),
-          '3. Senior Fellow': statsBase()
         };
 
         enabledClasses.forEach(c => {
@@ -90,7 +89,6 @@ export function TodayClassAttendanceWidget({
           const designationsToShow = [
             { key: '1. CCC', label: 'CCC' },
             { key: '2. Junior Fellow', label: 'Junior Fellow' },
-            { key: '3. Senior Fellow', label: 'Senior Fellow' }
           ];
           
           designationsToShow.forEach(d => {
@@ -108,7 +106,6 @@ export function TodayClassAttendanceWidget({
                const designationsToShow = [
                  { key: '1. CCC', label: 'CCC' },
                  { key: '2. Junior Fellow', label: 'Junior Fellow' },
-                 { key: '3. Senior Fellow', label: 'Senior Fellow' }
                ];
                let seniorsTotal = statsBase();
                designationsToShow.forEach(d => {
@@ -230,3 +227,4 @@ export function TodayClassAttendanceWidget({
     </Card>
   );
 }
+
