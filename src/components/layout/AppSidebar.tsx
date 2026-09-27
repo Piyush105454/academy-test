@@ -128,6 +128,7 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
     const saved = localStorage.getItem('user_role');
     return saved ? parseInt(saved, 10) : null;
   });
+  const [assignedRoles, setAssignedRoles] = useState<number[]>([]);
   const [isRoleLoading, setIsRoleLoading] = useState(userRole === null);
   const roleLoadedRef = useRef(false);
 
@@ -141,7 +142,7 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('role_id')
+        .select('*')
         .eq('id', user?.id)
         .single();
 
@@ -149,6 +150,7 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
         console.error('Error loading user role:', error);
       }
 
+      if (data?.assigned_roles) { setAssignedRoles(data.assigned_roles); }
       if (data?.role_id) {
         setUserRole(data.role_id);
         localStorage.setItem('user_role', data.role_id.toString());
@@ -161,6 +163,25 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
       console.error('Error loading user role:', error);
     } finally {
       setIsRoleLoading(false);
+    }
+  };
+
+    const roleNames: Record<number, string> = {
+    1: 'Admin',
+    2: 'Supervisor',
+    3: 'Coordinator',
+    4: 'Facilitator',
+    5: 'Student'
+  };
+
+  const handleSwitchRole = async (newRoleId: number) => {
+    if (!user) return;
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ role_id: newRoleId })
+      .eq('id', user.id);
+    if (!error) {
+      window.location.reload();
     }
   };
 
@@ -254,6 +275,23 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
           })}
         </nav>
 
+                {/* Switch Role Section */}
+        {assignedRoles.length > 1 && (
+          <div className="p-3 md:p-4 border-t border-border space-y-2">
+            <div className="text-xs font-semibold text-muted-foreground mb-2 px-1">Switch Role</div>
+            {assignedRoles.filter(r => r !== userRole).map(roleId => (
+              <button
+                key={roleId}
+                onClick={() => handleSwitchRole(roleId)}
+                className="flex items-center gap-3 w-full px-3 py-2 rounded-lg transition-colors text-sm font-medium text-foreground hover:bg-muted/50"
+              >
+                <Users className="h-4 w-4 flex-shrink-0 text-blue-500" />
+                <span className="truncate">Switch to {roleNames[roleId] || 'Unknown'}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Sign Out Button */}
         <div className="p-3 md:p-4 border-t border-border">
           <button
@@ -281,3 +319,5 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
     </>
   );
 }
+
+
