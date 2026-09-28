@@ -46,6 +46,7 @@ interface Facilitator {
 interface Class {
   id: string;
   name: string;
+  email?: string;
 }
 
 interface Subject {
@@ -214,7 +215,7 @@ export default function Calendar() {
     try {
       const { data, error } = await supabase
         .from('classes')
-        .select('id, name')
+        .select('id, name, email')
         .order('name', { ascending: true });
 
       if (error) throw error;
@@ -1290,7 +1291,23 @@ export default function Calendar() {
                     </div>
                   )}
                   
-                  <h4 className="font-semibold text-sm">Participants & Meeting Invites</h4>
+                                    <h4 className="font-semibold text-sm">Participants & Meeting Invites</h4>
+                  
+                  {selectedSession.class_batch && (
+                    <div className="bg-pink-50 border border-pink-200 rounded p-3">
+                      <p className="text-xs text-muted-foreground">🏫 Class</p>
+                      <p className="font-medium text-sm">{selectedSession.class_batch}</p>
+                      {(() => {
+                        const cls = classes.find(c => c.name === selectedSession.class_batch);
+                        if (cls && cls.email) {
+                          return (
+                            <a href={`mailto:${cls.email}`} className="block text-xs text-pink-600 mt-1 hover:underline">📧 {cls.email}</a>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  )}
                   
                   {selectedSession.facilitator_name && (
                     <div className="bg-blue-50 border border-blue-200 rounded p-3">
@@ -1528,3 +1545,4 @@ export default function Calendar() {
     </DashboardLayout>
   );
 }
+

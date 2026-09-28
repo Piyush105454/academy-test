@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Save, ChevronRight, ChevronLeft, Plus, Trash2, Shield, ExternalLink, Mic, MicOff, CheckCircle, Info, Calendar, Search, Edit, Check, ChevronsUpDown, X, ArrowUpDown, UploadCloud, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, ChevronRight, ChevronLeft, Plus, Trash2, Shield, ExternalLink, Mic, MicOff, CheckCircle, Info, Calendar, Search, Edit, Check, ChevronsUpDown, X, ArrowUpDown, UploadCloud, Loader2, Eye } from 'lucide-react';
 import { parseSubmissionRequirements, serializeSubmissionRequirements, type SubmissionRequirement } from "../utils/submissionUtils";
 import { useNavigate, useParams } from 'react-router-dom';
 import { logActivity } from '@/utils/activityLogger';
@@ -1992,6 +1992,14 @@ export default function SessionRecording() {
           <div className="flex gap-2">
             <Button 
               variant="outline" 
+              onClick={() => navigate(`/sessions/${sessionId}/feedback-details`)}
+              className="gap-2 border-primary/20 text-primary hover:bg-primary/5 shrink-0"
+            >
+              <Eye className="h-4 w-4" />
+              View Feedback
+            </Button>
+            <Button 
+              variant="outline" 
               onClick={() => window.open('https://docs.google.com/presentation/d/19QjljocxshsJ5pNr_QhtFI2s7ByK91mHgXsILF3K-3k/mobilepresent?pli=1&slide=id.g3f36f08c6d8_1_6', '_blank')}
               className="gap-2 border-primary/20 text-primary hover:bg-primary/5 shrink-0"
             >
@@ -3448,6 +3456,7 @@ export default function SessionRecording() {
     </DashboardLayout>
   );
 }
+
 
 
 

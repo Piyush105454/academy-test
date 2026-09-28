@@ -347,10 +347,11 @@ export default function FeedbackSelection() {
   };
 
   const getStatusBadge = (status: string | undefined) => {
-    const s = status || 'pending';
-    if (s === 'done') return <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200">Done</Badge>;
-    if (s === 'submitted') return <Badge variant="default" className="bg-green-600 hover:bg-green-700">Submit</Badge>;
-    return <Badge variant="outline" className="text-muted-foreground border-dashed">Pending</Badge>;
+    const s = (status || 'pending').toLowerCase();
+    if (s === 'completed' || s === 'done' || s === 'submitted') return <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200 capitalize">{s}</Badge>;
+    if (s === 'cancelled') return <Badge variant="destructive" className="capitalize">{s}</Badge>;
+    if (s === 'rescheduled') return <Badge variant="secondary" className="capitalize">{s}</Badge>;
+    return <Badge variant="outline" className="text-muted-foreground border-dashed capitalize">{s}</Badge>;
   };
 
   const handleViewDetails = (sessionId: string) => {
