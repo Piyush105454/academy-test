@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
-import { Crown, Edit, Search } from 'lucide-react';
+import { Crown, Edit, Search, Plus, Trash2, Settings2 } from 'lucide-react';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FacilitatorTargetDialog } from '@/components/dashboard/FacilitatorTargetDialog';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
@@ -18,6 +19,15 @@ interface FacilitatorPerformance {
   name: string;
   planned: number;
   actual: number;
+}
+
+interface TargetRow {
+  id: string; // local uuid for key
+  facilitator_id: string;
+  facilitator_name: string;
+  class_name: string;
+  session_type: string;
+  target: number;
 }
 
 export default function MonthlyLeaderboard() {
@@ -39,6 +49,20 @@ export default function MonthlyLeaderboard() {
   const [editingOtherTarget, setEditingOtherTarget] = useState<{ name: string, planned: number, type: 'class' | 'category' } | null>(null);
   const [editingOtherTargetValue, setEditingOtherTargetValue] = useState('');
   const [savingOtherTarget, setSavingOtherTarget] = useState(false);
+
+  // ---- Monthly Target Setup dialog ----
+  const [isTargetSetupOpen, setIsTargetSetupOpen] = useState(false);
+  const [targetRows, setTargetRows] = useState<TargetRow[]>([]);
+  const [allFacilitators, setAllFacilitators] = useState<{ id: string; name: string }[]>([]);
+  const [allClasses, setAllClasses] = useState<{ name: string }[]>([]);
+  const [savingTargetRows, setSavingTargetRows] = useState(false);
+  const [targetMonth, setTargetMonth] = useState(format(new Date(), 'yyyy-MM'));
+
+  const SESSION_TYPES = [
+    { value: 'guest_teacher', label: 'Guest Teacher (GT)' },
+    { value: 'guest_speaker', label: 'Guest Speaker (GS)' },
+    { value: 'local_teacher', label: 'Local Teacher (LT)' },
+  ];
 
   const currentMonthStr = format(new Date(), 'yyyy-MM');
 
@@ -264,6 +288,121 @@ export default function MonthlyLeaderboard() {
     }
   };
 
+  const openTargetSetup = async () => {
+    const month = targetMonth;
+    // Load facilitators and classes for dropdowns
+    const [{ data: facsData }, { data: classesData }, { data: existingRows }] = await Promise.all([
+      supabase.from('facilitators').select('id, name').order('name'),
+      supabase.from('classes').select('name').neq('name', '__SYSTEM_DEV_MODE__').order('name'),
+      supabase.from('facilitator_class_session_targets').select('*').eq('month', month),
+    ]);
+    setAllFacilitators(facsData || []);
+    setAllClasses(classesData || []);
+
+    if (existingRows && existingRows.length > 0) {
+      const rows: TargetRow[] = existingRows.map((r: any) => ({
+        id: crypto.randomUUID(),
+        facilitator_id: r.facilitator_id || '',
+        facilitator_name: facsData?.find(f => f.id === r.facilitator_id)?.name || r.facilitator_name || '',
+        class_name: r.class_name || '',
+        session_type: r.session_type || '',
+        target: r.target_sessions || 0,
+      }));
+      setTargetRows(rows);
+    } else {
+      setTargetRows([{ id: crypto.randomUUID(), facilitator_id: '', facilitator_name: '', class_name: '', session_type: '', target: 0 }]);
+    }
+    setIsTargetSetupOpen(true);
+  };
+
+  const handleMonthChange = async (newMonth: string) => {
+    setTargetMonth(newMonth);
+    // Reload rows for selected month
+    const { data: existingRows } = await supabase
+      .from('facilitator_class_session_targets').select('*').eq('month', newMonth);
+    if (existingRows && existingRows.length > 0) {
+      const rows: TargetRow[] = existingRows.map((r: any) => ({
+        id: crypto.randomUUID(),
+        facilitator_id: r.facilitator_id || '',
+        facilitator_name: allFacilitators.find(f => f.id === r.facilitator_id)?.name || r.facilitator_name || '',
+        class_name: r.class_name || '',
+        session_type: r.session_type || '',
+        target: r.target_sessions || 0,
+      }));
+      setTargetRows(rows);
+    } else {
+      setTargetRows([{ id: crypto.randomUUID(), facilitator_id: '', facilitator_name: '', class_name: '', session_type: '', target: 0 }]);
+    }
+  };
+
+  const addTargetRow = () => {
+    setTargetRows(prev => [...prev, { id: crypto.randomUUID(), facilitator_id: '', facilitator_name: '', class_name: '', session_type: '', target: 0 }]);
+  };
+
+  const removeTargetRow = (id: string) => {
+    setTargetRows(prev => prev.filter(r => r.id !== id));
+  };
+
+  const updateTargetRow = (id: string, field: keyof TargetRow, value: any) => {
+    setTargetRows(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const updated = { ...r, [field]: value };
+      if (field === 'facilitator_id') {
+        const fac = allFacilitators.find(f => f.id === value);
+        updated.facilitator_name = fac?.name || '';
+        updated.class_name = '';
+        updated.session_type = '';
+      }
+      if (field === 'class_name') {
+        updated.session_type = '';
+      }
+      return updated;
+    }));
+  };
+
+  const handleSaveTargetRows = async () => {
+    const validRows = targetRows.filter(r => r.facilitator_id && r.class_name && r.session_type && r.target > 0);
+    if (validRows.length === 0) {
+      toast.error('Please fill in at least one complete row');
+      return;
+    }
+    setSavingTargetRows(true);
+    try {
+      // Delete all existing rows for this month first
+      await supabase.from('facilitator_class_session_targets').delete().eq('month', targetMonth);
+
+      // Insert all valid rows
+      const inserts = validRows.map(r => ({
+        month: targetMonth,
+        facilitator_id: r.facilitator_id,
+        facilitator_name: r.facilitator_name,
+        class_name: r.class_name,
+        session_type: r.session_type,
+        target_sessions: r.target,
+      }));
+      const { error } = await supabase.from('facilitator_class_session_targets').insert(inserts);
+      if (error) throw error;
+
+      // Also update global target as sum of all rows (only for current month)
+      if (targetMonth === currentMonthStr) {
+        const totalTarget = validRows.reduce((sum, r) => sum + r.target, 0);
+        await supabase.from('monthly_targets').upsert(
+          { month: targetMonth, target_sessions: totalTarget, updated_at: new Date().toISOString() },
+          { onConflict: 'month' }
+        );
+      }
+
+      toast.success('Targets saved successfully!');
+      setIsTargetSetupOpen(false);
+      fetchData();
+    } catch (e: any) {
+      toast.error('Failed to save targets. Run the SQL migration first.');
+      console.error(e);
+    } finally {
+      setSavingTargetRows(false);
+    }
+  };
+
   const variance = totalSessions - globalTarget;
   const achievement = globalTarget > 0 ? ((totalSessions / globalTarget) * 100).toFixed(1) : '0.0';
   const progressPercent = globalTarget > 0 ? Math.min(100, (totalSessions / globalTarget) * 100) : 0;
@@ -289,8 +428,8 @@ export default function MonthlyLeaderboard() {
           <div className="bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-medium px-4 py-2 rounded-full text-sm border border-indigo-100 dark:border-indigo-900">
             Monthly target: {globalTarget}
           </div>
-          <Button onClick={() => setIsGlobalTargetOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full gap-2">
-            <Edit className="h-4 w-4" /> Edit target
+          <Button onClick={openTargetSetup} variant="outline" className="rounded-full gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+            <Settings2 className="h-4 w-4" /> Monthly Target Setup
           </Button>
         </div>
       </div>
@@ -376,7 +515,6 @@ export default function MonthlyLeaderboard() {
                     <TableHead className="font-bold text-xs uppercase tracking-wider text-center">Actual</TableHead>
                     <TableHead className="font-bold text-xs uppercase tracking-wider text-center">+ / -</TableHead>
                     <TableHead className="font-bold text-xs uppercase tracking-wider w-48">Achievement</TableHead>
-                    <TableHead className="font-bold text-xs uppercase tracking-wider text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -409,22 +547,12 @@ export default function MonthlyLeaderboard() {
                             <span className="text-xs font-bold w-8">{f.planned > 0 ? Math.round(ach) : 0}%</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="h-8 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                            onClick={() => setEditingFacilitator(f)}
-                          >
-                            Edit
-                          </Button>
-                        </TableCell>
                       </TableRow>
                     );
                   })}
                   {filteredFacilitators.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                         {loading ? 'Loading performance data...' : 'No facilitators found.'}
                       </TableCell>
                     </TableRow>
@@ -450,7 +578,6 @@ export default function MonthlyLeaderboard() {
                     <TableHead className="font-bold text-xs uppercase tracking-wider text-center">Actual</TableHead>
                     <TableHead className="font-bold text-xs uppercase tracking-wider text-center">+ / -</TableHead>
                     <TableHead className="font-bold text-xs uppercase tracking-wider w-48">Achievement</TableHead>
-                    <TableHead className="font-bold text-xs uppercase tracking-wider text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -483,25 +610,12 @@ export default function MonthlyLeaderboard() {
                             <span className="text-xs font-bold w-8">{f.planned > 0 ? Math.round(ach) : 0}%</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="h-8 text-blue-600 border-blue-200 hover:bg-blue-50"
-                            onClick={() => {
-                              setEditingOtherTarget({ name: f.name, planned: f.planned, type: 'class' });
-                              setEditingOtherTargetValue(f.planned.toString());
-                            }}
-                          >
-                            Edit
-                          </Button>
-                        </TableCell>
                       </TableRow>
                     );
                   })}
                   {classPerformance.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                         {loading ? 'Loading performance data...' : 'No classes found.'}
                       </TableCell>
                     </TableRow>
@@ -527,7 +641,6 @@ export default function MonthlyLeaderboard() {
                     <TableHead className="font-bold text-xs uppercase tracking-wider text-center">Actual</TableHead>
                     <TableHead className="font-bold text-xs uppercase tracking-wider text-center">+ / -</TableHead>
                     <TableHead className="font-bold text-xs uppercase tracking-wider w-48">Achievement</TableHead>
-                    <TableHead className="font-bold text-xs uppercase tracking-wider text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -560,25 +673,12 @@ export default function MonthlyLeaderboard() {
                             <span className="text-xs font-bold w-8">{f.planned > 0 ? Math.round(ach) : 0}%</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="h-8 text-purple-600 border-purple-200 hover:bg-purple-50"
-                            onClick={() => {
-                              setEditingOtherTarget({ name: f.name, planned: f.planned, type: 'category' });
-                              setEditingOtherTargetValue(f.planned.toString());
-                            }}
-                          >
-                            Edit
-                          </Button>
-                        </TableCell>
                       </TableRow>
                     );
                   })}
                   {categoryPerformance.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                         {loading ? 'Loading performance data...' : 'No categories found.'}
                       </TableCell>
                     </TableRow>
@@ -664,6 +764,137 @@ export default function MonthlyLeaderboard() {
               {savingOtherTarget ? 'Saving...' : 'Save changes'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Monthly Target Setup Dialog */}
+      <Dialog open={isTargetSetupOpen} onOpenChange={setIsTargetSetupOpen}>
+        <DialogContent className="max-w-4xl w-full">
+          <DialogHeader>
+            <DialogTitle>Monthly Target Setup</DialogTitle>
+            <DialogDescription>
+              Add, edit, or remove target rows. The dashboard target is calculated automatically as the sum of every row.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Month Selector */}
+          <div className="flex items-center gap-3 pb-2 border-b">
+            <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">Select Month:</label>
+            <Input
+              type="month"
+              value={targetMonth}
+              onChange={e => handleMonthChange(e.target.value)}
+              className="h-9 w-44"
+            />
+            <span className="text-sm text-muted-foreground">
+              Editing targets for <strong>{format(new Date(targetMonth + '-01'), 'MMMM yyyy')}</strong>
+            </span>
+          </div>
+
+          <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 px-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Facilitator</th>
+                  <th className="text-left py-2 px-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Class</th>
+                  <th className="text-left py-2 px-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Session Type</th>
+                  <th className="text-left py-2 px-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Target</th>
+                  <th className="text-left py-2 px-2 font-semibold text-xs uppercase tracking-wider text-muted-foreground">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {targetRows.map(row => (
+                  <tr key={row.id} className="border-b last:border-0">
+                    <td className="py-2 px-2">
+                      <Select value={row.facilitator_id} onValueChange={v => updateTargetRow(row.id, 'facilitator_id', v)}>
+                        <SelectTrigger className="h-9 min-w-[130px]">
+                          <SelectValue placeholder="Select facilitator" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allFacilitators.map(f => (
+                            <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="py-2 px-2">
+                      <Select
+                        value={row.class_name}
+                        onValueChange={v => updateTargetRow(row.id, 'class_name', v)}
+                        disabled={!row.facilitator_id}
+                      >
+                        <SelectTrigger className="h-9 min-w-[130px]">
+                          <SelectValue placeholder="Select class" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allClasses.map(c => (
+                            <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="py-2 px-2">
+                      <Select
+                        value={row.session_type}
+                        onValueChange={v => updateTargetRow(row.id, 'session_type', v)}
+                        disabled={!row.class_name}
+                      >
+                        <SelectTrigger className="h-9 min-w-[160px]">
+                          <SelectValue placeholder="Select session type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SESSION_TYPES.map(st => (
+                            <SelectItem key={st.value} value={st.value}>{st.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="py-2 px-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={row.target || ''}
+                        onChange={e => updateTargetRow(row.id, 'target', parseInt(e.target.value) || 0)}
+                        className="h-9 w-20"
+                        placeholder="0"
+                      />
+                    </td>
+                    <td className="py-2 px-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-400 hover:text-red-600 hover:bg-red-50 h-9 w-9"
+                        onClick={() => removeTargetRow(row.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="pt-2">
+            <Button variant="outline" size="sm" onClick={addTargetRow} className="gap-2">
+              <Plus className="h-4 w-4" /> Add target row
+            </Button>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t">
+            <p className="text-xs text-muted-foreground">Changes apply while this preview is open.</p>
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-semibold">
+                Total target: <span className="text-indigo-600">{targetRows.reduce((s, r) => s + (r.target || 0), 0)}</span>
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setIsTargetSetupOpen(false)}>Cancel</Button>
+                <Button onClick={handleSaveTargetRows} disabled={savingTargetRows} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                  {savingTargetRows ? 'Saving...' : 'Save targets'}
+                </Button>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
