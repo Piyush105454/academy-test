@@ -43,7 +43,15 @@ export function cleanClassName(className?: string | null): string {
  * Orders them chronologically and calculates sequence numbers 001, 002... per YYYY-MM-Class-Type group.
  */
 export function attachSessionIdCodes<T extends SessionCodeItem>(sessions: T[]): (T & { session_id_code: string })[] {
-  // Sort chronologically by date and creation time
+  // Count frequencies of incoming session_id_codes to detect duplicates
+  const rawCodeCounts: Record<string, number> = {};
+  sessions.forEach(s => {
+    if (s.session_id_code) {
+      rawCodeCounts[s.session_id_code] = (rawCodeCounts[s.session_id_code] || 0) + 1;
+    }
+  });
+
+  // Sort chronologically by date
   const sorted = [...sessions].sort((a, b) => {
     const dateA = new Date(a.session_date || '1970-01-01').getTime();
     const dateB = new Date(b.session_date || '1970-01-01').getTime();
@@ -51,13 +59,9 @@ export function attachSessionIdCodes<T extends SessionCodeItem>(sessions: T[]): 
   });
 
   const groupCounters: Record<string, number> = {};
+  const seenCodes = new Set<string>();
 
   const mapped = sorted.map(session => {
-    // If a valid session_id_code already exists on the record and matches format, use it
-    if (session.session_id_code && session.session_id_code.includes('-')) {
-      return { ...session, session_id_code: session.session_id_code };
-    }
-
     const rawDate = session.session_date ? session.session_date.split('T')[0] : '2026-01-01';
     const parts = rawDate.split('-');
     const year = parts[0] || '2026';
@@ -66,13 +70,35 @@ export function attachSessionIdCodes<T extends SessionCodeItem>(sessions: T[]): 
 
     const cls = cleanClassName(session.class_batch);
     const prefix = getTypePrefix(session.session_type);
-
     const groupKey = `${ym}-${cls}-${prefix}`;
+
+    // If a valid, unique session_id_code already exists on the record for this group and is not a duplicate, use it
+    if (
+      session.session_id_code &&
+      session.session_id_code.startsWith(`${ym}-${cls}-${prefix}-`) &&
+      rawCodeCounts[session.session_id_code] === 1 &&
+      !seenCodes.has(session.session_id_code)
+    ) {
+      seenCodes.add(session.session_id_code);
+      const seqPart = parseInt(session.session_id_code.split('-').pop() || '0', 10);
+      if (!isNaN(seqPart) && seqPart > (groupCounters[groupKey] || 0)) {
+        groupCounters[groupKey] = seqPart;
+      }
+      return { ...session, session_id_code: session.session_id_code };
+    }
+
+    // Otherwise, generate sequential code ensuring no duplicates
     groupCounters[groupKey] = (groupCounters[groupKey] || 0) + 1;
+    let seq = String(groupCounters[groupKey]).padStart(3, '0');
+    let generatedCode = `${ym}-${cls}-${prefix}-${seq}`;
 
-    const seq = String(groupCounters[groupKey]).padStart(3, '0');
-    const generatedCode = `${ym}-${cls}-${prefix}-${seq}`;
+    while (seenCodes.has(generatedCode)) {
+      groupCounters[groupKey] = (groupCounters[groupKey] || 0) + 1;
+      seq = String(groupCounters[groupKey]).padStart(3, '0');
+      generatedCode = `${ym}-${cls}-${prefix}-${seq}`;
+    }
 
+    seenCodes.add(generatedCode);
     return {
       ...session,
       session_id_code: generatedCode

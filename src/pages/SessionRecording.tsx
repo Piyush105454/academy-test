@@ -988,10 +988,7 @@ export default function SessionRecording() {
         toast.error("Best Performer is required (select at least one student)");
         return;
       }
-      if (!(formData as any).record_sheet_link || (formData as any).record_sheet_link.trim() === '') {
-        toast.error("Record Sheet Link is required");
-        return;
-      }
+      // Record sheet link and pictures are optional
     }
 
     // Validation for Coordinator feedback fields
@@ -1036,8 +1033,8 @@ export default function SessionRecording() {
         guest_teacher_feedback: formData.guest_teacher_feedback,
         incharge_reviewer_feedback: formData.incharge_reviewer_feedback,
         recording_url: formData.recording_url,
-        record_sheet_link: (formData as any).record_sheet_link || null,
-          session_pictures: (formData as any).session_pictures || [],
+        record_sheet_link: (formData as any).record_sheet_link?.trim() || null,
+        ...(Array.isArray((formData as any).session_pictures) && (formData as any).session_pictures.length > 0 ? { session_pictures: (formData as any).session_pictures } : {}),
         mic_sound_rating: Number(formData.mic_sound_rating) || 5,
         seating_view_rating: Number(formData.seating_view_rating) || 5,
         session_strength: Number(formData.session_strength) || 5,
@@ -1076,10 +1073,20 @@ export default function SessionRecording() {
         updateData.status = 'in_progress';
       }
 
-      const { error } = await supabase
+      let { error } = await supabase
         .from('sessions')
         .update(updateData)
         .eq('id', sessionId);
+
+      if (error && (error.message?.includes('session_pictures') || error.code === 'PGRST204')) {
+        console.warn('session_pictures column not in schema cache, retrying without it...');
+        delete updateData.session_pictures;
+        const retryResult = await supabase
+          .from('sessions')
+          .update(updateData)
+          .eq('id', sessionId);
+        error = retryResult.error;
+      }
 
       if (error) throw error;
 
@@ -2567,12 +2574,12 @@ export default function SessionRecording() {
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
                       <ExternalLink className="h-4 w-4" />
-                      Record PPT Slide Link and picture <span className="text-destructive">*</span>
+                      Record PPT Slide Link and picture <span className="text-xs text-muted-foreground font-normal">(Optional)</span>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div>
-                      <Label htmlFor="record_sheet_link" className="text-sm">Record PPT Slide Link <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="record_sheet_link" className="text-sm">Record PPT Slide Link <span className="text-xs text-muted-foreground font-normal">(Optional)</span></Label>
                       <Input
                         id="record_sheet_link"
                         type="url"

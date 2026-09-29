@@ -797,15 +797,35 @@ export function AddSessionDialog({
     const meetingLink = formData.meeting_link.trim() || null;
     const sessionDateFormatted = format(selectedDate, 'yyyy-MM-dd');
 
-    // Calculate month sequence for session_id_code
+    // Calculate month sequence for session_id_code (scoped to month, class, and session_type)
     const monthPrefix = sessionDateFormatted.slice(0, 7);
-    const { count: monthCount } = await supabase
-      .from('sessions')
-      .select('id', { count: 'exact', head: true })
-      .gte('session_date', `${monthPrefix}-01`)
-      .lte('session_date', `${monthPrefix}-31`);
+    let seqNum = 1;
+    try {
+      const { data: existingSessions } = await supabase
+        .from('sessions')
+        .select('session_id_code')
+        .gte('session_date', `${monthPrefix}-01`)
+        .lte('session_date', `${monthPrefix}-31`)
+        .eq('class_batch', formData.class_batch)
+        .eq('session_type', sessionType);
 
-    const seqNum = (monthCount || 0) + 1;
+      if (existingSessions && existingSessions.length > 0) {
+        let maxSeq = existingSessions.length;
+        existingSessions.forEach(s => {
+          if (s.session_id_code) {
+            const parts = s.session_id_code.split('-');
+            const lastPart = parseInt(parts[parts.length - 1], 10);
+            if (!isNaN(lastPart) && lastPart > maxSeq) {
+              maxSeq = lastPart;
+            }
+          }
+        });
+        seqNum = maxSeq + 1;
+      }
+    } catch (e) {
+      console.warn('Error calculating sequence number:', e);
+    }
+
     const generatedSessionCode = formatSingleSessionCode(sessionDateFormatted, formData.class_batch, sessionType, seqNum);
 
     const sessionData = {
