@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
-import { Crown } from 'lucide-react';
+import { Crown, ExternalLink, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { Link } from 'react-router-dom';
-import { ExternalLink } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-interface FacilitatorPerformance {
+interface ItemPerformance {
   id: string;
   name: string;
   planned: number;
@@ -18,8 +17,12 @@ interface FacilitatorPerformance {
 export function MonthlyLeaderboardWidget() {
   const [globalTarget, setGlobalTarget] = useState<number>(0);
   const [totalSessions, setTotalSessions] = useState<number>(0);
-  const [facilitators, setFacilitators] = useState<FacilitatorPerformance[]>([]);
+  const [facilitators, setFacilitators] = useState<ItemPerformance[]>([]);
+  const [classes, setClasses] = useState<ItemPerformance[]>([]);
+  const [categories, setCategories] = useState<ItemPerformance[]>([]);
+  const [activeTab, setActiveTab] = useState<'facilitator' | 'class' | 'category'>('facilitator');
   const [loading, setLoading] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const currentMonthStr = format(new Date(), 'yyyy-MM');
 
@@ -46,145 +49,252 @@ export function MonthlyLeaderboardWidget() {
       // 2. Fetch Sessions for this month
       const { data: sessions, error: sessionsError } = await supabase
         .from('sessions')
-        .select('id, facilitator_name')
-        .gte('session_date', monthStart)
-        .lte('session_date', monthEnd)
+        .select('id, facilitator_name, class_batch, session_type')
+        .gte('session_date', monthStart.split('T')[0])
+        .lte('session_date', monthEnd.split('T')[0])
         .neq('status', 'cancelled');
       
       if (!sessionsError && sessions) {
         setTotalSessions(sessions.length);
       }
 
-      // 3. Fetch Facilitators
-      const { data: facs } = await supabase
-        .from('facilitators')
-        .select('id, name');
+      // 3. Fetch Targets & Lists in parallel
+      const [
+        { data: facs },
+        { data: classesData },
+        { data: facTargetsData },
+        { data: classTargetsData },
+        { data: catTargetsData },
+      ] = await Promise.all([
+        supabase.from('facilitators').select('id, name').order('name'),
+        supabase.from('classes').select('name').neq('name', '__SYSTEM_DEV_MODE__').order('name'),
+        supabase.from('facilitator_targets').select('facilitator_id, target_sessions').eq('month', currentMonthStr),
+        supabase.from('class_targets').select('class_name, target_sessions').eq('month', currentMonthStr),
+        supabase.from('category_targets').select('category_name, target_sessions').eq('month', currentMonthStr),
+      ]);
 
-      // 4. Fetch Facilitator Targets
-      let facTargets: Record<string, number> = {};
-      try {
-        const { data: targets } = await supabase
-          .from('facilitator_targets')
-          .select('facilitator_id, target_sessions')
-          .eq('month', currentMonthStr);
-        
-        if (targets) {
-          targets.forEach(t => facTargets[t.facilitator_id] = t.target_sessions || 0);
-        }
-      } catch (e) {
-        // ignore
-      }
+      const facTargets: Record<string, number> = {};
+      facTargetsData?.forEach((t: any) => { facTargets[t.facilitator_id] = t.target_sessions || 0; });
 
-      // 5. Compute actuals per facilitator
-      const actuals: Record<string, number> = {};
+      const classTargets: Record<string, number> = {};
+      classTargetsData?.forEach((t: any) => { classTargets[t.class_name] = t.target_sessions || 0; });
+
+      const catTargets: Record<string, number> = {};
+      catTargetsData?.forEach((t: any) => { catTargets[t.category_name] = t.target_sessions || 0; });
+
+      // 4. Compute actuals
+      const facActuals: Record<string, number> = {};
+      const classActuals: Record<string, number> = {};
+      const catActuals: Record<string, number> = {
+        'Guest Teacher (GT)': 0,
+        'Guest Speaker (GS)': 0,
+        'Local Teacher (LT)': 0,
+      };
+
       sessions?.forEach(s => {
         if (s.facilitator_name) {
-          actuals[s.facilitator_name.trim().toLowerCase()] = (actuals[s.facilitator_name.trim().toLowerCase()] || 0) + 1;
+          const fn = s.facilitator_name.trim().toLowerCase();
+          facActuals[fn] = (facActuals[fn] || 0) + 1;
+        }
+        if (s.class_batch) {
+          const cb = s.class_batch.trim();
+          classActuals[cb] = (classActuals[cb] || 0) + 1;
+        }
+        if (s.session_type) {
+          if (s.session_type === 'guest_teacher') catActuals['Guest Teacher (GT)'] = (catActuals['Guest Teacher (GT)'] || 0) + 1;
+          else if (s.session_type === 'guest_speaker') catActuals['Guest Speaker (GS)'] = (catActuals['Guest Speaker (GS)'] || 0) + 1;
+          else if (s.session_type === 'local_teacher') catActuals['Local Teacher (LT)'] = (catActuals['Local Teacher (LT)'] || 0) + 1;
         }
       });
 
-      // 6. Build final array
+      // 5. Build Facilitator array
       if (facs) {
-        const perfData = facs.map(f => {
-          const actual = actuals[f.name.trim().toLowerCase()] || 0;
-          return {
-            id: f.id,
-            name: f.name,
-            planned: facTargets[f.id] || 0,
-            actual,
-          };
-        }).sort((a, b) => b.actual - a.actual);
-        setFacilitators(perfData);
+        const facPerf = facs.map(f => ({
+          id: f.id,
+          name: f.name,
+          planned: facTargets[f.id] || 0,
+          actual: facActuals[f.name.trim().toLowerCase()] || 0,
+        })).sort((a, b) => b.actual - a.actual || b.planned - a.planned);
+        setFacilitators(facPerf);
       }
 
+      // 6. Build Class array
+      const classSet = new Set<string>();
+      classesData?.forEach(c => classSet.add(c.name));
+      Object.keys(classActuals).forEach(c => classSet.add(c));
+      Object.keys(classTargets).forEach(c => classSet.add(c));
+
+      const classPerf: ItemPerformance[] = Array.from(classSet).map(cName => ({
+        id: cName,
+        name: cName,
+        planned: classTargets[cName] || 0,
+        actual: classActuals[cName] || 0,
+      })).sort((a, b) => b.actual - a.actual || b.planned - a.planned);
+      setClasses(classPerf);
+
+      // 7. Build Category array
+      const standardCats = ['Guest Teacher (GT)', 'Guest Speaker (GS)', 'Local Teacher (LT)'];
+      const catPerf: ItemPerformance[] = standardCats.map(cat => ({
+        id: cat,
+        name: cat,
+        planned: catTargets[cat] || catTargets[cat.split(' ')[0]] || 0,
+        actual: catActuals[cat] || 0,
+      })).sort((a, b) => b.actual - a.actual || b.planned - a.planned);
+      setCategories(catPerf);
+
     } catch (e) {
-      console.error(e);
+      console.error('Error fetching monthly leaderboard widget data:', e);
     } finally {
       setLoading(false);
     }
   };
 
   const progressPercentage = globalTarget > 0 ? Math.min(100, Math.round((totalSessions / globalTarget) * 100)) : 0;
+  const achievementRate = globalTarget > 0 ? ((totalSessions / globalTarget) * 100).toFixed(1) : '0.0';
+
+  // Get active list
+  const currentList = activeTab === 'facilitator' ? facilitators : activeTab === 'class' ? classes : categories;
+  const headerLabel = activeTab === 'facilitator' ? 'FACILITATOR' : activeTab === 'class' ? 'CLASS' : 'CATEGORY';
+
+  const currentTotalPlanned = currentList.reduce((sum, item) => sum + (item.planned || 0), 0);
+  const currentTotalActual = currentList.reduce((sum, item) => sum + (item.actual || 0), 0);
+  const currentVariance = currentTotalActual - currentTotalPlanned;
+  const currentTotalAch = currentTotalPlanned > 0 ? Math.round((currentTotalActual / currentTotalPlanned) * 100) : (currentTotalActual > 0 ? 100 : 0);
+
+  // Pagination / slice for See More / See Less
+  const displayedList = isExpanded ? currentList : currentList.slice(0, 5);
 
   return (
-    <Card className="flex flex-col border border-border/50 shadow-sm transition-all hover:shadow-md">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <div className="space-y-1">
-          <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-            <Crown className="h-4 w-4 text-indigo-500" />
-            Monthly Leaderboard
-          </CardTitle>
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">
-              {totalSessions}
-            </h2>
-            <span className="text-sm font-medium text-muted-foreground">
-              / {globalTarget || '-'}
+    <Card className="col-span-1 border-slate-200 shadow-sm flex flex-col h-full bg-slate-50 overflow-hidden font-sans">
+      {/* Header section matching Attendance Widget */}
+      <div className="p-3 bg-slate-100 border-b flex flex-col gap-2">
+        <h3 className="text-center font-bold text-slate-800 text-sm tracking-wide uppercase flex items-center justify-center gap-1.5">
+          <Crown className="w-4 h-4 text-indigo-600" />
+          MONTHLY LEADERBOARD
+        </h3>
+        
+        {/* Month & Summary Banner */}
+        <div className="flex items-center justify-between bg-white rounded-md p-2 shadow-sm border border-slate-200">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-800 text-sm">{format(new Date(), 'MMMM yyyy')}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="font-bold text-emerald-600 text-lg">
+              {totalSessions} <span className="text-xs text-slate-400 font-normal">/ {globalTarget || 0}</span>
             </span>
+            <span className="font-bold text-indigo-600 text-lg">{achievementRate}%</span>
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4 mt-2">
-        <div className="space-y-2">
-          <div className="flex justify-between text-xs">
-            {globalTarget > 0 ? <span className="font-medium">{progressPercentage}% Achieved</span> : <span className="font-medium text-muted-foreground">-</span>}
-            <span className="text-muted-foreground">
+
+        {/* Progress Bar & Remaining */}
+        <div className="space-y-1">
+          <div className="flex justify-between text-[11px] text-slate-500 font-medium">
+            <span>{achievementRate}% Achieved</span>
+            <span>
               {globalTarget === 0 ? 'Target not set' : globalTarget > totalSessions ? `${globalTarget - totalSessions} remaining` : 'Target met!'}
             </span>
           </div>
-          <Progress value={progressPercentage} className="h-2" />
+          <Progress value={progressPercentage} className="h-1.5 bg-slate-200" indicatorColor="bg-indigo-600" />
         </div>
 
-        <div className="pt-2 border-t border-border">
-          <Tabs defaultValue="facilitator" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 h-8 mb-2">
-              <TabsTrigger value="facilitator" className="text-[10px] px-1">Facilitator</TabsTrigger>
-              <TabsTrigger value="class" className="text-[10px] px-1">Class</TabsTrigger>
-              <TabsTrigger value="category" className="text-[10px] px-1">Category</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="facilitator" className="mt-0">
-              <div className="space-y-2 max-h-[120px] overflow-y-auto pr-2 scrollbar-thin mt-2">
-                {facilitators.map(f => {
-                  const variance = f.actual - f.planned;
-                  return (
-                    <div key={f.id} className="flex justify-between items-center text-sm">
-                      <span className="truncate max-w-[120px] font-medium">{f.name}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-muted-foreground whitespace-nowrap">{f.actual}/{f.planned}</span>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full w-6 text-center ${variance >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {variance > 0 ? '+' : ''}{variance}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-                {facilitators.length === 0 && !loading && (
-                  <div className="text-xs text-muted-foreground italic">No data this month.</div>
-                )}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="class" className="mt-0">
-              <div className="flex items-center justify-center h-[100px]">
-                <span className="text-xs text-muted-foreground">Class breakdown coming soon</span>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="category" className="mt-0">
-              <div className="flex items-center justify-center h-[100px]">
-                <span className="text-xs text-muted-foreground">Category breakdown coming soon</span>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </div>
+        {/* Tab Navigation */}
+        <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 h-8 bg-slate-200/80 p-0.5 rounded-md">
+            <TabsTrigger value="facilitator" className="text-xs font-semibold py-1 data-[state=active]:bg-white data-[state=active]:text-slate-800 data-[state=active]:shadow-sm">
+              Facilitator
+            </TabsTrigger>
+            <TabsTrigger value="class" className="text-xs font-semibold py-1 data-[state=active]:bg-white data-[state=active]:text-slate-800 data-[state=active]:shadow-sm">
+              Class
+            </TabsTrigger>
+            <TabsTrigger value="category" className="text-xs font-semibold py-1 data-[state=active]:bg-white data-[state=active]:text-slate-800 data-[state=active]:shadow-sm">
+              Category
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
 
-        <div className="pt-2 mt-1 border-t border-border flex justify-end">
-          <Link to="/leaderboard" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition-colors">
-            Full Leaderboard <ExternalLink className="h-3 w-3" />
-          </Link>
-        </div>
-      </CardContent>
+      {/* Table Content matching Attendance Card styling */}
+      <div className={`flex-1 ${isExpanded ? 'max-h-[300px]' : ''} overflow-auto p-0 bg-white`}>
+        {loading ? (
+          <div className="flex justify-center items-center py-10">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-white shadow-sm z-10">
+              <tr className="border-b bg-slate-100 text-slate-700 font-bold text-[10px] sm:text-xs">
+                <td className="p-2 py-1.5 text-left uppercase">ALL TOTAL</td>
+                <td className="p-2 py-1.5 text-center text-slate-600 font-bold">{currentTotalPlanned}</td>
+                <td className="p-2 py-1.5 text-center text-emerald-600 font-bold">{currentTotalActual}</td>
+                <td className={`p-2 py-1.5 text-center font-bold ${currentVariance >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                  {currentVariance > 0 ? `+${currentVariance}` : currentVariance}
+                </td>
+                <td className="p-2 py-1.5 text-center text-indigo-600 font-bold">{currentTotalAch}%</td>
+              </tr>
+              <tr className="border-b bg-white text-[10px] sm:text-xs">
+                <th className="p-2 text-left font-bold text-slate-500 uppercase tracking-wider">{headerLabel}</th>
+                <th className="p-2 text-center font-bold text-slate-500">PLAN</th>
+                <th className="p-2 text-center font-bold text-slate-500">ACT</th>
+                <th className="p-2 text-center font-bold text-slate-500">+/-</th>
+                <th className="p-2 text-center font-bold text-slate-500">%</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white">
+              {displayedList.map((item, idx) => {
+                const diff = item.actual - item.planned;
+                const ach = item.planned > 0 ? Math.round((item.actual / item.planned) * 100) : (item.actual > 0 ? 100 : 0);
+                return (
+                  <tr key={item.id || idx} className="border-b last:border-0 hover:bg-slate-50 transition-colors">
+                    <td className="p-2 font-semibold text-slate-700 truncate max-w-[130px]" title={item.name}>
+                      {item.name}
+                    </td>
+                    <td className="p-2 text-center font-semibold text-slate-500">{item.planned}</td>
+                    <td className="p-2 text-center font-semibold text-emerald-600">{item.actual}</td>
+                    <td className={`p-2 text-center font-bold ${diff >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      {diff > 0 ? `+${diff}` : diff}
+                    </td>
+                    <td className="p-2 text-center font-semibold text-indigo-600">{ach}%</td>
+                  </tr>
+                );
+              })}
+              {currentList.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="text-center py-6 text-slate-400 italic">No data this month</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Footer Link & See More/Less toggle */}
+      <div className="p-2 px-3 bg-slate-50 border-t flex items-center justify-between">
+        {currentList.length > 5 ? (
+          <button
+            type="button"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-[11px] font-semibold text-slate-600 hover:text-indigo-600 flex items-center gap-1 transition-colors"
+          >
+            {isExpanded ? (
+              <>
+                <span>See Less</span>
+                <ChevronUp className="h-3.5 w-3.5" />
+              </>
+            ) : (
+              <>
+                <span>See More ({currentList.length - 5})</span>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </>
+            )}
+          </button>
+        ) : (
+          <div />
+        )}
+
+        <Link to="/leaderboard" className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors">
+          Full Leaderboard <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
     </Card>
   );
 }
