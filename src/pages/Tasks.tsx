@@ -153,6 +153,8 @@ export default function Tasks() {
   const [filterTaskType, setFilterTaskType] = useState('all');
   const [taskTypeOptions, setTaskTypeOptions] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterFacilitator, setFilterFacilitator] = useState('all');
+  const [facilitatorOptions, setFacilitatorOptions] = useState<string[]>([]);
   const [filterIncharge, setFilterIncharge] = useState('all');
   const [inchargeOptions, setInchargeOptions] = useState<string[]>([]);
   const [filterDateFrom, setFilterDateFrom] = useState('');
@@ -330,15 +332,15 @@ export default function Tasks() {
       const facLower = currentFacilitatorName.toLowerCase().trim();
       filtered = filtered.filter((t) => 
         (t.facilitator_name && t.facilitator_name.toLowerCase().trim() === facLower) || 
-        (t.created_by_name && t.created_by_name.toLowerCase().trim() === facLower) ||
-        (t.incharge_name && t.incharge_name.toLowerCase().trim() === facLower)
+        (t.created_by_name && t.created_by_name.toLowerCase().trim() === facLower)
       );
-    } else if (filterIncharge !== 'all') {
-      filtered = filtered.filter((t) => 
-        t.facilitator_name === filterIncharge || 
-        t.created_by_name === filterIncharge ||
-        t.incharge_name === filterIncharge
-      );
+    } else {
+      if (filterIncharge !== 'all') {
+        filtered = filtered.filter((t) => t.incharge_name === filterIncharge);
+      }
+      if (filterFacilitator !== 'all') {
+        filtered = filtered.filter((t) => t.facilitator_name === filterFacilitator);
+      }
     }
     
     // Month filter
@@ -524,7 +526,7 @@ export default function Tasks() {
     }
 
     setTaskGroups(finalGroups);
-  }, [tasks, filterClass, filterStudent, filterSession, filterSubject, filterTaskType, filterStatus, filterIncharge, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName, coordinatorAssignedClasses, userRole]);
+  }, [tasks, filterClass, filterStudent, filterSession, filterSubject, filterTaskType, filterStatus, filterIncharge, filterFacilitator, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName, coordinatorAssignedClasses, userRole]);
 
   const fetchClasses = async () => {
     try {
@@ -708,7 +710,7 @@ export default function Tasks() {
         const creatorName = profilesMap?.get(task.created_by) || '';
         const volName = task.sessions?.volunteer_name && task.sessions.volunteer_name !== '-' ? task.sessions.volunteer_name : '';
         const facName = task.sessions?.facilitator_name && task.sessions.facilitator_name !== '-' ? task.sessions.facilitator_name : '';
-        const inchargeName = facName || volName || creatorName || '-';
+        const inchargeName = creatorName || '-';
 
         return {
           id: task.id,
@@ -853,14 +855,16 @@ export default function Tasks() {
   };
 
   useEffect(() => {
-    const names = new Set<string>();
+    const inchargeNames = new Set<string>();
+    const facilitatorNames = new Set<string>();
     const types = new Set<string>();
     tasks.forEach(t => {
-      if (t.facilitator_name && t.facilitator_name !== '-') names.add(t.facilitator_name);
-      if (t.created_by_name && t.created_by_name !== '-') names.add(t.created_by_name);
+      if (t.incharge_name && t.incharge_name !== '-') inchargeNames.add(t.incharge_name);
+      if (t.facilitator_name && t.facilitator_name !== '-') facilitatorNames.add(t.facilitator_name);
       if (t.task_type) types.add(t.task_type);
     });
-    setInchargeOptions(Array.from(names).sort());
+    setInchargeOptions(Array.from(inchargeNames).sort());
+    setFacilitatorOptions(Array.from(facilitatorNames).sort());
     setTaskTypeOptions(Array.from(types).sort());
   }, [tasks]);
 
@@ -1005,20 +1009,38 @@ export default function Tasks() {
           </div>
 
           <div className="w-full sm:w-48">
+            <label className="text-sm font-medium text-foreground mb-2 block">Filter by Facilitator</label>
+            <Select 
+              value={isFacilitator && currentFacilitatorName ? currentFacilitatorName : filterFacilitator} 
+              onValueChange={setFilterFacilitator}
+              disabled={isFacilitator}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All Facilitators" />
+              </SelectTrigger>
+              <SelectContent>
+                {!isFacilitator && <SelectItem value="all">All Facilitators</SelectItem>}
+                {isFacilitator && currentFacilitatorName && !facilitatorOptions.includes(currentFacilitatorName) && (
+                  <SelectItem value={currentFacilitatorName}>{currentFacilitatorName}</SelectItem>
+                )}
+                {facilitatorOptions.map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="w-full sm:w-48">
             <label className="text-sm font-medium text-foreground mb-2 block">Filter by Incharge</label>
             <Select 
-              value={isFacilitator && currentFacilitatorName ? currentFacilitatorName : filterIncharge} 
+              value={filterIncharge} 
               onValueChange={setFilterIncharge}
-              disabled={isFacilitator}
             >
               <SelectTrigger>
                 <SelectValue placeholder="All Incharges" />
               </SelectTrigger>
               <SelectContent>
-                {!isFacilitator && <SelectItem value="all">All Incharges</SelectItem>}
-                {isFacilitator && currentFacilitatorName && !inchargeOptions.includes(currentFacilitatorName) && (
-                  <SelectItem value={currentFacilitatorName}>{currentFacilitatorName}</SelectItem>
-                )}
+                <SelectItem value="all">All Incharges</SelectItem>
                 {inchargeOptions.map((name) => (
                   <SelectItem key={name} value={name}>{name}</SelectItem>
                 ))}

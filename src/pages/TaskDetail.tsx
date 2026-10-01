@@ -242,58 +242,7 @@ export default function TaskDetail() {
 
 
 
-      // Fetch enrolled students for classTargetName (e.g. Senior Fellow)
-      let enrolledClassStudents: any[] = [];
-      try {
-        const { data: clsData } = await supabase
-          .from('classes')
-          .select('id, name')
-          .ilike('name', `%${classTargetName.trim()}%`)
-          .maybeSingle();
-
-        if (clsData?.id) {
-          const { data: stData } = await supabase
-            .from('students')
-            .select('id, name, email')
-            .eq('class_id', clsData.id)
-            .eq('academic_year', taskAcademicYearFound)
-            .order('name');
-          if (stData) enrolledClassStudents = stData;
-        }
-      } catch (e) {
-        console.error('Error loading enrolled class students:', e);
-      }
-
-      // Combine existing DB submissions with enrolled class students
-      const mergedStudentsMap = new Map<string, TaskItem>();
-      dbTasksList.forEach(t => {
-        if (t.student_id) mergedStudentsMap.set(t.student_id, t);
-      });
-
-      enrolledClassStudents.forEach(st => {
-        if (!mergedStudentsMap.has(st.id)) {
-          mergedStudentsMap.set(st.id, {
-            id: `enrolled_${st.id}`,
-            title: taskTitleFound,
-            description: taskDescFound,
-            class_id: '',
-            session_id: '',
-            student_id: st.id,
-            status: 'pending',
-            submission_link: '',
-            due_date: taskDueDateFound,
-            created_at: taskCreatedAtFound,
-            student_name: st.name,
-            class_name: classTargetName,
-            earning_amount: 0,
-            submission_types: ['video', 'pdf', 'text', 'link'],
-            volunteer_name: taskVolunteerFound,
-            facilitator_name: taskFacilitatorFound,
-          });
-        }
-      });
-
-      const finalTasksList = Array.from(mergedStudentsMap.values());
+      const finalTasksList = dbTasksList;
 
       setTaskGroup({
         title: taskTitleFound,
