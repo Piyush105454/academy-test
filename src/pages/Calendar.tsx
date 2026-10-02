@@ -117,7 +117,7 @@ export default function Calendar() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [selectedFacilitator, setSelectedFacilitator] = useState<string>('all');
   const [selectedClass, setSelectedClass] = useState<string>('all');
-  const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
+  const [selectedVolunteer, setSelectedVolunteer] = useState<string>('all');
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [loading, setLoading] = useState(true);
@@ -193,7 +193,7 @@ export default function Calendar() {
 
   useEffect(() => {
     generateCalendar();
-  }, [currentDate, sessions, selectedFacilitator, selectedClass, sessionTypeFilter, selectedSubject, selectedDesignation, calendarView]);
+  }, [currentDate, sessions, selectedFacilitator, selectedClass, sessionTypeFilter, selectedSubject, selectedVolunteer, calendarView]);
 
   const fetchFacilitators = async () => {
     try {
@@ -335,11 +335,8 @@ export default function Calendar() {
       filteredSessions = filteredSessions.filter(s => s.subject_name === selectedSubject);
     }
 
-    if (selectedDesignation !== 'all') {
-      filteredSessions = filteredSessions.filter(s => {
-        if (!s.designations || s.designations.length === 0) return true;
-        return s.designations.includes(selectedDesignation);
-      });
+    if (selectedVolunteer !== 'all') {
+      filteredSessions = filteredSessions.filter(s => s.volunteer_name === selectedVolunteer);
     }
 
     const days: CalendarDay[] = [];
@@ -793,21 +790,21 @@ export default function Calendar() {
                     </Select>
                   </div>
 
-                  {/* Designation Filter */}
+                  {/* Volunteer Filter */}
                   {(selectedClass === 'all' || selectedClass === 'CCC EMP Fellow') && (
                     <div>
                       <label className="text-[10px] md:text-xs font-semibold text-muted-foreground uppercase block mb-1.5">
-                        Designation
+                        Volunteer
                       </label>
-                      <Select value={selectedDesignation} onValueChange={setSelectedDesignation}>
+                      <Select value={selectedVolunteer} onValueChange={setSelectedVolunteer}>
                         <SelectTrigger className="w-full h-8 md:h-9 text-xs">
-                          <SelectValue placeholder="All Designations" />
+                          <SelectValue placeholder="All Volunteers" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All Designations</SelectItem>
-                          <SelectItem value="1. CCC">1. CCC</SelectItem>
-                          <SelectItem value="2. Junior Fellow">2. Junior Fellow</SelectItem>
-                          <SelectItem value="3. Senior Fellow">3. Senior Fellow</SelectItem>
+                          <SelectItem value="all">All Volunteers</SelectItem>
+                          {Array.from(new Set(sessions.map(s => s.volunteer_name).filter(Boolean))).sort().map(vol => (
+                            <SelectItem key={vol} value={vol as string}>{vol}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -864,7 +861,12 @@ export default function Calendar() {
             {/* Month Navigation & View Selector */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 pb-4 border-b">
               <div className="flex items-center gap-3">
-                <h2 className="text-lg md:text-xl font-bold">{getHeaderTitle()}</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg md:text-xl font-bold">{getHeaderTitle()}</h2>
+                  <span className="text-sm font-semibold text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full border border-border/40 whitespace-nowrap">
+                    {calendarDays.reduce((acc, day) => acc + day.sessions.length, 0)} sessions
+                  </span>
+                </div>
                 <div className="flex gap-1.5">
                   <Button size="icon" variant="outline" className="h-8 w-8" onClick={previousPeriod}>
                      <ChevronLeft className="h-4 w-4" />
@@ -1076,7 +1078,7 @@ export default function Calendar() {
                           </div>
                           
                           <h4 className="font-bold text-sm text-foreground mt-2 group-hover:text-primary transition-colors line-clamp-2">
-                            {session.title || 'Untitled Session'}
+                            {session.title || getSessionDisplayTitle(session)}
                           </h4>
                           
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-3 text-xs text-muted-foreground">
