@@ -14,7 +14,12 @@ interface ItemPerformance {
   actual: number;
 }
 
-export function MonthlyLeaderboardWidget() {
+interface MonthlyLeaderboardWidgetProps {
+  startDate: Date | null;
+  endDate: Date | null;
+}
+
+export function MonthlyLeaderboardWidget({ startDate, endDate }: MonthlyLeaderboardWidgetProps) {
   const [globalTarget, setGlobalTarget] = useState<number>(0);
   const [totalSessions, setTotalSessions] = useState<number>(0);
   const [facilitators, setFacilitators] = useState<ItemPerformance[]>([]);
@@ -24,7 +29,8 @@ export function MonthlyLeaderboardWidget() {
   const [loading, setLoading] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const currentMonthStr = format(new Date(), 'yyyy-MM');
+  // Use the month from the provided startDate
+  const currentMonthStr = startDate ? format(startDate, 'yyyy-MM') : format(new Date(), 'yyyy-MM');
 
   useEffect(() => {
     fetchData();
@@ -33,9 +39,9 @@ export function MonthlyLeaderboardWidget() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const now = new Date();
-      const monthStart = startOfMonth(now).toISOString();
-      const monthEnd = endOfMonth(now).toISOString();
+      const referenceDate = startDate || new Date();
+      const monthStart = startOfMonth(referenceDate).toISOString();
+      const monthEnd = endOfMonth(referenceDate).toISOString();
 
       // 1. Fetch Global Target
       const { data: targetData } = await supabase
@@ -170,19 +176,31 @@ export function MonthlyLeaderboardWidget() {
       <div className="p-3 bg-slate-100 border-b flex flex-col gap-2">
         <h3 className="text-center font-bold text-slate-800 text-sm tracking-wide uppercase flex items-center justify-center gap-1.5">
           <Crown className="w-4 h-4 text-indigo-600" />
-          MONTHLY LEADERBOARD
+          MONTHLY TARGET BOARD
         </h3>
         
-        {/* Month & Summary Banner */}
-        <div className="flex items-center justify-between bg-white rounded-md p-2 shadow-sm border border-slate-200">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-800 text-sm">{format(new Date(), 'MMMM yyyy')}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-emerald-600 text-lg">
-              {totalSessions} <span className="text-xs text-slate-400 font-normal">/ {globalTarget || 0}</span>
+        {/* Tabs & Summary Banner */}
+        <div className="flex items-center justify-between bg-white rounded-md p-1.5 shadow-sm border border-slate-200 gap-2">
+          {/* Tab Navigation moved here */}
+          <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="flex-1 min-w-0">
+            <TabsList className="grid w-full grid-cols-3 h-7 bg-slate-200/80 p-0.5 rounded-md">
+              <TabsTrigger value="facilitator" className="text-[10px] sm:text-xs font-semibold py-0.5 px-1 data-[state=active]:bg-white data-[state=active]:text-slate-800 data-[state=active]:shadow-sm">
+                Facil.
+              </TabsTrigger>
+              <TabsTrigger value="class" className="text-[10px] sm:text-xs font-semibold py-0.5 px-1 data-[state=active]:bg-white data-[state=active]:text-slate-800 data-[state=active]:shadow-sm">
+                Class
+              </TabsTrigger>
+              <TabsTrigger value="category" className="text-[10px] sm:text-xs font-semibold py-0.5 px-1 data-[state=active]:bg-white data-[state=active]:text-slate-800 data-[state=active]:shadow-sm">
+                Categ.
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <div className="flex items-center gap-2 pr-1 shrink-0">
+            <span className="font-bold text-emerald-600 text-sm sm:text-base whitespace-nowrap">
+              {totalSessions} <span className="text-[10px] sm:text-xs text-slate-400 font-normal">/ {globalTarget || 0}</span>
             </span>
-            <span className="font-bold text-indigo-600 text-lg">{achievementRate}%</span>
+            <span className="font-bold text-indigo-600 text-sm sm:text-base whitespace-nowrap">{achievementRate}%</span>
           </div>
         </div>
 
@@ -196,21 +214,6 @@ export function MonthlyLeaderboardWidget() {
           </div>
           <Progress value={progressPercentage} className="h-1.5 bg-slate-200" indicatorColor="bg-indigo-600" />
         </div>
-
-        {/* Tab Navigation */}
-        <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-8 bg-slate-200/80 p-0.5 rounded-md">
-            <TabsTrigger value="facilitator" className="text-xs font-semibold py-1 data-[state=active]:bg-white data-[state=active]:text-slate-800 data-[state=active]:shadow-sm">
-              Facilitator
-            </TabsTrigger>
-            <TabsTrigger value="class" className="text-xs font-semibold py-1 data-[state=active]:bg-white data-[state=active]:text-slate-800 data-[state=active]:shadow-sm">
-              Class
-            </TabsTrigger>
-            <TabsTrigger value="category" className="text-xs font-semibold py-1 data-[state=active]:bg-white data-[state=active]:text-slate-800 data-[state=active]:shadow-sm">
-              Category
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
       </div>
 
       {/* Table Content matching Attendance Card styling */}

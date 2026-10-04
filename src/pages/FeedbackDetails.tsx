@@ -26,6 +26,7 @@ interface FeedbackData {
   session_time: string;
   facilitator_name: string;
   volunteer_name: string;
+  volunteer_organization?: string | null;
   session_objective: string | null;
   practical_activities: string | null;
   session_highlights: string | null;
@@ -242,7 +243,8 @@ export default function FeedbackDetails() {
         .from('sessions')
         .select(`
           *,
-          coordinators:coordinator_id(name)
+          coordinators:coordinator_id(name),
+          volunteers:volunteer_id(organization_name)
         `)
         .eq('id', sessionId)
         .single();
@@ -398,7 +400,7 @@ export default function FeedbackDetails() {
              <p><strong>Time:</strong> {feedback.session_time}</p>
              <p><strong>Class:</strong> {feedback.class_batch || '-'}</p>
              <p><strong>Facilitator:</strong> {feedback.facilitator_name || '-'}</p>
-             <p><strong>Volunteer:</strong> {feedback.volunteer_name || '-'}</p>
+             <p><strong>Volunteer:</strong> {feedback.volunteer_name || '-'} {feedback.volunteer_organization ? `(${feedback.volunteer_organization})` : ''}</p>
              <p><strong>Coordinator:</strong> {feedback.coordinator_name || '-'}</p>
              <p><strong>Session Type:</strong> {getFormattedSessionType(feedback.session_type)}</p>
              <p><strong>Category:</strong> {feedback.content_category || '-'}</p>
@@ -621,7 +623,7 @@ export default function FeedbackDetails() {
                   Time: feedback.session_time,
                   Class: feedback.class_batch || '-',
                   Facilitator: feedback.facilitator_name || '-',
-                  Volunteer: feedback.volunteer_name || '-',
+                  Volunteer: `${feedback.volunteer_name || '-'}${feedback.volunteer_organization ? ` (${feedback.volunteer_organization})` : ''}`,
                   Coordinator: feedback.coordinator_name || '-',
                   'Session Type': getFormattedSessionType(feedback.session_type),
                   Category: feedback.content_category || '-',
@@ -675,12 +677,22 @@ export default function FeedbackDetails() {
                 <p className="font-medium mt-0.5">{feedback.class_batch || '-'}</p>
               </div>
               <div>
+                <span className="text-muted-foreground block text-xs uppercase tracking-wider">Present Students</span>
+                <p className="font-medium mt-0.5">
+                  {studentPerformance.filter(sp => sp.attendance_status === 'Present').length}
+                </p>
+              </div>
+
+              <div>
                 <span className="text-muted-foreground block text-xs uppercase tracking-wider">Facilitator</span>
                 <p className="font-medium mt-0.5">{feedback.facilitator_name || '-'}</p>
               </div>
               <div>
                 <span className="text-muted-foreground block text-xs uppercase tracking-wider">Volunteer</span>
-                <p className="font-medium mt-0.5">{feedback.volunteer_name || '-'}</p>
+                <p className="font-medium mt-0.5">
+                  {feedback.volunteer_name || '-'}
+                  {feedback.volunteer_organization ? ` (${feedback.volunteer_organization})` : ''}
+                </p>
               </div>
               <div>
                 <span className="text-muted-foreground block text-xs uppercase tracking-wider">Coordinator</span>
@@ -694,19 +706,14 @@ export default function FeedbackDetails() {
                 <span className="text-muted-foreground block text-xs uppercase tracking-wider">Category</span>
                 <p className="font-medium mt-0.5">{feedback.content_category || '-'}</p>
               </div>
-              <div>
+
+              <div className="col-span-1">
                 <span className="text-muted-foreground block text-xs uppercase tracking-wider">Module</span>
                 <p className="font-medium mt-0.5">{feedback.module_name || '-'}</p>
               </div>
-              <div className="col-span-2 md:col-span-4 lg:col-span-5">
+              <div className="col-span-2 md:col-span-3 lg:col-span-4">
                 <span className="text-muted-foreground block text-xs uppercase tracking-wider">Topic</span>
                 <p className="font-medium mt-0.5">{feedback.topics_covered || '-'}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-xs uppercase tracking-wider">Present Students</span>
-                <p className="font-medium mt-0.5">
-                  {studentPerformance.filter(sp => sp.attendance_status === 'Present').length}
-                </p>
               </div>
             </div>
           </CardContent>
