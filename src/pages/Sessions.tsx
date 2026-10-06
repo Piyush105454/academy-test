@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Plus, Trash2, Upload, MoreVertical, GraduationCap, FileText, Edit, Film, Search, X, ExternalLink, Lock, Unlock, Video } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { logActivity } from '@/utils/activityLogger';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MonthTargetDialog } from '@/components/sessions/MonthTargetDialog';
@@ -159,6 +160,8 @@ export default function Sessions() {
   };
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const currentTab = searchParams.get('tab') || 'facilitator';
   const { user } = useAuth();
   const [userRole, setUserRole] = useState<number | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
@@ -389,6 +392,12 @@ export default function Sessions() {
 
   const getFilteredSessions = () => {
     let filtered = sessions;
+    
+    if (currentTab === 'coordinator') {
+      filtered = filtered.filter(s => (s.facilitator_feedback_status || '').toLowerCase() === 'completed' || (s.facilitator_feedback_status || '').toLowerCase() === 'done');
+    } else if (currentTab === 'supervisor') {
+      filtered = filtered.filter(s => (s.coordinator_feedback_status || '').toLowerCase() === 'completed' || (s.coordinator_feedback_status || '').toLowerCase() === 'done');
+    }
 
     // Apply search query across all columns
     if (searchQuery.trim()) {
@@ -585,6 +594,13 @@ export default function Sessions() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              <Tabs value={currentTab} onValueChange={(v) => { const newP = new URLSearchParams(searchParams); newP.set('tab', v); navigate('?'+newP.toString()); }} className="w-full sm:w-auto">
+                <TabsList>
+                  <TabsTrigger value="facilitator">Facilitator</TabsTrigger>
+                  <TabsTrigger value="coordinator">Coordinator</TabsTrigger>
+                  <TabsTrigger value="supervisor">Supervisor</TabsTrigger>
+                </TabsList>
+              </Tabs>
             <Button 
               variant="outline" 
               onClick={() => window.open('https://docs.google.com/presentation/d/19QjljocxshsJ5pNr_QhtFI2s7ByK91mHgXsILF3K-3k/mobilepresent?pli=1&slide=id.g3f36f08c6d8_1_6', '_blank')}
@@ -676,8 +692,8 @@ export default function Sessions() {
 
                   {/* Filter Row 1: Status, Time, Date Range */}
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-                                        {/* Facilitator Status Filter */}
-                    <div className="flex-1 min-w-[150px]">
+                                        {currentTab === 'facilitator' && (
+                    <div className="w-full sm:w-48">
                       <label className="text-xs font-medium text-blue-600 mb-1 block">
                         Facilitator Status
                       </label>
@@ -692,9 +708,9 @@ export default function Sessions() {
                         </SelectContent>
                       </Select>
                     </div>
-
-                    {/* Coordinator Status Filter */}
-                    <div className="flex-1 min-w-[150px]">
+                    )}
+                    {currentTab === 'coordinator' && (
+                    <div className="w-full sm:w-48">
                       <label className="text-xs font-medium text-purple-600 mb-1 block">
                         Coordinator Status
                       </label>
@@ -709,9 +725,9 @@ export default function Sessions() {
                         </SelectContent>
                       </Select>
                     </div>
-
-                    {/* Supervisor Status Filter */}
-                    <div className="flex-1 min-w-[150px]">
+                    )}
+                    {currentTab === 'supervisor' && (
+                    <div className="w-full sm:w-48">
                       <label className="text-xs font-medium text-green-600 mb-1 block">
                         Supervisor Status
                       </label>
@@ -726,6 +742,7 @@ export default function Sessions() {
                         </SelectContent>
                       </Select>
                     </div>
+                    )}
 
                     {/* Time Filter */}
                     <div className="w-full sm:w-48">
@@ -1046,7 +1063,8 @@ export default function Sessions() {
                             </span>
                           </div>
                         </TableHead>
-                        <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('facilitator_feedback_status')}>
+                        {currentTab === 'facilitator' && (
+<TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('facilitator_feedback_status')}>
                           <div className="flex items-center gap-1">
                             Facilitator Status
                             <span className={sortColumn === 'facilitator_feedback_status' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
@@ -1054,7 +1072,9 @@ export default function Sessions() {
                             </span>
                           </div>
                         </TableHead>
-                        <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('coordinator_feedback_status')}>
+)}
+                        {currentTab === 'coordinator' && (
+<TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('coordinator_feedback_status')}>
                           <div className="flex items-center gap-1">
                             Coordinator Status
                             <span className={sortColumn === 'coordinator_feedback_status' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
@@ -1062,7 +1082,9 @@ export default function Sessions() {
                             </span>
                           </div>
                         </TableHead>
-                        <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('supervisor_feedback_status')}>
+)}
+                        {currentTab === 'supervisor' && (
+<TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('supervisor_feedback_status')}>
                           <div className="flex items-center gap-1">
                             Supervisor Status
                             <span className={sortColumn === 'supervisor_feedback_status' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
@@ -1070,6 +1092,7 @@ export default function Sessions() {
                             </span>
                           </div>
                         </TableHead>
+)}
                         <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('status')}>
                             <div className="flex items-center gap-1">
                               Status
@@ -1131,21 +1154,27 @@ export default function Sessions() {
                               </a>
                             ) : '-'}
                           </TableCell>
-                          <TableCell>
+                          {currentTab === 'facilitator' && (
+<TableCell>
                             <Badge className={getStatusColor(session.facilitator_feedback_status || session.status)}>
                               {(session.facilitator_feedback_status || session.status).toUpperCase()}
                             </Badge>
                           </TableCell>
-                          <TableCell>
+)}
+                          {currentTab === 'coordinator' && (
+<TableCell>
                             <Badge className={getStatusColor(session.coordinator_feedback_status || 'pending')}>
                               {(session.coordinator_feedback_status || 'pending').toUpperCase()}
                             </Badge>
                           </TableCell>
-                          <TableCell>
+)}
+                          {currentTab === 'supervisor' && (
+<TableCell>
                             <Badge className={getStatusColor(session.supervisor_feedback_status || 'pending')}>
                               {(session.supervisor_feedback_status || 'pending').toUpperCase()}
                             </Badge>
                           </TableCell>
+)}
                           <TableCell>
                             <Badge variant={
                               session.status === 'completed' ? 'default' :

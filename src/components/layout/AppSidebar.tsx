@@ -36,12 +36,21 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: 'Session Management',
+    label: 'Curriculum & Session Management',
     studentVisible: false,
     items: [
       { title: 'Curriculum', url: '/curriculum', icon: BookOpen, requiredRole: null, studentVisible: false },
       { title: 'Session Planner', url: '/sessions', icon: BookOpen, requiredRole: null, studentVisible: false },
       { title: 'Record & Feedback', url: '/feedback', icon: FileText, requiredRole: null, studentVisible: false },
+      { title: 'Session Planner_by Facilitator', url: '/sessions?tab=facilitator', icon: BookOpen, requiredRole: null, studentVisible: false },
+      { title: 'Record Feedback_by coordinator', url: '/sessions?tab=coordinator', icon: FileText, requiredRole: null, studentVisible: false },
+      { title: 'Track & Review_by Supervisor', url: '/sessions?tab=supervisor', icon: ClipboardList, requiredRole: null, studentVisible: false },
+    ]
+  },
+  {
+    label: 'Student Attendance & Task Management',
+    studentVisible: false,
+    items: [
       { title: 'Tasks & Projects', url: '/tasks', icon: ClipboardList, requiredRole: null, studentVisible: false },
       { title: 'Scheduled Tasks', url: '/scheduled-tasks', icon: Clock, requiredRole: null, studentVisible: false },
       { title: 'Student Attendance', url: '/admin-attendance', icon: ClipboardList, requiredRole: null, studentVisible: false },
@@ -250,7 +259,7 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
                 </p>
                 <div className="space-y-0.5">
                   {visibleItems.map((item) => {
-                    const isActive = location.pathname === item.url;
+                    const isActive = item.url.includes('?') ? (location.pathname + location.search) === item.url : location.pathname === item.url;
                     return (
                       <NavLink
                         key={item.title}
