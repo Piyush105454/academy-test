@@ -161,7 +161,7 @@ export default function Sessions() {
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const currentTab = searchParams.get('tab') || 'facilitator';
+  const currentTab = searchParams.get('tab') || 'all';
   const { user } = useAuth();
   const [userRole, setUserRole] = useState<number | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
@@ -686,7 +686,7 @@ export default function Sessions() {
 
                   {/* Filter Row 1: Status, Time, Date Range */}
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-                                        {currentTab === 'facilitator' && (
+                                        {(currentTab === 'all' || currentTab === 'facilitator') && (
                     <div className="w-full sm:w-48">
                       <label className="text-xs font-medium text-blue-600 mb-1 block">
                         Facilitator Status
@@ -703,7 +703,7 @@ export default function Sessions() {
                       </Select>
                     </div>
                     )}
-                    {currentTab === 'coordinator' && (
+                    {(currentTab === 'all' || currentTab === 'coordinator') && (
                     <div className="w-full sm:w-48">
                       <label className="text-xs font-medium text-purple-600 mb-1 block">
                         Coordinator Status
@@ -720,7 +720,7 @@ export default function Sessions() {
                       </Select>
                     </div>
                     )}
-                    {currentTab === 'supervisor' && (
+                    {(currentTab === 'all' || currentTab === 'supervisor') && (
                     <div className="w-full sm:w-48">
                       <label className="text-xs font-medium text-green-600 mb-1 block">
                         Supervisor Status
@@ -1057,7 +1057,7 @@ export default function Sessions() {
                             </span>
                           </div>
                         </TableHead>
-                        {currentTab === 'facilitator' && (
+                        {(currentTab === 'all' || currentTab === 'facilitator') && (
 <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('facilitator_feedback_status')}>
                           <div className="flex items-center gap-1">
                             Facilitator Status
@@ -1067,7 +1067,7 @@ export default function Sessions() {
                           </div>
                         </TableHead>
 )}
-                        {currentTab === 'coordinator' && (
+                        {(currentTab === 'all' || currentTab === 'coordinator') && (
 <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('coordinator_feedback_status')}>
                           <div className="flex items-center gap-1">
                             Coordinator Status
@@ -1077,7 +1077,7 @@ export default function Sessions() {
                           </div>
                         </TableHead>
 )}
-                        {currentTab === 'supervisor' && (
+                        {(currentTab === 'all' || currentTab === 'supervisor') && (
 <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('supervisor_feedback_status')}>
                           <div className="flex items-center gap-1">
                             Supervisor Status
@@ -1148,21 +1148,21 @@ export default function Sessions() {
                               </a>
                             ) : '-'}
                           </TableCell>
-                          {currentTab === 'facilitator' && (
+                          {(currentTab === 'all' || currentTab === 'facilitator') && (
 <TableCell>
                             <Badge className={getStatusColor(session.facilitator_feedback_status || session.status)}>
                               {(session.facilitator_feedback_status || session.status).toUpperCase()}
                             </Badge>
                           </TableCell>
 )}
-                          {currentTab === 'coordinator' && (
+                          {(currentTab === 'all' || currentTab === 'coordinator') && (
 <TableCell>
                             <Badge className={getStatusColor(session.coordinator_feedback_status || 'pending')}>
                               {(session.coordinator_feedback_status || 'pending').toUpperCase()}
                             </Badge>
                           </TableCell>
 )}
-                          {currentTab === 'supervisor' && (
+                          {(currentTab === 'all' || currentTab === 'supervisor') && (
 <TableCell>
                             <Badge className={getStatusColor(session.supervisor_feedback_status || 'pending')}>
                               {(session.supervisor_feedback_status || 'pending').toUpperCase()}

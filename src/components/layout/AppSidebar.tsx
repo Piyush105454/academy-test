@@ -40,11 +40,11 @@ const navGroups: NavGroup[] = [
     studentVisible: false,
     items: [
       { title: 'Curriculum', url: '/curriculum', icon: BookOpen, requiredRole: null, studentVisible: false },
-      { title: 'Session Planner', url: '/sessions', icon: BookOpen, requiredRole: null, studentVisible: false },
-      { title: 'Record & Feedback', url: '/feedback', icon: FileText, requiredRole: null, studentVisible: false },
-      { title: 'Session Planner_by Facilitator', url: '/sessions?tab=facilitator', icon: BookOpen, requiredRole: null, studentVisible: false },
-      { title: 'Record Feedback_by coordinator', url: '/sessions?tab=coordinator', icon: FileText, requiredRole: null, studentVisible: false },
-      { title: 'Track & Review_by Supervisor', url: '/sessions?tab=supervisor', icon: ClipboardList, requiredRole: null, studentVisible: false },
+      { title: 'All Sessions', url: '/sessions', icon: BookOpen, requiredRole: null, studentVisible: false },
+      { title: 'All Feedbacks', url: '/feedback', icon: FileText, requiredRole: null, studentVisible: false },
+      { title: 'Facilitator View', url: '/sessions?tab=facilitator', icon: BookOpen, requiredRole: null, studentVisible: false },
+      { title: 'Coordinator View', url: '/sessions?tab=coordinator', icon: FileText, requiredRole: null, studentVisible: false },
+      { title: 'Supervisor View', url: '/sessions?tab=supervisor', icon: ClipboardList, requiredRole: null, studentVisible: false },
     ]
   },
   {
