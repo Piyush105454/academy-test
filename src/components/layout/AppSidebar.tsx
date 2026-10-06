@@ -259,7 +259,7 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
                 </p>
                 <div className="space-y-0.5">
                   {visibleItems.map((item) => {
-                    const isActive = item.url.includes('?') ? (location.pathname + location.search) === item.url : location.pathname === item.url;
+                    const isActive = item.url.includes('?') ? (location.pathname + location.search) === item.url : (location.pathname === item.url && (!location.search || !location.search.includes('tab=')));
                     return (
                       <NavLink
                         key={item.title}

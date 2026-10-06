@@ -594,13 +594,7 @@ export default function Sessions() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-              <Tabs value={currentTab} onValueChange={(v) => { const newP = new URLSearchParams(searchParams); newP.set('tab', v); navigate('?'+newP.toString()); }} className="w-full sm:w-auto">
-                <TabsList>
-                  <TabsTrigger value="facilitator">Facilitator</TabsTrigger>
-                  <TabsTrigger value="coordinator">Coordinator</TabsTrigger>
-                  <TabsTrigger value="supervisor">Supervisor</TabsTrigger>
-                </TabsList>
-              </Tabs>
+              
             <Button 
               variant="outline" 
               onClick={() => window.open('https://docs.google.com/presentation/d/19QjljocxshsJ5pNr_QhtFI2s7ByK91mHgXsILF3K-3k/mobilepresent?pli=1&slide=id.g3f36f08c6d8_1_6', '_blank')}
