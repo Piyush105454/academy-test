@@ -430,7 +430,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     if (selectedSubject && selectedSubject !== 'all') {
       source = source.filter((item) => item.subject_id === selectedSubject);
     }
-    const uniqueCategories = [...new Set(source.map((item) => item.content_category))]
+    const uniqueCategories = [...new Set(source.map((item) => item.content_category).filter(Boolean))]
       .sort((a, b) => getCategorySortOrder(a) - getCategorySortOrder(b) || a.localeCompare(b));
     setCategories(uniqueCategories as string[]);
     // Reset category if current selection is no longer valid
