@@ -113,7 +113,9 @@ export default function MonthlyLeaderboard() {
           .eq('month', currentMonthStr);
         
         if (targets) {
-          targets.forEach(t => facTargets[t.facilitator_id] = t.target_sessions || 0);
+          targets.forEach(t => {
+            if (t.facilitator_id) facTargets[t.facilitator_id] = t.target_sessions || 0;
+          });
         }
       } catch (e) {
         console.warn('facilitator_targets table might be missing');
@@ -127,7 +129,9 @@ export default function MonthlyLeaderboard() {
           .select('class_name, target_sessions')
           .eq('month', currentMonthStr);
         if (cTargets) {
-          cTargets.forEach(t => classTargetsMap[t.class_name] = t.target_sessions || 0);
+          cTargets.forEach(t => {
+            if (t.class_name) classTargetsMap[t.class_name] = t.target_sessions || 0;
+          });
         }
       } catch (e) {
         console.warn('class_targets table might be missing');
@@ -141,10 +145,49 @@ export default function MonthlyLeaderboard() {
           .select('category_name, target_sessions')
           .eq('month', currentMonthStr);
         if (catTargets) {
-          catTargets.forEach(t => categoryTargetsMap[t.category_name] = t.target_sessions || 0);
+          catTargets.forEach(t => {
+            if (t.category_name) categoryTargetsMap[t.category_name] = t.target_sessions || 0;
+          });
         }
       } catch (e) {
         console.warn('category_targets table might be missing');
+      }
+
+      // Fetch Granular Targets (Monthly Target Setup)
+      try {
+        const { data: granularTargets } = await supabase
+          .from('facilitator_class_session_targets')
+          .select('facilitator_id, facilitator_name, class_name, session_type, target_sessions')
+          .eq('month', currentMonthStr);
+
+        if (granularTargets) {
+          granularTargets.forEach(t => {
+            const val = t.target_sessions || 0;
+            if (t.facilitator_id) {
+              facTargets[t.facilitator_id] = (facTargets[t.facilitator_id] || 0) + val;
+            }
+            if (t.facilitator_name) {
+              const fn = t.facilitator_name.trim().toLowerCase();
+              facTargets[fn] = (facTargets[fn] || 0) + val;
+            }
+            if (t.class_name) {
+              const cn = t.class_name.trim();
+              classTargetsMap[cn] = (classTargetsMap[cn] || 0) + val;
+            }
+            if (t.session_type) {
+              let catName = '';
+              if (t.session_type === 'guest_teacher') catName = 'Guest Teacher';
+              else if (t.session_type === 'guest_speaker') catName = 'Guest Speaker';
+              else if (t.session_type === 'local_teacher') catName = 'Local Teacher';
+
+              if (catName) {
+                categoryTargetsMap[catName] = (categoryTargetsMap[catName] || 0) + val;
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('facilitator_class_session_targets table might be missing');
       }
 
       // 5. Compute actuals
@@ -171,14 +214,16 @@ export default function MonthlyLeaderboard() {
       // 6. Build final arrays
       if (facs) {
         const perfData = facs.map(f => {
-          const actual = actuals[f.name.trim().toLowerCase()] || 0;
+          const normName = f.name.trim().toLowerCase();
+          const actual = actuals[normName] || 0;
+          const planned = facTargets[f.id] || facTargets[normName] || 0;
           return {
             id: f.id,
-            name: f.name,
-            planned: facTargets[f.id] || 0,
+            name: f.name.trim(),
+            planned,
             actual,
           };
-        }).sort((a, b) => b.actual - a.actual);
+        }).sort((a, b) => b.actual - a.actual || b.planned - a.planned);
         setFacilitators(perfData);
       }
 

@@ -71,22 +71,58 @@ export function MonthlyLeaderboardWidget({ startDate, endDate }: MonthlyLeaderbo
         { data: facTargetsData },
         { data: classTargetsData },
         { data: catTargetsData },
+        { data: granularTargetsData },
       ] = await Promise.all([
         supabase.from('facilitators').select('id, name').order('name'),
         supabase.from('classes').select('name').neq('name', '__SYSTEM_DEV_MODE__').order('name'),
         supabase.from('facilitator_targets').select('facilitator_id, target_sessions').eq('month', currentMonthStr),
         supabase.from('class_targets').select('class_name, target_sessions').eq('month', currentMonthStr),
         supabase.from('category_targets').select('category_name, target_sessions').eq('month', currentMonthStr),
+        supabase.from('facilitator_class_session_targets').select('facilitator_id, facilitator_name, class_name, session_type, target_sessions').eq('month', currentMonthStr),
       ]);
 
       const facTargets: Record<string, number> = {};
-      facTargetsData?.forEach((t: any) => { facTargets[t.facilitator_id] = t.target_sessions || 0; });
+      facTargetsData?.forEach((t: any) => {
+        if (t.facilitator_id) facTargets[t.facilitator_id] = t.target_sessions || 0;
+      });
 
       const classTargets: Record<string, number> = {};
-      classTargetsData?.forEach((t: any) => { classTargets[t.class_name] = t.target_sessions || 0; });
+      classTargetsData?.forEach((t: any) => {
+        if (t.class_name) classTargets[t.class_name] = t.target_sessions || 0;
+      });
 
       const catTargets: Record<string, number> = {};
-      catTargetsData?.forEach((t: any) => { catTargets[t.category_name] = t.target_sessions || 0; });
+      catTargetsData?.forEach((t: any) => {
+        if (t.category_name) catTargets[t.category_name] = t.target_sessions || 0;
+      });
+
+      // Aggregate targets from facilitator_class_session_targets (Monthly Target Setup)
+      granularTargetsData?.forEach((t: any) => {
+        const val = t.target_sessions || 0;
+
+        if (t.facilitator_id) {
+          facTargets[t.facilitator_id] = (facTargets[t.facilitator_id] || 0) + val;
+        }
+        if (t.facilitator_name) {
+          const fn = t.facilitator_name.trim().toLowerCase();
+          facTargets[fn] = (facTargets[fn] || 0) + val;
+        }
+
+        if (t.class_name) {
+          const cn = t.class_name.trim();
+          classTargets[cn] = (classTargets[cn] || 0) + val;
+        }
+
+        if (t.session_type) {
+          if (t.session_type === 'guest_teacher') {
+            catTargets['Guest Teacher (GT)'] = (catTargets['Guest Teacher (GT)'] || 0) + val;
+          } else if (t.session_type === 'guest_speaker') {
+            catTargets['Guest Speaker (GS)'] = (catTargets['Guest Speaker (GS)'] || 0) + val;
+          } else if (t.session_type === 'local_teacher') {
+            catTargets['Local Teacher (LT)'] = (catTargets['Local Teacher (LT)'] || 0) + val;
+          }
+        }
+      });
 
       // 4. Compute actuals
       const facActuals: Record<string, number> = {};
@@ -115,12 +151,17 @@ export function MonthlyLeaderboardWidget({ startDate, endDate }: MonthlyLeaderbo
 
       // 5. Build Facilitator array
       if (facs) {
-        const facPerf = facs.map(f => ({
-          id: f.id,
-          name: f.name,
-          planned: facTargets[f.id] || 0,
-          actual: facActuals[f.name.trim().toLowerCase()] || 0,
-        })).sort((a, b) => b.actual - a.actual || b.planned - a.planned);
+        const facPerf = facs.map(f => {
+          const normName = f.name.trim().toLowerCase();
+          const planned = facTargets[f.id] || facTargets[normName] || 0;
+          const actual = facActuals[normName] || 0;
+          return {
+            id: f.id,
+            name: f.name.trim(),
+            planned,
+            actual,
+          };
+        }).sort((a, b) => b.actual - a.actual || b.planned - a.planned);
         setFacilitators(facPerf);
       }
 
