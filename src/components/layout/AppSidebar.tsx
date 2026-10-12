@@ -42,9 +42,9 @@ const navGroups: NavGroup[] = [
       { title: 'Curriculum', url: '/curriculum', icon: BookOpen, requiredRole: null, studentVisible: false },
       { title: 'All Sessions', url: '/sessions', icon: BookOpen, requiredRole: null, studentVisible: false },
       { title: 'All Feedbacks', url: '/feedback', icon: FileText, requiredRole: null, studentVisible: false },
-      { title: 'Facilitator View', url: '/sessions?tab=facilitator', icon: BookOpen, requiredRole: null, studentVisible: false },
-      { title: 'Coordinator View', url: '/sessions?tab=coordinator', icon: FileText, requiredRole: null, studentVisible: false },
-      { title: 'Supervisor View', url: '/sessions?tab=supervisor', icon: ClipboardList, requiredRole: null, studentVisible: false },
+      { title: 'Session Planner_by Facilitator', url: '/sessions?tab=facilitator', icon: BookOpen, requiredRole: null, studentVisible: false },
+      { title: 'Record Feedback_by coordinator', url: '/sessions?tab=coordinator', icon: FileText, requiredRole: null, studentVisible: false },
+      { title: 'Track & Review_by Supervisor', url: '/sessions?tab=supervisor', icon: ClipboardList, requiredRole: null, studentVisible: false },
     ]
   },
   {
@@ -274,7 +274,7 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
                         )}
                       >
                         <item.icon className="h-4 w-4 flex-shrink-0" />
-                        <span className="truncate">{item.title}</span>
+                        <span className="truncate" title={item.title}>{item.title}</span>
                       </NavLink>
                     );
                   })}

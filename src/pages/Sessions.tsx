@@ -1113,12 +1113,14 @@ export default function Sessions() {
                         return (
                         <TableRow key={session.id} className={rowBgClass}>
                           <TableCell className="font-medium">
-                            <span 
-                              className="text-primary hover:underline cursor-pointer" 
-                              onClick={() => navigate(`/sessions/${session.id}/recording`)}
+                            <a 
+                              href={`/sessions/${session.id}/recording`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline cursor-pointer"
                             >
                               {session.session_id_code || '---'}
-                            </span>
+                            </a>
                           </TableCell>
                           <TableCell>{session.subject_name || '-'}</TableCell>
                           <TableCell>{session.content_category || '-'}</TableCell>

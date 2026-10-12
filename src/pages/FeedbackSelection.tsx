@@ -925,12 +925,14 @@ export default function FeedbackSelection() {
                     {filteredSessions.map((session) => (
                       <TableRow key={session.id} className="hover:bg-muted/50">
                         <TableCell className="font-medium">
-                          <span 
-                            className="text-primary hover:underline cursor-pointer" 
-                            onClick={() => navigate(`/sessions/${session.id}/feedback-details`)}
+                          <a 
+                            href={`/sessions/${session.id}/feedback-details`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline cursor-pointer"
                           >
                             {session.session_id_code || '---'}
-                          </span>
+                          </a>
                         </TableCell>
                         <TableCell>{session.subject_name || '-'}</TableCell>
                         <TableCell>{session.content_category || '-'}</TableCell>
@@ -981,7 +983,7 @@ export default function FeedbackSelection() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => navigate(`/sessions/${session.id}/feedback-details`)}>
+                              <DropdownMenuItem onClick={() => window.open(`/sessions/${session.id}/feedback-details`, '_blank')}>
                                 <Eye className="mr-2 h-4 w-4" /> View Record
                               </DropdownMenuItem>
                             </DropdownMenuContent>
