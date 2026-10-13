@@ -397,13 +397,15 @@ serve(async (req) => {
     }
 
     if (!isUpdate) {
-      // Add conference data to create a NEW meet link
-      event.conferenceData = {
-        createRequest: {
-          requestId: crypto.randomUUID(),
-          conferenceSolutionKey: { type: "hangoutsMeet" },
-        },
-      };
+      // Only request Google Meet conference if no custom meeting link was provided
+      if (!initialLink) {
+        event.conferenceData = {
+          createRequest: {
+            requestId: crypto.randomUUID(),
+            conferenceSolutionKey: { type: "hangoutsMeet" },
+          },
+        };
+      }
       const result = await createCalendarEvent(event, serviceAccountEmail, privateKey);
       eventId = result.eventId;
       hangoutLink = result.hangoutLink || initialLink;

@@ -131,13 +131,22 @@ export function EditSessionDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedDesignations, setSelectedDesignations] = useState<string[]>([]);
+  const [meetingPlatform, setMeetingPlatform] = useState<'google_meet' | 'ms_teams' | 'other'>('google_meet');
   const { toast } = useToast();
+
+  const inferPlatform = (link?: string | null): 'google_meet' | 'ms_teams' | 'other' => {
+    if (!link) return 'google_meet';
+    if (link.includes('teams.microsoft.com')) return 'ms_teams';
+    if (link.includes('meet.google.com')) return 'google_meet';
+    return 'other';
+  };
 
   const isCccEmpFellow = !!formData?.class_batch?.toLowerCase().includes('ccc emp');
 
   useEffect(() => {
     if (session && open) {
       setFormData(session);
+      setMeetingPlatform(inferPlatform(session.meeting_link));
       setSelectedDesignations(session.designations || []);
       setSelectedTopic(null);
       fetchAllData();
@@ -487,6 +496,7 @@ export function EditSessionDialog({
           coordinator_id: formData.coordinator_id || null,
           designations: isCccEmpFellow ? selectedDesignations : [],
           status: 'rescheduled',
+          meeting_link: formData.meeting_link || null,
         })
         .eq('id', formData.id);
 
@@ -494,10 +504,10 @@ export function EditSessionDialog({
 
       await logActivity('UPDATE', 'Sessions', `Updated session: "${formData.title}" (Date: ${formData.session_date}, Class: ${formData.class_batch})`);
 
-      // Try to update Google Calendar
+      // Try to update Google Calendar / MS Teams
       try {
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
         
         const selectedSlot = centreSlots.find(s => s.id === formData.centre_time_slot_id);
         const sessionTime = selectedSlot?.start_time || formData.session_time;
@@ -557,11 +567,10 @@ Session updated with new details.
           meetingLink: formData.meeting_link,
         };
 
-        const isMsTeams = formData.meeting_link && formData.meeting_link.includes('teams.microsoft.com');
-        const syncFunction = isMsTeams ? 'sync-ms-teams' : 'sync-google-calendar';
+        const syncFunction = meetingPlatform === 'ms_teams' ? 'sync-ms-teams' : 'sync-google-calendar';
         console.log(`Sending PATCH request to ${syncFunction} with centre email:`, centreData?.email);
 
-        await fetch(`${supabaseUrl}/functions/v1/${syncFunction}`, {
+        const syncRes = await fetch(`${supabaseUrl}/functions/v1/${syncFunction}`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -569,8 +578,16 @@ Session updated with new details.
           },
           body: JSON.stringify(patchData),
         });
+
+        if (syncRes.ok) {
+          const syncResult = await syncRes.json();
+          const returnedLink = syncResult.hangoutLink || syncResult.meetingLink;
+          if (returnedLink && returnedLink !== formData.meeting_link) {
+            await supabase.from('sessions').update({ meeting_link: returnedLink }).eq('id', formData.id);
+          }
+        }
       } catch (calendarError) {
-        console.warn('Could not update Google Calendar:', calendarError);
+        console.warn('Could not update Calendar invite:', calendarError);
       }
 
       toast({
@@ -941,6 +958,57 @@ Session updated with new details.
                 </Select>
               </div>
             )}
+          </div>
+
+          {/* Meeting Platform & Link */}
+          <div className="border-t border-border pt-4">
+            <h4 className="font-medium text-sm sm:text-base text-foreground mb-3">Meeting Platform</h4>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit_meeting_platform" className="text-sm sm:text-base">Meeting Platform *</Label>
+                <Select 
+                  value={meetingPlatform} 
+                  onValueChange={(value: 'google_meet' | 'ms_teams' | 'other') => {
+                    setMeetingPlatform(value);
+                  }}
+                >
+                  <SelectTrigger className="text-sm sm:text-base">
+                    <SelectValue placeholder="Select meeting platform" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="google_meet">Google Meet</SelectItem>
+                    <SelectItem value="ms_teams">Microsoft Teams</SelectItem>
+                    <SelectItem value="other">Other (Zoom / Custom Link)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit_meeting_link" className="text-sm sm:text-base">
+                  {meetingPlatform === 'other' ? 'Meeting Link (Required for Other) *' : 'Custom Meeting Link'}
+                </Label>
+                <Input
+                  id="edit_meeting_link"
+                  placeholder={
+                    meetingPlatform === 'ms_teams'
+                      ? "https://teams.microsoft.com/... (optional)"
+                      : meetingPlatform === 'other'
+                      ? "https://zoom.us/j/... or https://meet.google.com/..."
+                      : "https://meet.google.com/xxx-xxxx-xxx (optional)"
+                  }
+                  value={formData.meeting_link || ''}
+                  onChange={(e) => setFormData({ ...formData, meeting_link: e.target.value })}
+                  className="text-sm sm:text-base"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {meetingPlatform === 'ms_teams'
+                    ? "MS Teams meeting will be synced with attendees."
+                    : meetingPlatform === 'other'
+                    ? "Paste your Zoom or external meeting link. It will be synced into the calendar invite."
+                    : "Google Meet link will be attached to the calendar invitation."}
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Session Template */}
