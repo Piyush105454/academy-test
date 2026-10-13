@@ -679,7 +679,7 @@ export default function AdminFacilitatorEarnings() {
               facilitator_id: facId,
               session_id: unrec.session_id,
               amount: unrec.amount || perSessionAmount,
-              status: 'paid_online',
+              status: 'approved',
               approved_at: new Date().toISOString(),
               approved_by: user?.id
             })
@@ -708,11 +708,11 @@ export default function AdminFacilitatorEarnings() {
 
         if (approvedEarnings && approvedEarnings.length > 0) {
           const ids = approvedEarnings.map(e => e.id);
-          // Update DB status to paid_online
+          // Update DB status to approved
           await supabase
             .from('facilitator_earnings')
             .update({
-              status: 'paid_online',
+              status: 'approved',
               approved_at: new Date().toISOString()
             })
             .in('id', ids);
@@ -735,7 +735,7 @@ export default function AdminFacilitatorEarnings() {
             facilitator_id: payOnlineTarget.facilitatorId || selectedFacilitator!.id,
             session_id: payOnlineTarget.sessionId,
             amount: payAmountInput,
-            status: 'paid_online',
+            status: 'approved',
             approved_at: new Date().toISOString(),
             approved_by: user?.id
           })
@@ -755,7 +755,7 @@ export default function AdminFacilitatorEarnings() {
         await supabase
           .from('facilitator_earnings')
           .update({
-            status: 'paid_online',
+            status: 'approved',
             approved_at: new Date().toISOString()
           })
           .eq('id', payOnlineTarget.earningId);
@@ -1184,9 +1184,13 @@ export default function AdminFacilitatorEarnings() {
                                   <Badge className="bg-green-600 hover:bg-green-700 text-white text-[10px] whitespace-nowrap font-semibold">
                                     Approved
                                   </Badge>
+                                ) : record.is_unrecorded ? (
+                                  <Badge variant="outline" className="text-[10px] whitespace-nowrap text-slate-600 bg-slate-50 border-slate-300 font-medium">
+                                    Eligible (Unclaimed)
+                                  </Badge>
                                 ) : (
-                                  <Badge variant="secondary" className="text-[10px] whitespace-nowrap text-yellow-700 bg-yellow-100 border-yellow-300 font-semibold">
-                                    Pending
+                                  <Badge variant="secondary" className="text-[10px] whitespace-nowrap text-amber-800 bg-amber-100 border-amber-300 font-semibold">
+                                    Applied for Encashment
                                   </Badge>
                                 )}
                               </TableCell>
@@ -1217,6 +1221,13 @@ export default function AdminFacilitatorEarnings() {
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="bg-popover text-xs">
+                                      {!isPaid && (
+                                        <DropdownMenuItem onClick={() => openPayOnlineModal(record)} className="gap-2 cursor-pointer text-purple-700 font-medium">
+                                          <CreditCard className="h-3.5 w-3.5" />
+                                          Pay / Record Online Payment
+                                        </DropdownMenuItem>
+                                      )}
+
                                       {!isPaid && record.status === 'pending' && (
                                         <DropdownMenuItem onClick={() => approveEarning(record)} className="gap-2 cursor-pointer text-green-700 font-medium">
                                           <CheckCircle className="h-3.5 w-3.5" />
@@ -1224,7 +1235,7 @@ export default function AdminFacilitatorEarnings() {
                                         </DropdownMenuItem>
                                       )}
 
-                                      {!isPaid && record.status === 'approved' && (
+                                      {!isPaid && !record.is_unrecorded && record.status === 'approved' && (
                                         <DropdownMenuItem onClick={() => resetToPendingEarning(record)} className="gap-2 cursor-pointer text-yellow-700">
                                           <RotateCcw className="h-3.5 w-3.5" />
                                           Reset to Pending

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Plus, CalendarDays } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, CalendarDays, Video, Copy, Check, ExternalLink, RefreshCw } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -141,6 +141,8 @@ export default function Calendar() {
     return 'month';
   });
   const [selectedActiveDate, setSelectedActiveDate] = useState<Date>(() => new Date());
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [isSyncingCalendar, setIsSyncingCalendar] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -528,6 +530,78 @@ export default function Calendar() {
     // Open the edit dialog
     setSelectedSession(session);
     setIsEditSessionOpen(true);
+  };
+
+  const handleCopyMeetingLink = (url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    toast.success('Meeting link copied to clipboard!');
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const handleResyncCalendarInvite = async (session: Session) => {
+    if (!session?.id || !session.meeting_link) {
+      toast.error('No meeting link available to sync');
+      return;
+    }
+    try {
+      setIsSyncingCalendar(true);
+      const isMsTeams = session.meeting_link.includes('teams.microsoft.com');
+      const syncFunction = isMsTeams ? 'sync-ms-teams' : 'sync-google-calendar';
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      const startDateTime = new Date(`${session.session_date}T${session.session_time || '09:00'}:00`);
+      const endDateTime = new Date(startDateTime.getTime() + 60 * 60 * 1000);
+
+      const cls = classes.find(c => c.name === session.class_batch);
+
+      const patchData = {
+        sessionId: session.id,
+        googleEventId: session.google_event_id,
+        meetingLink: session.meeting_link,
+        title: session.title,
+        description: `
+Topic: ${session.topics_covered || session.title}
+Class: ${session.class_batch || 'N/A'}
+Facilitator: ${session.facilitator_name || 'N/A'}
+Volunteer: ${session.volunteer_name || 'N/A'}
+Coordinator: ${session.coordinator_name || 'N/A'}
+
+🔗 MEETING LINK:
+${session.meeting_link}
+        `.trim(),
+        startDateTime: startDateTime.toISOString(),
+        endDateTime: endDateTime.toISOString(),
+        volunteerEmails: [session.volunteer_email].filter((e): e is string => !!e),
+        facilitatorEmail: session.facilitator_email || '',
+        coordinatorEmail: session.coordinator_email || '',
+        classEmail: cls?.email || '',
+        centreEmail: session.centre_email || '',
+      };
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/${syncFunction}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify(patchData),
+      });
+
+      if (res.ok) {
+        toast.success('Calendar event updated! Meeting link is now synced to attendees.');
+      } else {
+        const err = await res.text();
+        console.warn('Calendar sync error:', err);
+        toast.error('Failed to update calendar event.');
+      }
+    } catch (err) {
+      console.error('Error syncing calendar invite:', err);
+      toast.error('Failed to sync calendar invite');
+    } finally {
+      setIsSyncingCalendar(false);
+    }
   };
 
   const getSessionTypeLabel = (sessionType?: string) => {
@@ -1269,8 +1343,25 @@ export default function Calendar() {
                 {/* Participants & Details */}
                 <div className="space-y-3">
                   {selectedSession.meeting_link && (
-                    <div className="bg-indigo-50 border border-indigo-200 rounded p-3 mb-2">
-                      <h4 className="font-semibold text-sm text-indigo-900 mb-1">🔗 Meeting Link</h4>
+                    <div className="bg-indigo-50/90 border border-indigo-200 rounded-lg p-3.5 mb-2 shadow-xs">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <Video className="h-4 w-4 text-indigo-700" />
+                          <h4 className="font-semibold text-xs text-indigo-950 uppercase tracking-wider">
+                            Meeting Link
+                          </h4>
+                          {selectedSession.meeting_link.includes('teams.microsoft.com') ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-blue-100/60 text-blue-700 border-blue-300">
+                              MS Teams
+                            </Badge>
+                          ) : selectedSession.meeting_link.includes('meet.google.com') ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-100/60 text-emerald-700 border-emerald-300">
+                              Google Meet
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
+
                       {(() => {
                         let url = selectedSession.meeting_link;
                         if (url && url.includes('_meet/whoops')) {
@@ -1280,14 +1371,58 @@ export default function Calendar() {
                           url = `https://${url}`;
                         }
                         return (
-                          <a 
-                            href={url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium text-sm"
-                          >
-                            Join Meeting
-                          </a>
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <a 
+                                href={url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors shadow-xs"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                Join Meeting
+                              </a>
+
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleCopyMeetingLink(url)}
+                                className="h-7 text-xs px-2.5 gap-1.5 border-indigo-200 hover:bg-indigo-100/70 text-indigo-800"
+                              >
+                                {copiedLink ? (
+                                  <>
+                                    <Check className="h-3.5 w-3.5 text-emerald-600" />
+                                    <span>Copied!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="h-3.5 w-3.5" />
+                                    <span>Copy Link</span>
+                                  </>
+                                )}
+                              </Button>
+
+                              {userRole !== 5 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={isSyncingCalendar}
+                                  onClick={() => handleResyncCalendarInvite(selectedSession)}
+                                  title="Sync & push this meeting link into Google / MS Teams calendar invite"
+                                  className="h-7 text-[11px] px-2 gap-1 text-slate-600 hover:text-indigo-700 hover:bg-indigo-100/50"
+                                >
+                                  <RefreshCw className={`h-3 w-3 ${isSyncingCalendar ? 'animate-spin text-indigo-600' : ''}`} />
+                                  <span>{isSyncingCalendar ? 'Syncing...' : 'Sync to Calendar'}</span>
+                                </Button>
+                              )}
+                            </div>
+
+                            <p className="text-[11px] text-slate-500 font-mono truncate select-all" title={url}>
+                              {url}
+                            </p>
+                          </div>
                         );
                       })()}
                     </div>

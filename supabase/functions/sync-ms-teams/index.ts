@@ -1,4 +1,4 @@
-﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.0";
 
 const corsHeaders = {
@@ -19,6 +19,7 @@ interface CalendarSyncRequest {
   coordinatorEmail?: string;
   classEmail?: string;
   centreEmail?: string;
+  meetingLink?: string;
 }
 
 function buildAttendees(body: CalendarSyncRequest) {
@@ -131,13 +132,38 @@ serve(async (req) => {
 
     const toUtc = (s: string) => new Date(s).toISOString().replace("Z", "");
 
-    const baseEvent = {
+    const buildEventBody = (link: string | null | undefined, desc: string | undefined) => {
+      let buttonHtml = "";
+      if (link) {
+        buttonHtml = `
+          <div style="font-family: Arial, sans-serif; padding: 14px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; margin-bottom: 16px;">
+            <h3 style="margin: 0 0 8px 0; color: #1e3a8a;">🔗 Microsoft Teams Meeting</h3>
+            <p style="margin: 0 0 10px 0;">
+              <a href="${link}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">
+                👉 Click Here to Join Meeting
+              </a>
+            </p>
+            <p style="margin: 0; font-size: 12px; color: #475569; word-break: break-all;">
+              <strong>Direct Link:</strong> <a href="${link}">${link}</a>
+            </p>
+          </div>
+        `;
+      }
+      return `${buttonHtml}${(desc || "").replace(/\n/g, "<br>")}`;
+    };
+
+    const initialLink = body.meetingLink?.trim();
+
+    const baseEvent: any = {
       subject: body.title,
-      body: { contentType: "HTML", content: (body.description || "").replace(/\n/g, "<br>") },
+      body: { contentType: "HTML", content: buildEventBody(initialLink, body.description) },
       start: { dateTime: toUtc(body.startDateTime), timeZone: "UTC" },
       end: { dateTime: toUtc(body.endDateTime), timeZone: "UTC" },
       attendees,
     };
+    if (initialLink) {
+      baseEvent.location = { displayName: initialLink };
+    }
 
     let eventId = null;
     let meetingLink = null;
@@ -152,6 +178,15 @@ serve(async (req) => {
         
       if (sessionData?.google_event_id) {
         isUpdate = true;
+        const currentLink = body.meetingLink || sessionData.meeting_link;
+        const patchPayload: any = {
+          ...baseEvent,
+          body: { contentType: "HTML", content: buildEventBody(currentLink, body.description) }
+        };
+        if (currentLink) {
+          patchPayload.location = { displayName: currentLink };
+        }
+
         const eventIdEnc = encodeURIComponent(sessionData.google_event_id);
         const res = await fetch(`https://graph.microsoft.com/v1.0/users/${organizerEmail}/events/${eventIdEnc}`, {
           method: "PATCH",
@@ -159,13 +194,13 @@ serve(async (req) => {
             "Authorization": `Bearer ${token}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify(baseEvent)
+          body: JSON.stringify(patchPayload)
         });
         
         if (!res.ok) throw new Error(`Graph PATCH ${res.status}: ${await res.text()}`);
         const data = await res.json();
         eventId = data.id;
-        meetingLink = data.onlineMeeting?.joinUrl || sessionData.meeting_link;
+        meetingLink = data.onlineMeeting?.joinUrl || currentLink;
       }
     }
 
@@ -193,10 +228,35 @@ serve(async (req) => {
 
       const data = await res.json();
       eventId = data.id;
-      meetingLink = data.onlineMeeting?.joinUrl;
+      meetingLink = data.onlineMeeting?.joinUrl || initialLink;
+
+      // ✅ CRITICAL: Patch MS Teams event immediately with location and join button in body
+      // so attendees in Google Calendar / Outlook see the clickable link!
+      if (eventId && meetingLink) {
+        try {
+          const eventIdEnc = encodeURIComponent(eventId);
+          await fetch(`https://graph.microsoft.com/v1.0/users/${organizerEmail}/events/${eventIdEnc}`, {
+            method: "PATCH",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              location: { displayName: meetingLink },
+              body: {
+                contentType: "HTML",
+                content: buildEventBody(meetingLink, body.description)
+              }
+            })
+          });
+          console.log(`Successfully patched MS Teams event with location and meeting link in body`);
+        } catch (patchErr) {
+          console.warn("Could not patch MS Teams event with meeting link:", patchErr);
+        }
+      }
     }
 
-    if (body.sessionId && !isUpdate) {
+    if (body.sessionId && meetingLink) {
       const { error: updateError } = await supabase
         .from("sessions")
         .update({ google_event_id: eventId, meeting_link: meetingLink })

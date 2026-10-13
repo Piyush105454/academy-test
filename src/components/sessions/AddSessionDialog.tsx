@@ -918,7 +918,7 @@ ${window.location.origin}/ppt/1.1.7.1.3%20GT%20WES_%20Sample%20Template%20for%20
 
 🔗 MEETING LINK
 
-Google Meet link will be added to the calendar event.
+${meetingLink ? meetingLink : (formData.meeting_platform === 'ms_teams' ? 'Microsoft Teams link will be auto-attached to this invite.' : 'Google Meet link will be auto-attached to this invite.')}
 
 Please accept this invitation to confirm your participation.
 For any questions, contact the coordinator.
@@ -932,16 +932,16 @@ For any questions, contact the coordinator.
             volunteerName: selectedVolunteerData?.name || '',
             facilitatorEmail: selectedFacilitatorData?.email || '',
             facilitatorName: selectedFacilitatorData?.name || '',
-             classEmail: selectedClassData?.email,     // ✅ NEW
-        centreEmail: selectedCentreData?.email,   // ✅ NEW
+            classEmail: selectedClassData?.email,     // ✅ NEW
+            centreEmail: selectedCentreData?.email,   // ✅ NEW
             coordinatorEmail: selectedCoordinatorData?.email || '',
             coordinatorName: selectedCoordinatorData?.name || '',
             meetingLink: meetingLink,
           };
 
-          // Try to sync with Google Calendar
+          // Try to sync with Google Calendar / MS Teams
           try {
-            const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+            const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
             
             // Ensure centre email is included and not null
             if (selectedCentreData?.email && selectedCentreData.email.trim()) {
@@ -972,17 +972,22 @@ For any questions, contact the coordinator.
               const result = await response.json();
               console.log('Calendar sync result:', result);
               
-              // Store google_event_id in session for recording webhook matching
-              if (result.eventId && sessionId) {
+              // Store google_event_id and meeting_link in session
+              const generatedMeetingLink = result.hangoutLink || result.meetingLink || meetingLink;
+              if (sessionId && (result.eventId || generatedMeetingLink)) {
+                const updatePayload: any = {};
+                if (result.eventId) updatePayload.google_event_id = result.eventId;
+                if (generatedMeetingLink) updatePayload.meeting_link = generatedMeetingLink;
+
                 const { error: updateError } = await supabase
                   .from('sessions')
-                  .update({ google_event_id: result.eventId })
+                  .update(updatePayload)
                   .eq('id', sessionId);
                 
                 if (updateError) {
-                  console.error('Error storing google_event_id:', updateError);
+                  console.error('Error storing google_event_id/meeting_link:', updateError);
                 } else {
-                  console.log('Successfully stored google_event_id:', result.eventId);
+                  console.log('Successfully stored session calendar info:', updatePayload);
                 }
               }
             }

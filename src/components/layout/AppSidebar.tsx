@@ -1,4 +1,4 @@
-import { Home, Users, LogOut, CalendarDays, BookOpen, Menu, X, Users2, MapPin, FileText, GraduationCap, Shield, ClipboardList, ChevronDown, MessageCircle, Clock, Wrench } from 'lucide-react';
+import { Home, Users, LogOut, CalendarDays, BookOpen, Menu, X, Users2, MapPin, FileText, GraduationCap, Shield, ClipboardList, ChevronDown, MessageCircle, Clock, Wrench, Wallet } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDeveloperMode } from '@/contexts/DeveloperModeContext';
@@ -63,6 +63,7 @@ const navGroups: NavGroup[] = [
     items: [
       // Teacher / Employee Views (Only Role 4)
       { title: 'My Work', url: '/academy/my-work', icon: ClipboardList, requiredRole: 4, studentVisible: false },
+      { title: 'My Session Earnings', url: '/facilitator-earnings', icon: Wallet, requiredRole: 4, studentVisible: false },
       { title: 'My Earnings', url: '/academy/my-earnings', icon: FileText, requiredRole: 4, studentVisible: false },
       { title: 'My Goals', url: '/academy/my-goals', icon: FileText, requiredRole: 4, studentVisible: false },
       { title: 'Leaderboard', url: '/academy/leaderboard', icon: Users2, requiredRole: 4, studentVisible: false },
@@ -78,6 +79,7 @@ const navGroups: NavGroup[] = [
     label: 'Rewards & Earnings',
     studentVisible: false,
     items: [
+      { title: 'My Facilitator Earnings', url: '/facilitator-earnings', icon: Wallet, requiredRole: null, studentVisible: false },
       { title: 'Student Earnings', url: '/admin-earnings', icon: ClipboardList, requiredRole: null, studentVisible: false },
       { title: 'Facilitator Earnings', url: '/admin-facilitator-earnings', icon: ClipboardList, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
       { title: 'Volunteer Log Hours', url: '/volunteer-log-hours', icon: Clock, requiredRole: null, studentVisible: false, hiddenRoles: [4] },

@@ -31,6 +31,7 @@ interface CalendarSyncRequest {
   centreEmail?: string;
 
   googleEventId?: string;
+  meetingLink?: string;
 }
 
 /* -------------------- HELPERS -------------------- */
@@ -335,13 +336,23 @@ serve(async (req) => {
 
     const attendees = buildAttendees(body);   // ✅ SAFE LOGIC
 
+    // Build base event with meeting link in location and description if available
+    const initialLink = body.meetingLink?.trim();
+    let initialDescription = body.description || "";
+    if (initialLink && !initialDescription.includes(initialLink)) {
+      initialDescription = `🔗 MEETING LINK:\n${initialLink}\n\n${initialDescription}`.trim();
+    }
+
     const event: any = {
       summary: body.title,
-      description: body.description,
+      description: initialDescription,
       start: { dateTime: body.startDateTime, timeZone: "UTC" },
       end: { dateTime: body.endDateTime, timeZone: "UTC" },
       attendees,
     };
+    if (initialLink) {
+      event.location = initialLink;
+    }
 
     let eventId = null;
     let hangoutLink = null;
@@ -370,11 +381,18 @@ serve(async (req) => {
         
       if (sessionData?.google_event_id) {
         isUpdate = true;
+        const currentLink = body.meetingLink || sessionData.meeting_link;
+        if (currentLink) {
+          event.location = currentLink;
+          if (!event.description.includes(currentLink)) {
+            event.description = `🔗 MEETING LINK:\n${currentLink}\n\n${body.description || ""}`.trim();
+          }
+        }
         const result = await updateCalendarEvent(sessionData.google_event_id, event, serviceAccountEmail, privateKey);
         eventId = result.eventId;
         // Keep the existing meeting link or use the one returned by the API
-        hangoutLink = result.hangoutLink || sessionData.meeting_link;
-        console.log(`Successfully updated calendar event: ${eventId}`);
+        hangoutLink = result.hangoutLink || currentLink;
+        console.log(`Successfully updated calendar event: ${eventId} with location: ${currentLink}`);
       }
     }
 
@@ -388,8 +406,28 @@ serve(async (req) => {
       };
       const result = await createCalendarEvent(event, serviceAccountEmail, privateKey);
       eventId = result.eventId;
-      hangoutLink = result.hangoutLink;
+      hangoutLink = result.hangoutLink || initialLink;
       console.log(`Successfully created calendar event: ${eventId}, meet link: ${hangoutLink}`);
+
+      // ✅ CRITICAL: Immediately patch the calendar event with the newly created Meet link
+      // so the event in Google Calendar has location and description with the link!
+      if (hangoutLink && eventId) {
+        try {
+          const patchedDescription = `🔗 JOIN MEETING LINK:\n${hangoutLink}\n\n${body.description || ""}`.trim();
+          await updateCalendarEvent(
+            eventId,
+            {
+              location: hangoutLink,
+              description: patchedDescription,
+            },
+            serviceAccountEmail,
+            privateKey
+          );
+          console.log(`Successfully patched Google Calendar event with location and description meet link: ${hangoutLink}`);
+        } catch (patchErr) {
+          console.warn("Could not patch calendar event with location/description:", patchErr);
+        }
+      }
     }
 
     // ✅ TRY TO ASSIGN COHOSTS

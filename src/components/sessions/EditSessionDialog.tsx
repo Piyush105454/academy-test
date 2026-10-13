@@ -540,6 +540,8 @@ ${formData.quiz_content_ppt ? `📊 PPT/Quiz: ${formData.quiz_content_ppt}` : ''
 Use this template to prepare your session:
 ${window.location.origin}/ppt/1.1.7.1.3%20GT%20WES_%20Sample%20Template%20for%20Session.pptx
 
+${formData.meeting_link ? `🔗 MEETING LINK:\n${formData.meeting_link}` : ''}
+
 Session updated with new details.
             `.trim(),
           startDateTime: startDateTime.toISOString(),
@@ -552,6 +554,7 @@ Session updated with new details.
           coordinatorEmail: coordinatorData?.email || '',
           classEmail: classData?.email,
           centreEmail: centreData?.email,
+          meetingLink: formData.meeting_link,
         };
 
         const isMsTeams = formData.meeting_link && formData.meeting_link.includes('teams.microsoft.com');
