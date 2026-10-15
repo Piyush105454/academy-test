@@ -252,23 +252,40 @@ export default function ClassStudents() {
       if (studentsError) throw studentsError;
       
       const emails = (studentsData || []).map((s: any) => s.email).filter(Boolean);
-      let profileMap = new Map<string, boolean>();
-      if (emails.length > 0) {
-        try {
+      const studentIds = (studentsData || []).map((s: any) => s.id).filter(Boolean);
+      let profileMapByEmail = new Map<string, boolean>();
+      let profileMapById = new Map<string, boolean>();
+
+      try {
+        const queryOr: string[] = [];
+        if (studentIds.length > 0) queryOr.push(`id.in.(${studentIds.join(',')})`);
+        if (emails.length > 0) queryOr.push(`email.in.(${emails.join(',')})`);
+
+        if (queryOr.length > 0) {
           const { data: profiles } = await supabase
             .from('user_profiles')
-            .select('email, is_active')
-            .in('email', emails);
+            .select('id, email, is_active')
+            .or(queryOr.join(','));
+
           if (profiles) {
-            profileMap = new Map(profiles.map((p: any) => [p.email?.toLowerCase().trim(), p.is_active]));
+            profiles.forEach((p: any) => {
+              if (p.id) profileMapById.set(p.id, p.is_active);
+              if (p.email) profileMapByEmail.set(p.email.toLowerCase().trim(), p.is_active);
+            });
           }
-        } catch (e) {
-          console.error('Error fetching user_profiles is_active:', e);
         }
+      } catch (e) {
+        console.error('Error fetching user_profiles is_active:', e);
       }
 
       const enrichedStudents = (studentsData || []).map((student) => {
-        const isActive = student.email ? profileMap.get(student.email.toLowerCase().trim()) !== false : true;
+        let isActive = true;
+        if (profileMapById.has(student.id)) {
+          isActive = profileMapById.get(student.id) !== false;
+        } else if (student.email && profileMapByEmail.has(student.email.toLowerCase().trim())) {
+          isActive = profileMapByEmail.get(student.email.toLowerCase().trim()) !== false;
+        }
+
         if (student.monitor_id) {
           const monitor = studentsData.find(s => s.id === student.monitor_id);
           return { ...student, is_active: isActive, monitor_name: monitor ? monitor.name : 'Unknown' };
@@ -313,14 +330,41 @@ export default function ClassStudents() {
   const handleToggleActive = async (student: Student) => {
     try {
       const newStatus = student.is_active === false;
-      if (student.email) {
-        const { error } = await supabase.from('user_profiles').update({ is_active: newStatus }).eq('email', student.email);
-        if (error) throw error;
+      const studentEmail = student.email || `${student.student_id ? student.student_id.toLowerCase().replace(/[^a-z0-9]/g, '') : student.id}@student.wes`;
+
+      // 1. If student didn't have email in students table, save it so it's consistent
+      if (!student.email) {
+        await supabase
+          .from('students')
+          .update({ email: studentEmail })
+          .eq('id', student.id);
       }
-      setStudents(students.map(s => s.id === student.id ? { ...s, is_active: newStatus } : s));
+
+      // 2. Upsert user_profiles record for this student
+      const { error: upsertErr } = await supabase
+        .from('user_profiles')
+        .upsert({
+          id: student.id,
+          email: studentEmail,
+          full_name: student.name,
+          class_id: student.class_id || classId,
+          role_id: 5,
+          is_active: newStatus
+        }, { onConflict: 'id' });
+
+      if (upsertErr) {
+        // Fallback: also try updating by email
+        await supabase
+          .from('user_profiles')
+          .update({ is_active: newStatus })
+          .eq('email', studentEmail);
+      }
+
+      setStudents(students.map(s => s.id === student.id ? { ...s, is_active: newStatus, email: student.email || studentEmail } : s));
       toast.success(newStatus ? 'Student activated' : 'Student deactivated');
-    } catch (e) {
-      toast.error('Failed to toggle status');
+    } catch (e: any) {
+      console.error('Failed to toggle status:', e);
+      toast.error('Failed to toggle status: ' + (e?.message || 'Unknown error'));
     }
   };
 

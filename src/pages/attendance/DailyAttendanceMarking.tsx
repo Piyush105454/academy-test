@@ -73,16 +73,36 @@ export default function DailyAttendanceMarking() {
         .eq('academic_year', selectedYear)
         .order('name');
       if (studs) {
-          const emails = studs.map(s => s.email).filter(Boolean);
-          let activeData = studs;
-          if (emails.length > 0) {
-              const { data: profiles } = await supabase.from('user_profiles').select('email, is_active').in('email', emails);
-              if (profiles) {
-                  const profileMap = new Map(profiles.map(p => [p.email?.toLowerCase().trim(), p.is_active]));
-                  activeData = studs.filter(s => s.email ? profileMap.get(s.email.toLowerCase().trim()) !== false : true);
-              }
+        const emails = studs.map(s => s.email).filter(Boolean);
+        const ids = studs.map(s => s.id).filter(Boolean);
+        let activeData = studs;
+
+        try {
+          const queryOr: string[] = [];
+          if (ids.length > 0) queryOr.push(`id.in.(${ids.join(',')})`);
+          if (emails.length > 0) queryOr.push(`email.in.(${emails.join(',')})`);
+
+          if (queryOr.length > 0) {
+            const { data: profiles } = await supabase
+              .from('user_profiles')
+              .select('id, email, is_active')
+              .or(queryOr.join(','));
+
+            if (profiles) {
+              const profileMapById = new Map(profiles.map(p => [p.id, p.is_active]));
+              const profileMapByEmail = new Map(profiles.filter(p => p.email).map(p => [p.email!.toLowerCase().trim(), p.is_active]));
+
+              activeData = studs.filter(s => {
+                if (profileMapById.has(s.id) && profileMapById.get(s.id) === false) return false;
+                if (s.email && profileMapByEmail.get(s.email.toLowerCase().trim()) === false) return false;
+                return true;
+              });
+            }
           }
-          setStudents(activeData);
+        } catch (err) {
+          console.error('Error filtering inactive students:', err);
+        }
+        setStudents(activeData);
       }
     } catch (e) {
       console.error(e);

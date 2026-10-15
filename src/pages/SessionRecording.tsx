@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Save, ChevronRight, ChevronLeft, Plus, Trash2, Shield, ExternalLink, Mic, MicOff, CheckCircle, Info, Calendar, Search, Edit, Check, ChevronsUpDown, X, ArrowUpDown, UploadCloud, Loader2, Eye } from 'lucide-react';
+import { ArrowLeft, Save, ChevronRight, ChevronLeft, Plus, Trash2, Shield, ExternalLink, Mic, MicOff, CheckCircle, Info, Calendar, Search, Edit, Check, ChevronsUpDown, X, ArrowUpDown, UploadCloud, Loader2, Eye, Lock } from 'lucide-react';
 import { parseSubmissionRequirements, serializeSubmissionRequirements, type SubmissionRequirement } from "../utils/submissionUtils";
 import { useNavigate, useParams } from 'react-router-dom';
 import { logActivity } from '@/utils/activityLogger';
@@ -366,20 +366,64 @@ export default function SessionRecording() {
     return false;
   })();
 
+  const canEditFacilitatorSection = userRole === 1 || userRole === 4;
+  const canEditCoordinatorSection = userRole === 1 || userRole === 3;
+  const canEditSupervisorSection = userRole === 1 || userRole === 2;
+  const userRoleName = userRole === 1 ? 'Administrator' : userRole === 3 ? 'Coordinator' : userRole === 4 ? 'Facilitator' : userRole === 2 ? 'Supervisor' : 'User';
+
   const loadUserRole = async () => {
     try {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('role_id')
-        .eq('id', user?.id)
-        .single();
+      if (!user) return;
+      const userEmail = user.email || '';
+      let roleId: number | null = null;
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading user role:', error);
+      if (user.id) {
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('role_id')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (data?.role_id) {
+          roleId = data.role_id;
+        }
       }
 
-      if (data?.role_id) {
-        setUserRole(data.role_id);
+      if (!roleId && userEmail) {
+        const { data: emailProfile } = await supabase
+          .from('user_profiles')
+          .select('role_id')
+          .ilike('email', userEmail)
+          .maybeSingle();
+
+        if (emailProfile?.role_id) {
+          roleId = emailProfile.role_id;
+        }
+      }
+
+      // Check if user is in coordinators table
+      if (userEmail) {
+        const { data: coordData } = await supabase
+          .from('coordinators')
+          .select('id, name')
+          .ilike('email', userEmail)
+          .maybeSingle();
+
+        if (coordData) {
+          roleId = 3; // Enforce Coordinator Role
+        }
+      }
+
+      if (roleId) {
+        setUserRole(roleId);
+        // Automatically land on the appropriate tab for their role
+        if (roleId === 3) {
+          setCurrentPage(3); // 2. Feedback & Closure by Coordinator
+        } else if (roleId === 2) {
+          setCurrentPage(2); // 3. Session Hours Tracker by Supervisor
+        } else {
+          setCurrentPage(1); // 1. Session Details & Performance by Facilitator
+        }
       }
     } catch (error) {
       console.error('Error loading user role:', error);
@@ -736,21 +780,28 @@ export default function SessionRecording() {
 
       // Filter out inactive students
       try {
+        const ids = finalStudents.map((st: any) => st.id).filter(Boolean);
         const emails = finalStudents.map((st: any) => st.email).filter(Boolean);
-        if (emails.length > 0) {
+        const queryOr: string[] = [];
+        if (ids.length > 0) queryOr.push(`id.in.(${ids.join(',')})`);
+        if (emails.length > 0) queryOr.push(`email.in.(${emails.join(',')})`);
+
+        if (queryOr.length > 0) {
           const { data: profiles, error: profileError } = await supabase
             .from('user_profiles')
-            .select('email, is_active')
-            .in('email', emails);
+            .select('id, email, is_active')
+            .or(queryOr.join(','));
 
           if (!profileError && profiles) {
-            const profileMap = new Map(
-              profiles.map((p: any) => [p.email?.toLowerCase().trim(), p.is_active])
+            const profileMapById = new Map(profiles.map((p: any) => [p.id, p.is_active]));
+            const profileMapByEmail = new Map(
+              profiles.filter((p: any) => p.email).map((p: any) => [p.email.toLowerCase().trim(), p.is_active])
             );
             finalStudents = finalStudents.filter((st: any) => {
               if ((st as any).is_active === false) return false;
-              if (!st.email) return true;
-              return profileMap.get(st.email.toLowerCase().trim()) !== false;
+              if (profileMapById.has(st.id) && profileMapById.get(st.id) === false) return false;
+              if (st.email && profileMapByEmail.get(st.email.toLowerCase().trim()) === false) return false;
+              return true;
             });
           }
         }
@@ -950,6 +1001,16 @@ export default function SessionRecording() {
     if (isFeedbackLocked) { toast.error('Feedback is locked. Please contact an admin to unlock.'); return; }
     if (!sessionId) return;
 
+    // Check permissions
+    if (currentPage === 1 && !canEditFacilitatorSection) {
+      toast.error('Access Denied: Only Facilitators and Admins can fill Facilitator feedback.');
+      return;
+    }
+    if (currentPage === 3 && !canEditCoordinatorSection) {
+      toast.error('Access Denied: Only Coordinators and Admins can fill Coordinator feedback.');
+      return;
+    }
+
     // Validation for Facilitator (Teacher) feedback fields
     if (currentPage === 1) {
       if (isRichTextEmpty(formData.session_objective)) {
@@ -1148,6 +1209,10 @@ export default function SessionRecording() {
 
   const handleSaveHoursTracker = async () => {
     if (isFeedbackLocked) { toast.error('Feedback is locked. Please contact an admin to unlock.'); return; }
+    if (!canEditSupervisorSection) {
+      toast.error('Access Denied: Only Supervisors and Admins can fill Session Hours Tracker.');
+      return;
+    }
     if (!sessionId) return;
 
     if (
@@ -2069,7 +2134,10 @@ export default function SessionRecording() {
               }`}
           >
             <div className="flex flex-col items-center">
-              <span className="text-sm font-semibold">1. Session Details & Performance</span>
+              <span className="text-sm font-semibold flex items-center justify-center gap-1.5">
+                1. Session Details & Performance
+                {!canEditFacilitatorSection && <Lock className="h-3.5 w-3.5 inline opacity-70" />}
+              </span>
               <span className="text-xs ">by Facilitator</span>
             </div>
           </button>
@@ -2081,7 +2149,10 @@ export default function SessionRecording() {
               }`}
           >
             <div className="flex flex-col items-center">
-              <span className="text-sm font-semibold">2. Feedback & Closure</span>
+              <span className="text-sm font-semibold flex items-center justify-center gap-1.5">
+                2. Feedback & Closure
+                {!canEditCoordinatorSection && <Lock className="h-3.5 w-3.5 inline opacity-70" />}
+              </span>
               <span className="text-xs ">by Coordinator</span>
             </div>
           </button>
@@ -2093,7 +2164,10 @@ export default function SessionRecording() {
               }`}
           >
             <div className="flex flex-col items-center">
-              <span className="text-sm font-semibold">3. Session Hours Tracker</span>
+              <span className="text-sm font-semibold flex items-center justify-center gap-1.5">
+                3. Session Hours Tracker
+                {!canEditSupervisorSection && <Lock className="h-3.5 w-3.5 inline opacity-70" />}
+              </span>
               <span className="text-xs ">by Supervisor</span>
             </div>
           </button>
@@ -2135,6 +2209,19 @@ export default function SessionRecording() {
         {/* Page 1: Session Details & Performance by Facilitator */}
         {currentPage === 1 && (
           <div className="space-y-4">
+            {!canEditFacilitatorSection && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex items-start gap-3">
+                <Lock className="h-5 w-5 mt-0.5 flex-shrink-0 text-amber-600" />
+                <div>
+                  <p className="font-semibold text-sm">Facilitator Feedback is Locked (Read Only)</p>
+                  <p className="text-xs mt-1 text-amber-700">
+                    You are logged in as a {userRoleName}. Only Facilitators and Administrators can fill or edit this section.
+                  </p>
+                </div>
+              </div>
+            )}
+            <fieldset disabled={!canEditFacilitatorSection || isFeedbackLocked} className={`space-y-4 border-0 p-0 m-0 ${!canEditFacilitatorSection || isFeedbackLocked ? 'pointer-events-none select-none opacity-85' : ''}`}>
+
 
             {/* Sub-tab a: Session Objective Only */}
             {currentSubTab === 'a' && (
@@ -3060,6 +3147,7 @@ export default function SessionRecording() {
                 })()}
               </div>
             )}
+            </fieldset>
             {/* Save Button for Page 1 */}
             {/* Removed - using main navigation buttons at bottom */}
           </div>
@@ -3070,6 +3158,19 @@ export default function SessionRecording() {
         {/* Page 2: Feedback & Closure */}
         {currentPage === 3 && (
           <div className="space-y-4">
+            {!canEditCoordinatorSection && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex items-start gap-3">
+                <Lock className="h-5 w-5 mt-0.5 flex-shrink-0 text-amber-600" />
+                <div>
+                  <p className="font-semibold text-sm">Coordinator Feedback is Locked (Read Only)</p>
+                  <p className="text-xs mt-1 text-amber-700">
+                    You are logged in as a {userRoleName}. Only Coordinators and Administrators can fill or edit this section.
+                  </p>
+                </div>
+              </div>
+            )}
+            <fieldset disabled={!canEditCoordinatorSection || isFeedbackLocked} className={`space-y-4 border-0 p-0 m-0 ${!canEditCoordinatorSection || isFeedbackLocked ? 'pointer-events-none select-none opacity-85' : ''}`}>
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Guest Teacher Feedback <span className="text-destructive">*</span></CardTitle>
@@ -3186,6 +3287,7 @@ export default function SessionRecording() {
               </CardContent>
             </Card>
 
+            </fieldset>
             {/* Save Button for Page 3 */}
             {/* Removed - using main navigation buttons at bottom */}
           </div>
@@ -3194,7 +3296,7 @@ export default function SessionRecording() {
         {/* Page 2: Session Hours Tracker */}
         {currentPage === 2 && (
           <>
-            {userRole === 1 ? (
+            {canEditSupervisorSection ? (
               <div className="space-y-4">
                 {/* Sub-tabs for Hours Tracker */}
                 <div className="flex justify-center gap-2 flex-wrap border-b border-border pb-4">
@@ -3407,10 +3509,10 @@ export default function SessionRecording() {
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-center space-y-4">
-                    <Shield className="h-12 w-12 text-destructive mx-auto" />
-                    <h2 className="text-xl font-bold">Access Denied</h2>
-                    <p className="text-muted-foreground">
-                      Session Hours Tracker is only accessible to administrators.
+                    <Lock className="h-12 w-12 text-amber-500 mx-auto" />
+                    <h2 className="text-xl font-bold">Session Hours Tracker Locked</h2>
+                    <p className="text-muted-foreground text-sm">
+                      You are logged in as a {userRoleName}. Session Hours Tracker can only be filled and edited by Supervisors and Administrators.
                     </p>
                   </div>
                 </CardContent>
@@ -3430,7 +3532,7 @@ export default function SessionRecording() {
           </Button>
 
           <div className="flex gap-2">
-            {!(currentPage === 1 && currentSubTab === 'a') && (
+            {currentPage === 1 && currentSubTab !== 'a' && (
               <Button
                 variant="outline"
                 onClick={handlePreviousPage}
@@ -3441,7 +3543,8 @@ export default function SessionRecording() {
               </Button>
             )}
 
-            {currentPage !== 2 && (
+            {/* Next buttons */}
+            {currentPage === 1 && currentSubTab !== 'c' && (
               <Button
                 onClick={handleNextPage}
                 variant="outline"
@@ -3451,11 +3554,32 @@ export default function SessionRecording() {
                 <ChevronRight className="h-4 w-4" />
               </Button>
             )}
+            {currentPage === 1 && currentSubTab === 'c' && userRole === 1 && (
+              <Button
+                onClick={handleNextPage}
+                variant="outline"
+                className="gap-2"
+              >
+                Next (Coordinator)
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            )}
+            {currentPage === 3 && userRole === 1 && (
+              <Button
+                onClick={handleNextPage}
+                variant="outline"
+                className="gap-2"
+              >
+                Next (Supervisor)
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            )}
 
-            {currentPage === 1 && (
+            {/* Save Buttons - Only show for authorized role */}
+            {currentPage === 1 && canEditFacilitatorSection && (
               <Button
                 onClick={handleSaveFeedback}
-                disabled={saving}
+                disabled={saving || isFeedbackLocked}
                 className="gap-2"
               >
                 <Save className="h-4 w-4" />
@@ -3463,10 +3587,10 @@ export default function SessionRecording() {
               </Button>
             )}
 
-            {currentPage === 2 && (
+            {currentPage === 2 && canEditSupervisorSection && (
               <Button
                 onClick={handleSaveHoursTracker}
-                disabled={saving}
+                disabled={saving || isFeedbackLocked}
                 className="gap-2"
               >
                 <Save className="h-4 w-4" />
@@ -3474,10 +3598,10 @@ export default function SessionRecording() {
               </Button>
             )}
 
-            {currentPage === 3 && (
+            {currentPage === 3 && canEditCoordinatorSection && (
               <Button
                 onClick={handleSaveFeedback}
-                disabled={saving}
+                disabled={saving || isFeedbackLocked}
                 className="gap-2"
               >
                 <Save className="h-4 w-4" />

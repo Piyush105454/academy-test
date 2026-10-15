@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { useNavigate } from 'react-router-dom';
@@ -130,11 +130,37 @@ export default function ClassWiseGrid() {
       // 1. Fetch Students
       const { data: studs } = await supabase
         .from('students')
-        .select('id, name')
+        .select('id, name, email')
         .eq('class_id', selectedClassId)
         .order('name');
         
-      setStudents(studs || []);
+      let activeStuds = studs || [];
+      if (studs && studs.length > 0) {
+        const ids = studs.map(s => s.id).filter(Boolean);
+        const emails = studs.map(s => s.email).filter(Boolean);
+        const queryOr: string[] = [];
+        if (ids.length > 0) queryOr.push(`id.in.(${ids.join(',')})`);
+        if (emails.length > 0) queryOr.push(`email.in.(${emails.join(',')})`);
+
+        if (queryOr.length > 0) {
+          const { data: profiles } = await supabase
+            .from('user_profiles')
+            .select('id, email, is_active')
+            .or(queryOr.join(','));
+
+          if (profiles) {
+            const profileMapById = new Map(profiles.map(p => [p.id, p.is_active]));
+            const profileMapByEmail = new Map(profiles.filter(p => p.email).map(p => [p.email!.toLowerCase().trim(), p.is_active]));
+
+            activeStuds = studs.filter(s => {
+              if (profileMapById.has(s.id) && profileMapById.get(s.id) === false) return false;
+              if (s.email && profileMapByEmail.get(s.email.toLowerCase().trim()) === false) return false;
+              return true;
+            });
+          }
+        }
+      }
+      setStudents(activeStuds);
 
       // 2. Fetch Attendance for the month
       const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;

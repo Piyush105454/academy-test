@@ -149,7 +149,7 @@ export function MonthlyLeaderboardWidget({ startDate, endDate }: MonthlyLeaderbo
         }
       });
 
-      // 5. Build Facilitator array
+      // 5. Build Facilitator array (filter out 0 plan)
       if (facs) {
         const facPerf = facs.map(f => {
           const normName = f.name.trim().toLowerCase();
@@ -161,11 +161,13 @@ export function MonthlyLeaderboardWidget({ startDate, endDate }: MonthlyLeaderbo
             planned,
             actual,
           };
-        }).sort((a, b) => b.actual - a.actual || b.planned - a.planned);
+        })
+        .filter(f => f.planned > 0)
+        .sort((a, b) => b.actual - a.actual || b.planned - a.planned);
         setFacilitators(facPerf);
       }
 
-      // 6. Build Class array
+      // 6. Build Class array (filter out 0 plan)
       const classSet = new Set<string>();
       classesData?.forEach(c => classSet.add(c.name));
       Object.keys(classActuals).forEach(c => classSet.add(c));
@@ -176,17 +178,21 @@ export function MonthlyLeaderboardWidget({ startDate, endDate }: MonthlyLeaderbo
         name: cName,
         planned: classTargets[cName] || 0,
         actual: classActuals[cName] || 0,
-      })).sort((a, b) => b.actual - a.actual || b.planned - a.planned);
+      }))
+      .filter(c => c.planned > 0)
+      .sort((a, b) => b.actual - a.actual || b.planned - a.planned);
       setClasses(classPerf);
 
-      // 7. Build Category array
+      // 7. Build Category array (filter out 0 plan)
       const standardCats = ['Guest Teacher (GT)', 'Guest Speaker (GS)', 'Local Teacher (LT)'];
       const catPerf: ItemPerformance[] = standardCats.map(cat => ({
         id: cat,
         name: cat,
         planned: catTargets[cat] || catTargets[cat.split(' ')[0]] || 0,
         actual: catActuals[cat] || 0,
-      })).sort((a, b) => b.actual - a.actual || b.planned - a.planned);
+      }))
+      .filter(cat => cat.planned > 0)
+      .sort((a, b) => b.actual - a.actual || b.planned - a.planned);
       setCategories(catPerf);
 
     } catch (e) {

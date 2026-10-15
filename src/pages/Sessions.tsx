@@ -165,25 +165,69 @@ export default function Sessions() {
   const { user } = useAuth();
   const [userRole, setUserRole] = useState<number | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [coordinatorName, setCoordinatorName] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
 
   useEffect(() => {
-    if (user?.id) {
-      supabase
-        .from('user_profiles')
-        .select('role_id, full_name')
-        .eq('id', user.id)
-        .single()
-        .then(({ data }) => {
-          if (data?.role_id) {
-            setUserRole(data.role_id);
-          }
-          if (data?.full_name) {
-            setUserName(data.full_name);
-          }
-        });
+    async function checkIdentity() {
+      if (!user) return;
+      const userEmail = user.email || '';
+
+      let roleId: number | null = null;
+      let fullName = '';
+      let coordName = '';
+
+      if (user.id) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('role_id, full_name, email')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profile) {
+          roleId = profile.role_id;
+          fullName = profile.full_name || '';
+        }
+      }
+
+      if (!roleId && userEmail) {
+        const { data: emailProfile } = await supabase
+          .from('user_profiles')
+          .select('role_id, full_name')
+          .ilike('email', userEmail)
+          .maybeSingle();
+
+        if (emailProfile) {
+          roleId = emailProfile.role_id;
+          if (emailProfile.full_name) fullName = emailProfile.full_name;
+        }
+      }
+
+      // Check if user email exists in coordinators table
+      if (userEmail) {
+        const { data: coordData } = await supabase
+          .from('coordinators')
+          .select('id, name')
+          .ilike('email', userEmail)
+          .maybeSingle();
+
+        if (coordData) {
+          roleId = 3; // Enforce Coordinator Role
+          coordName = coordData.name || '';
+          if (!fullName) fullName = coordData.name || '';
+        }
+      }
+
+      if (roleId === 3) {
+        setCoordinatorName(coordName || fullName);
+      }
+
+      if (roleId) setUserRole(roleId);
+      if (fullName) setUserName(fullName);
     }
-  }, [user?.id]);
+
+    checkIdentity();
+  }, [user]);
   const [loading, setLoading] = useState(true);
   const [isTypeDialogOpen, setIsTypeDialogOpen] = useState(false);
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
@@ -488,8 +532,16 @@ export default function Sessions() {
       filtered = filtered.filter(s => s.facilitator_name === facilitatorFilter);
     }
 
-    // Apply coordinator filter
-    if (coordinatorFilter) {
+    // Apply coordinator filter or lock to current user if coordinator
+    if (userRole === 3 && (coordinatorName || userName)) {
+      const activeCoord = (coordinatorName || userName || '').trim().toLowerCase();
+      filtered = filtered.filter(s => {
+        const sName = (s.coordinator_name || '').trim().toLowerCase();
+        const sEmail = (s.coordinator_email || '').trim().toLowerCase();
+        const uEmail = (user?.email || '').trim().toLowerCase();
+        return (activeCoord && sName === activeCoord) || (uEmail && sEmail === uEmail);
+      });
+    } else if (coordinatorFilter) {
       filtered = filtered.filter(s => s.coordinator_name === coordinatorFilter);
     }
 
@@ -841,17 +893,29 @@ export default function Sessions() {
                     <div className="w-full sm:w-48">
                       <label className="text-sm font-medium text-foreground mb-2 block">Coordinator
                       </label>
-                      <Select value={coordinatorFilter || 'all'} onValueChange={(value) => setCoordinatorFilter(value === 'all' ? null : value)}>
+                      <Select 
+                        value={userRole === 3 ? (coordinatorName || userName || 'locked') : (coordinatorFilter || 'all')} 
+                        onValueChange={(value) => setCoordinatorFilter(value === 'all' ? null : value)}
+                        disabled={userRole === 3}
+                      >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select coordinator" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All Coordinators</SelectItem>
-                          {[...new Set(sessions.map(s => s.coordinator_name).filter(Boolean))].sort().map((coordinator) => (
-                            <SelectItem key={coordinator} value={coordinator || ''}>
-                              {coordinator}
+                          {userRole === 3 ? (
+                            <SelectItem value={coordinatorName || userName || 'locked'}>
+                              {coordinatorName || userName || 'My Sessions'} <Lock className="inline h-3 w-3 ml-2" />
                             </SelectItem>
-                          ))}
+                          ) : (
+                            <>
+                              <SelectItem value="all">All Coordinators</SelectItem>
+                              {[...new Set(sessions.map(s => s.coordinator_name).filter(Boolean))].sort().map((coordinator) => (
+                                <SelectItem key={coordinator} value={coordinator || ''}>
+                                  {coordinator}
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1122,7 +1186,18 @@ export default function Sessions() {
                               {session.session_id_code || '---'}
                             </a>
                           </TableCell>
-                          <TableCell>{session.subject_name || '-'}</TableCell>
+                          <TableCell>
+                            {session.subject_name ? (
+                              <a
+                                href={`/sessions/${session.id}/recording`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline cursor-pointer"
+                              >
+                                {session.subject_name}
+                              </a>
+                            ) : '-'}
+                          </TableCell>
                           <TableCell>{session.content_category || '-'}</TableCell>
                           <TableCell>{session.module_no ? `${session.module_no} - ${session.module_name || ''}` : session.module_name || '-'}</TableCell>
                           <TableCell className="max-w-[150px] truncate" title={session.topics_covered || ''}>

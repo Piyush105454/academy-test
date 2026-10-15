@@ -105,26 +105,70 @@ export default function FeedbackSelection() {
   const { user } = useAuth();
   const [userRole, setUserRole] = useState<number | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [coordinatorName, setCoordinatorName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [feedbackSessions, setFeedbackSessions] = useState<FeedbackSession[]>([]);
 
   useEffect(() => {
-    if (user?.id) {
-      supabase
-        .from('user_profiles')
-        .select('role_id, full_name')
-        .eq('id', user.id)
-        .single()
-        .then(({ data }) => {
-          if (data?.role_id) {
-            setUserRole(data.role_id);
-          }
-          if (data?.full_name) {
-            setUserName(data.full_name);
-          }
-        });
+    async function checkIdentity() {
+      if (!user) return;
+      const userEmail = user.email || '';
+
+      let roleId: number | null = null;
+      let fullName = '';
+      let coordName = '';
+
+      if (user.id) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('role_id, full_name, email')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profile) {
+          roleId = profile.role_id;
+          fullName = profile.full_name || '';
+        }
+      }
+
+      if (!roleId && userEmail) {
+        const { data: emailProfile } = await supabase
+          .from('user_profiles')
+          .select('role_id, full_name')
+          .ilike('email', userEmail)
+          .maybeSingle();
+
+        if (emailProfile) {
+          roleId = emailProfile.role_id;
+          if (emailProfile.full_name) fullName = emailProfile.full_name;
+        }
+      }
+
+      // Check if user email exists in coordinators table
+      if (userEmail) {
+        const { data: coordData } = await supabase
+          .from('coordinators')
+          .select('id, name')
+          .ilike('email', userEmail)
+          .maybeSingle();
+
+        if (coordData) {
+          roleId = 3; // Enforce Coordinator Role
+          coordName = coordData.name || '';
+          if (!fullName) fullName = coordData.name || '';
+        }
+      }
+
+      if (roleId === 3) {
+        setCoordinatorName(coordName || fullName);
+      }
+
+      if (roleId) setUserRole(roleId);
+      if (fullName) setUserName(fullName);
     }
-  }, [user?.id]);
+
+    checkIdentity();
+  }, [user]);
   
   // Filters and sorting state matching Sessions.tsx
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -288,7 +332,12 @@ export default function FeedbackSelection() {
     } else if (facilitatorFilter) {
       filtered = filtered.filter(s => s.facilitator_name === facilitatorFilter);
     }
-    if (coordinatorFilter) filtered = filtered.filter(s => s.coordinator_name === coordinatorFilter);
+    if (userRole === 3 && (coordinatorName || userName)) {
+      const activeCoord = (coordinatorName || userName || '').trim().toLowerCase();
+      filtered = filtered.filter(s => (s.coordinator_name || '').trim().toLowerCase() === activeCoord);
+    } else if (coordinatorFilter) {
+      filtered = filtered.filter(s => s.coordinator_name === coordinatorFilter);
+    }
 
     
 
@@ -718,13 +767,25 @@ export default function FeedbackSelection() {
 
               <div>
                 <label className="text-xs font-medium mb-1 block">Coordinator</label>
-                <Select value={coordinatorFilter || 'all'} onValueChange={(v) => setCoordinatorFilter(v === 'all' ? null : v)}>
+                <Select 
+                  value={userRole === 3 ? (coordinatorName || userName || 'locked') : (coordinatorFilter || 'all')} 
+                  onValueChange={(v) => setCoordinatorFilter(v === 'all' ? null : v)}
+                  disabled={userRole === 3}
+                >
                   <SelectTrigger className="h-9 truncate"><SelectValue placeholder="All Coordinators" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Coordinators</SelectItem>
-                    {[...new Set(feedbackSessions.map(s => s.coordinator_name).filter(Boolean))].sort().map(s => (
-                      <SelectItem key={s} value={s!}>{s}</SelectItem>
-                    ))}
+                    {userRole === 3 ? (
+                      <SelectItem value={coordinatorName || userName || 'locked'}>
+                        {coordinatorName || userName || 'My Sessions'} <Lock className="inline h-3 w-3 ml-2" />
+                      </SelectItem>
+                    ) : (
+                      <>
+                        <SelectItem value="all">All Coordinators</SelectItem>
+                        {[...new Set(feedbackSessions.map(s => s.coordinator_name).filter(Boolean))].sort().map(s => (
+                          <SelectItem key={s} value={s!}>{s}</SelectItem>
+                        ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

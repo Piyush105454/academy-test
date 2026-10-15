@@ -33,6 +33,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  isSessionDelayed,
+  getDelayReasonNote,
+  calculateFacilitatorSessionAmount
+} from '@/utils/facilitatorEarningsUtils';
 
 interface FacilitatorSessionItem {
   id: string; // session id
@@ -48,6 +53,8 @@ interface FacilitatorSessionItem {
   earning_status_raw?: string;
   transaction_id?: string;
   paid_at?: string;
+  is_delayed?: boolean;
+  delay_reason?: string | null;
 }
 
 export default function FacilitatorEarnings() {
@@ -155,7 +162,9 @@ export default function FacilitatorEarnings() {
           module_name,
           topics_covered,
           status,
-          facilitator_name
+          facilitator_name,
+          facilitator_feedback_status,
+          recorded_at
         `)
         .ilike('status', 'completed')
         .ilike('facilitator_name', `%${facName}%`)
@@ -183,12 +192,13 @@ export default function FacilitatorEarnings() {
       const items: FacilitatorSessionItem[] = (completedSessions || []).map(sess => {
         const earning = earningsBySession[sess.id];
         let status: 'eligible' | 'under_review' | 'paid' = 'eligible';
-        let amount = perSessionRate;
+        const isDelayed = isSessionDelayed(sess);
+        const delayReason = getDelayReasonNote(sess);
+        const amount = calculateFacilitatorSessionAmount(sess, perSessionRate, earning?.amount);
         let earningId = undefined;
 
         if (earning) {
           earningId = earning.id;
-          amount = earning.amount || perSessionRate;
           if (earning.status === 'approved') {
             status = 'paid';
           } else {
@@ -214,6 +224,8 @@ export default function FacilitatorEarnings() {
           session_date: sess.session_date,
           amount,
           status,
+          is_delayed: isDelayed,
+          delay_reason: delayReason,
           earning_status_raw: earning?.status,
         };
       });
@@ -305,6 +317,12 @@ export default function FacilitatorEarnings() {
       .reduce((sum, s) => sum + s.amount, 0);
   }, [sessions, selectedSessionIds]);
 
+  const selectedDelayedCount = useMemo(() => {
+    return sessions
+      .filter(s => selectedSessionIds.includes(s.id) && s.is_delayed)
+      .length;
+  }, [sessions, selectedSessionIds]);
+
   // Selection handlers
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -336,10 +354,11 @@ export default function FacilitatorEarnings() {
 
       const inserts = selectedSessionIds.map(sessionId => {
         const sessItem = sessions.find(s => s.id === sessionId);
+        const amount = sessItem?.amount ?? (sessItem?.is_delayed ? Math.round(perSessionRate / 2) : perSessionRate);
         return {
           facilitator_id: currentFacilitator.id,
           session_id: sessionId,
-          amount: sessItem?.amount || perSessionRate,
+          amount,
           status: 'pending',
           created_at: new Date().toISOString(),
         };
@@ -635,7 +654,27 @@ export default function FacilitatorEarnings() {
 
                         {/* AMOUNT */}
                         <TableCell className="font-bold text-emerald-600 text-sm whitespace-nowrap">
-                          ₹{session.amount}
+                          <div className="flex flex-col">
+                            <span>₹{session.amount.toLocaleString('en-IN')}</span>
+                            {session.is_delayed ? (
+                              <div className="mt-0.5">
+                                <span 
+                                  className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5 inline-flex items-center gap-1 whitespace-nowrap"
+                                  title={session.delay_reason || "Delayed Session: 50% deduction applied"}
+                                >
+                                  ⚠️ Delayed (-50%)
+                                </span>
+                                <span 
+                                  className="block text-[9px] text-amber-700 italic mt-0.5 max-w-[150px] truncate cursor-help"
+                                  title={session.delay_reason || "Delayed session"}
+                                >
+                                  {session.delay_reason || "Late feedback submission"}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-normal">Standard (₹{perSessionRate})</span>
+                            )}
+                          </div>
                         </TableCell>
 
                         {/* STATUS BADGE */}
@@ -688,6 +727,12 @@ export default function FacilitatorEarnings() {
                   <span className="text-slate-500 font-medium">Selected Sessions:</span>
                   <span className="font-bold text-slate-800">{selectedSessionIds.length}</span>
                 </div>
+                {selectedDelayedCount > 0 && (
+                  <div className="flex justify-between items-center text-amber-700 font-medium">
+                    <span>Delayed Sessions (50% Rate):</span>
+                    <span className="font-bold">{selectedDelayedCount} (₹{Math.round(perSessionRate / 2)} each)</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center border-t border-slate-200 pt-2 text-sm">
                   <span className="font-semibold text-slate-700">Total Encashment Amount:</span>
                   <span className="font-extrabold text-emerald-600 text-base">
@@ -695,6 +740,15 @@ export default function FacilitatorEarnings() {
                   </span>
                 </div>
               </div>
+
+              {selectedDelayedCount > 0 && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px] flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <strong>{selectedDelayedCount} session(s)</strong> are categorized as <strong>Delayed</strong> (recorded after scheduled date) and have 50% deduction applied (₹{Math.round(perSessionRate / 2)} instead of ₹{perSessionRate}).
+                  </div>
+                </div>
+              )}
 
               <p className="text-[11px] text-slate-400">
                 Once submitted, these sessions will move to <strong>Under Review</strong> and will be processed by the admin for online payment.

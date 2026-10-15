@@ -12,8 +12,14 @@ import {
   RotateCcw, 
   Edit3, 
   Clock,
-  X
+  X,
+  AlertTriangle
 } from 'lucide-react';
+import { 
+  isSessionDelayed, 
+  getDelayReasonNote, 
+  calculateFacilitatorSessionAmount 
+} from '@/utils/facilitatorEarningsUtils';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -76,6 +82,9 @@ interface SessionData {
   volunteer_name?: string;
   coordinator_name?: string;
   facilitator_name?: string;
+  status?: string;
+  facilitator_feedback_status?: string;
+  recorded_at?: string | null;
 }
 
 interface EarningRecord {
@@ -89,6 +98,8 @@ interface EarningRecord {
   transaction_id?: string | null;
   paid_at?: string | null;
   is_unrecorded?: boolean;
+  is_delayed?: boolean;
+  delay_reason?: string | null;
   sessions?: SessionData;
 }
 
@@ -272,7 +283,11 @@ export default function AdminFacilitatorEarnings() {
             created_at,
             session_id,
             sessions (
-              session_date
+              id,
+              session_date,
+              status,
+              facilitator_feedback_status,
+              recorded_at
             )
           )
         `);
@@ -296,7 +311,8 @@ export default function AdminFacilitatorEarnings() {
         let totalPending = 0;
 
         earnings.forEach((e: any) => {
-          const amt = parseFloat(e.amount) || 0;
+          const rawAmt = parseFloat(e.amount) || 0;
+          const amt = calculateFacilitatorSessionAmount(e.sessions, perSessionAmount, rawAmt);
           const paymentInfo = storedPayments[e.id];
           const isPaid = e.status === 'paid_online' || !!paymentInfo;
 
@@ -360,6 +376,9 @@ export default function AdminFacilitatorEarnings() {
             volunteer_name,
             coordinator_id,
             facilitator_name,
+            status,
+            facilitator_feedback_status,
+            recorded_at,
             coordinators:coordinator_id(name)
           )
         `)
@@ -378,6 +397,9 @@ export default function AdminFacilitatorEarnings() {
           return earnedAt >= startDate && earnedAt <= endDate;
         })
         .map(r => {
+          const isDelayed = isSessionDelayed(r.sessions);
+          const effectiveAmount = calculateFacilitatorSessionAmount(r.sessions, perSessionAmount, parseFloat(r.amount as any));
+          const delayReason = getDelayReasonNote(r.sessions);
           const paymentInfo = storedPayments[r.id];
           const sData = r.sessions ? {
             ...r.sessions,
@@ -387,6 +409,9 @@ export default function AdminFacilitatorEarnings() {
           if (paymentInfo) {
             return {
               ...r,
+              amount: effectiveAmount,
+              is_delayed: isDelayed,
+              delay_reason: delayReason,
               sessions: sData,
               status: r.status === 'pending' ? 'pending' : 'paid_online',
               transaction_id: paymentInfo.transaction_id,
@@ -395,6 +420,9 @@ export default function AdminFacilitatorEarnings() {
           }
           return {
             ...r,
+            amount: effectiveAmount,
+            is_delayed: isDelayed,
+            delay_reason: delayReason,
             sessions: sData
           };
         });
@@ -416,6 +444,8 @@ export default function AdminFacilitatorEarnings() {
           coordinator_id,
           facilitator_name,
           status,
+          facilitator_feedback_status,
+          recorded_at,
           coordinators:coordinator_id(name)
         `)
         .ilike('status', 'completed')
@@ -429,20 +459,27 @@ export default function AdminFacilitatorEarnings() {
       const existingSessionIds = (data || []).map((r: any) => r.session_id);
       const unrecordedSessions: EarningRecord[] = (completedSessions || [])
         .filter(s => !existingSessionIds.includes(s.id))
-        .map((s: any) => ({
-          id: `unrecorded_${s.id}`,
-          facilitator_id: facId,
-          session_id: s.id,
-          amount: perSessionAmount,
-          status: 'pending',
-          created_at: s.session_date,
-          approved_at: null,
-          is_unrecorded: true,
-          sessions: {
-            ...s,
-            coordinator_name: s.coordinators?.name || '-'
-          }
-        }));
+        .map((s: any) => {
+          const isDelayed = isSessionDelayed(s);
+          const amt = calculateFacilitatorSessionAmount(s, perSessionAmount);
+          const delayReason = getDelayReasonNote(s);
+          return {
+            id: `unrecorded_${s.id}`,
+            facilitator_id: facId,
+            session_id: s.id,
+            amount: amt,
+            is_delayed: isDelayed,
+            delay_reason: delayReason,
+            status: 'pending',
+            created_at: s.session_date,
+            approved_at: null,
+            is_unrecorded: true,
+            sessions: {
+              ...s,
+              coordinator_name: s.coordinators?.name || '-'
+            }
+          };
+        });
 
       // Combine both into one unified list for the detail table
       const combined = [...recorded, ...unrecordedSessions].sort((a, b) => {
@@ -465,23 +502,24 @@ export default function AdminFacilitatorEarnings() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (record.is_unrecorded) {
-        // Create new earning record in DB
+        // Create new earning record in DB with the halved amount if delayed
         const { error } = await supabase
           .from('facilitator_earnings')
           .insert({
             facilitator_id: selectedFacilitator!.id,
             session_id: record.session_id,
-            amount: record.amount || perSessionAmount,
+            amount: record.amount,
             status: 'approved',
             approved_at: new Date().toISOString(),
             approved_by: user?.id
           });
         if (error) throw error;
       } else {
-        // Update existing record
+        // Update existing record, ensuring amount is updated to record.amount (halved if delayed)
         const { error } = await supabase
           .from('facilitator_earnings')
           .update({
+            amount: record.amount,
             status: 'approved',
             approved_at: new Date().toISOString(),
             approved_by: user?.id
@@ -1118,13 +1156,20 @@ export default function AdminFacilitatorEarnings() {
                             <TableRow key={record.id} className="hover:bg-muted/50">
                               {/* 1. SESSION ID (FIRST COLUMN) */}
                               <TableCell className="py-2 min-w-[200px] w-[200px]">
-                                <Badge 
-                                  variant="outline" 
-                                  className="font-mono text-[11px] bg-primary/10 text-primary border-primary/20 font-bold px-2 py-0.5 whitespace-nowrap inline-block"
-                                  title={`Session Code: ${sessionCode}`}
+                                <a
+                                  href={`/sessions/${record.session_id}/recording`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-block group"
                                 >
-                                  {sessionCode}
-                                </Badge>
+                                  <Badge 
+                                    variant="outline" 
+                                    className="font-mono text-[11px] bg-primary/10 text-primary border-primary/20 font-bold px-2 py-0.5 whitespace-nowrap inline-flex items-center gap-1 cursor-pointer group-hover:bg-primary/20 group-hover:underline transition-all"
+                                    title={`Open session feedback in new tab: ${sessionCode}`}
+                                  >
+                                    <span>{sessionCode}</span>
+                                  </Badge>
+                                </a>
                               </TableCell>
 
                               {/* 2. CATEGORY */}
@@ -1161,7 +1206,7 @@ export default function AdminFacilitatorEarnings() {
                               </TableCell>
 
                               {/* 11. AMOUNT */}
-                              <TableCell className="text-right font-bold text-green-600 whitespace-nowrap">
+                              <TableCell className="text-right whitespace-nowrap">
                                 {editingEarningId === record.id ? (
                                   <Input 
                                     type="number" 
@@ -1170,7 +1215,31 @@ export default function AdminFacilitatorEarnings() {
                                     className="w-20 ml-auto text-right text-xs h-7"
                                   />
                                 ) : (
-                                  `₹${record.amount.toLocaleString('en-IN')}`
+                                  <div className="flex flex-col items-end">
+                                    <span className="font-bold text-green-600 text-xs">
+                                      ₹{record.amount.toLocaleString('en-IN')}
+                                    </span>
+                                    {record.is_delayed ? (
+                                      <div className="flex flex-col items-end mt-0.5">
+                                        <span 
+                                          className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5 inline-flex items-center gap-1 whitespace-nowrap"
+                                          title={record.delay_reason || "Delayed Session: 50% facilitator payout applied"}
+                                        >
+                                          ⚠️ Delayed (-50%)
+                                        </span>
+                                        <span 
+                                          className="text-[9px] text-amber-700 italic mt-0.5 max-w-[150px] truncate block text-right cursor-help"
+                                          title={record.delay_reason || "Delayed Session: 50% deduction applied"}
+                                        >
+                                          {record.delay_reason || "Late feedback submission"}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-[10px] text-muted-foreground mt-0.5">
+                                        Standard (₹{perSessionAmount})
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
                               </TableCell>
 

@@ -186,14 +186,33 @@ export default function TaskEdit() {
     // academicYear filter removed so all students in the class load
     const { data, error } = await query;
     if (!error && data) {
+        const ids = data.map(s => s.id).filter(Boolean);
         const emails = data.map(s => s.email).filter(Boolean);
         let activeData = data;
-        if (emails.length > 0) {
-            const { data: profiles } = await supabase.from('user_profiles').select('email, is_active').in('email', emails);
+        try {
+          const queryOr: string[] = [];
+          if (ids.length > 0) queryOr.push(`id.in.(${ids.join(',')})`);
+          if (emails.length > 0) queryOr.push(`email.in.(${emails.join(',')})`);
+
+          if (queryOr.length > 0) {
+            const { data: profiles } = await supabase
+              .from('user_profiles')
+              .select('id, email, is_active')
+              .or(queryOr.join(','));
+
             if (profiles) {
-                const profileMap = new Map(profiles.map(p => [p.email?.toLowerCase(), p.is_active]));
-                activeData = data.filter(s => s.email ? profileMap.get(s.email.toLowerCase()) !== false : true);
+              const profileMapById = new Map(profiles.map(p => [p.id, p.is_active]));
+              const profileMapByEmail = new Map(profiles.filter(p => p.email).map(p => [p.email!.toLowerCase().trim(), p.is_active]));
+
+              activeData = data.filter(s => {
+                if (profileMapById.has(s.id) && profileMapById.get(s.id) === false) return false;
+                if (s.email && profileMapByEmail.get(s.email.toLowerCase().trim()) === false) return false;
+                return true;
+              });
             }
+          }
+        } catch (err) {
+          console.error('Error filtering inactive students:', err);
         }
         setStudents(activeData);
     }
