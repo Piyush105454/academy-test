@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ArrowLeft, Save, ChevronRight, ChevronLeft, Plus, Trash2, Shield, ExternalLink, Mic, MicOff, CheckCircle, Info, Calendar, Search, Edit, Check, ChevronsUpDown, X, ArrowUpDown, UploadCloud, Loader2, Eye, Lock } from 'lucide-react';
 import { parseSubmissionRequirements, serializeSubmissionRequirements, type SubmissionRequirement } from "../utils/submissionUtils";
 import { useNavigate, useParams } from 'react-router-dom';
@@ -92,6 +92,54 @@ const isRichTextEmpty = (html: string | null | undefined) => {
   return stripped.length === 0;
 };
 
+const parseSubmissionLinks = (rawLink: string | null | undefined): { label: string; url: string }[] => {
+  if (!rawLink || !rawLink.trim()) return [];
+  const trimmed = rawLink.trim();
+
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return Object.entries(parsed).map(([key, val], idx) => {
+          let url = String(val || '').trim();
+          if (url.startsWith('https//')) url = 'https://' + url.substring(7);
+          else if (url.startsWith('http//')) url = 'http://' + url.substring(6);
+          else if (!url.startsWith('http')) url = 'https://' + url;
+          return {
+            label: `View Submission ${Object.keys(parsed).length > 1 ? idx + 1 : ''}`.trim(),
+            url,
+          };
+        }).filter(item => item.url && item.url !== 'https://');
+      }
+    } catch (e) {
+      const urlRegex = /(https?:\/\/[^\s",}]+|https?\/\/[^\s",}]+)/g;
+      const matches = trimmed.match(urlRegex);
+      if (matches && matches.length > 0) {
+        return matches.map((m, idx) => {
+          let url = m;
+          if (url.startsWith('https//')) url = 'https://' + url.substring(7);
+          else if (url.startsWith('http//')) url = 'http://' + url.substring(6);
+          return {
+            label: `View Submission ${matches.length > 1 ? idx + 1 : ''}`.trim(),
+            url,
+          };
+        });
+      }
+    }
+  }
+
+  return trimmed.split(',').filter(Boolean).map((link, idx) => {
+    let url = link.trim();
+    if (url.startsWith('https//')) url = 'https://' + url.substring(7);
+    else if (url.startsWith('http//')) url = 'http://' + url.substring(6);
+    else if (!url.startsWith('http')) url = 'https://' + url;
+    return {
+      label: `View Submission ${trimmed.split(',').length > 1 ? idx + 1 : ''}`.trim(),
+      url,
+    };
+  });
+};
+
 export default function SessionRecording() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -165,6 +213,12 @@ export default function SessionRecording() {
 
   const [isListening, setIsListening] = useState(false);
   const [isEditingHomework, setIsEditingHomework] = useState(false);
+  const [selectedHomeworkTaskId, setSelectedHomeworkTaskId] = useState<string>('all');
+  const [activeTaskDetailId, setActiveTaskDetailId] = useState<string>('');
+  const [homeworkSearch, setHomeworkSearch] = useState<string>('');
+  const [homeworkStatusFilter, setHomeworkStatusFilter] = useState<string>('all');
+  const [homeworkViewMode, setHomeworkViewMode] = useState<'by_task' | 'by_student'>('by_task');
+  const [editingTaskId, setEditingTaskId] = useState<string>('');
   const [isBestPerformerManual, setIsBestPerformerManual] = useState(false);
   const [rewardConfigs, setRewardConfigs] = useState<{ task_type: string, rate_per_task: number }[]>([]);
 
@@ -731,6 +785,80 @@ export default function SessionRecording() {
       setHomeworkLoading(false);
     }
   };
+
+  
+  const uniqueTasks = useMemo(() => {
+    const taskMap = new Map<string, any>();
+    homeworkRecords.filter(hw => hw.status !== 'draft').forEach(hw => {
+      const key = hw.task_id || hw.task_name;
+      if (!taskMap.has(key)) {
+        taskMap.set(key, hw);
+      }
+    });
+    return Array.from(taskMap.values());
+  }, [homeworkRecords]);
+
+  const currentDisplayedTask = useMemo(() => {
+    if (uniqueTasks.length === 0) return null;
+    return uniqueTasks.find(t => t.task_id === activeTaskDetailId) || uniqueTasks[0];
+  }, [uniqueTasks, activeTaskDetailId]);
+
+  const filteredHomeworkRecords = useMemo(() => {
+    let records = homeworkRecords.filter(hw => hw.status !== 'draft');
+
+    if (selectedHomeworkTaskId !== 'all') {
+      records = records.filter(hw => (hw.task_id || hw.task_name) === selectedHomeworkTaskId);
+    }
+
+    if (homeworkStatusFilter !== 'all') {
+      records = records.filter(hw => hw.status === homeworkStatusFilter);
+    }
+
+    if (homeworkSearch.trim()) {
+      const q = homeworkSearch.toLowerCase().trim();
+      records = records.filter(hw => 
+        (hw.student_name && hw.student_name.toLowerCase().includes(q)) ||
+        (hw.task_name && hw.task_name.toLowerCase().includes(q)) ||
+        (hw.task_id && hw.task_id.toLowerCase().includes(q))
+      );
+    }
+
+    return records;
+  }, [homeworkRecords, selectedHomeworkTaskId, homeworkStatusFilter, homeworkSearch]);
+
+  const recordsGroupedByTask = useMemo(() => {
+    const groups: { task: any; records: any[] }[] = [];
+    const taskMap = new Map<string, { task: any; records: any[] }>();
+
+    filteredHomeworkRecords.forEach(hw => {
+      const key = hw.task_id || hw.task_name;
+      if (!taskMap.has(key)) {
+        const groupObj = { task: hw, records: [] as any[] };
+        taskMap.set(key, groupObj);
+        groups.push(groupObj);
+      }
+      taskMap.get(key)!.records.push(hw);
+    });
+
+    return groups;
+  }, [filteredHomeworkRecords]);
+
+  const recordsGroupedByStudent = useMemo(() => {
+    const studentMap = new Map<string, { studentId: string; studentName: string; records: any[] }>();
+    const list: { studentId: string; studentName: string; records: any[] }[] = [];
+
+    filteredHomeworkRecords.forEach(hw => {
+      const sId = hw.student_id;
+      if (!studentMap.has(sId)) {
+        const studentObj = { studentId: sId, studentName: hw.student_name, records: [] as any[] };
+        studentMap.set(sId, studentObj);
+        list.push(studentObj);
+      }
+      studentMap.get(sId)!.records.push(hw);
+    });
+
+    return list;
+  }, [filteredHomeworkRecords]);
 
   const fetchStudents = async () => {
     try {
@@ -1829,6 +1957,7 @@ export default function SessionRecording() {
         
         toast.success('Homework updated successfully');
         setIsEditingHomework(false);
+        setEditingTaskId('');
       } else {
         // If there are existing draft records, we just update their status to 'pending'
         const { data: existingDrafts } = await supabase
@@ -2751,55 +2880,124 @@ export default function SessionRecording() {
             {/* Sub-tab c: Student Homework Feedback */}
             {currentSubTab === 'c' && (
               <div className="space-y-4">
-                {homeworkRecords.length > 0 && homeworkRecords[0].status !== 'draft' && !isEditingHomework ? (
+                {uniqueTasks.length > 0 && homeworkRecords[0].status !== 'draft' && !isEditingHomework ? (
                   <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-3">
-                      <CardTitle className="text-base">Assigned Student Homework</CardTitle>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleStartEditHomework}
-                        className="gap-1.5"
-                      >
-                        <Edit className="h-3.5 w-3.5" />
-                        Edit Homework
-                      </Button>
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 gap-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <CardTitle className="text-base">Assigned Student Homework</CardTitle>
+                        <Badge variant="secondary" className="text-xs font-semibold">
+                          {uniqueTasks.length} {uniqueTasks.length === 1 ? 'Task' : 'Tasks'} Assigned
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleStartEditHomework(currentDisplayedTask?.task_id)}
+                          className="gap-1.5"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                          Edit This Task
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setNewHomework({
+                              student_id: '',
+                              task_name: '',
+                              task_type: '',
+                              custom_task_type: '',
+                              deadline: '',
+                              task_description: '',
+                              submission_link: '',
+                              feedback_notes: '',
+                              earning_amount: '5',
+                              submission_requirements: [],
+                            });
+                            setIsEditingHomework(true);
+                            setEditingTaskId('');
+                          }}
+                          className="gap-1.5 text-xs"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Assign Another Task
+                        </Button>
+                      </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 bg-muted/40 p-4 rounded-lg">
-                        <div>
-                          <span className="text-xs text-muted-foreground block">Task ID</span>
-                          <span className="font-mono font-bold text-foreground text-sm">{homeworkRecords[0].task_id || '-'}</span>
-                        </div>
-                        <div>
-                          <span className="text-xs text-muted-foreground block">Task Name</span>
-                          <span className="font-bold text-foreground text-sm">{homeworkRecords[0].task_name}</span>
-                        </div>
-                        <div>
-                          <span className="text-xs text-muted-foreground block">Task Type</span>
-                          <span className="font-bold text-foreground text-sm capitalize">{homeworkRecords[0].feedback_type}</span>
-                        </div>
-                        <div>
-                          <span className="text-xs text-muted-foreground block">Deadline</span>
-                          <span className="font-bold text-foreground text-sm">
-                            {homeworkRecords[0].deadline 
-                              ? new Date(homeworkRecords[0].deadline).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) 
-                              : '-'}
+                      {uniqueTasks.length > 1 && (
+                        <div className="space-y-1.5">
+                          <span className="text-xs font-semibold text-muted-foreground block">
+                            Assigned Tasks in this Session (Click to view details):
                           </span>
+                          <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-muted/50 rounded-xl border border-border/50">
+                            {uniqueTasks.map((t, idx) => {
+                              const isSelected = (currentDisplayedTask?.task_id === t.task_id) || (!currentDisplayedTask && idx === 0);
+                              return (
+                                <button
+                                  key={t.task_id || idx}
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTaskDetailId(t.task_id);
+                                    setSelectedHomeworkTaskId(t.task_id);
+                                  }}
+                                  className={cn(
+                                    "text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 cursor-pointer",
+                                    isSelected 
+                                      ? "bg-white text-primary shadow-xs font-bold border border-primary/20" 
+                                      : "text-muted-foreground hover:text-foreground hover:bg-white/60"
+                                  )}
+                                >
+                                  <span className="font-mono text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                                    {t.task_id ? t.task_id.split('-').pop() : '#' + (idx + 1)}
+                                  </span>
+                                  <span className="truncate max-w-[150px] sm:max-w-[200px]">{t.task_name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-xs text-muted-foreground block">Earning Amount</span>
-                          <span className="font-bold text-green-600 text-sm">{homeworkRecords[0].earning_amount || 5} units</span>
-                        </div>
-                      </div>
-                      {homeworkRecords[0].task_description && (
-                        <div>
-                          <span className="text-xs text-muted-foreground block mb-1">Task Description</span>
-                          <div 
-                            className="prose prose-sm max-w-none text-muted-foreground mt-2 task-description-content"
-                            dangerouslySetInnerHTML={{ __html: homeworkRecords[0].task_description }}
-                          />
-                        </div>
+                      )}
+
+                      {currentDisplayedTask && (
+                        <>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 bg-muted/40 p-4 rounded-lg">
+                            <div>
+                              <span className="text-xs text-muted-foreground block">Task ID</span>
+                              <span className="font-mono font-bold text-foreground text-sm">{currentDisplayedTask.task_id || '-'}</span>
+                            </div>
+                            <div>
+                              <span className="text-xs text-muted-foreground block">Task Name</span>
+                              <span className="font-bold text-foreground text-sm">{currentDisplayedTask.task_name}</span>
+                            </div>
+                            <div>
+                              <span className="text-xs text-muted-foreground block">Task Type</span>
+                              <span className="font-bold text-foreground text-sm capitalize">{currentDisplayedTask.feedback_type}</span>
+                            </div>
+                            <div>
+                              <span className="text-xs text-muted-foreground block">Deadline</span>
+                              <span className="font-bold text-foreground text-sm">
+                                {currentDisplayedTask.deadline 
+                                  ? new Date(currentDisplayedTask.deadline).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) 
+                                  : '-'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-xs text-muted-foreground block">Earning Amount</span>
+                              <span className="font-bold text-green-600 text-sm">{currentDisplayedTask.earning_amount || 5} units</span>
+                            </div>
+                          </div>
+                          {currentDisplayedTask.task_description && (
+                            <div>
+                              <span className="text-xs text-muted-foreground block mb-1">Task Description</span>
+                              <div 
+                                className="prose prose-sm max-w-none text-muted-foreground mt-2 task-description-content"
+                                dangerouslySetInnerHTML={{ __html: currentDisplayedTask.task_description }}
+                              />
+                            </div>
+                          )}
+                        </>
                       )}
                     </CardContent>
                   </Card>
@@ -3041,110 +3239,322 @@ export default function SessionRecording() {
                 )}
 
                 {/* Homework List */}
-                {(() => {
-                  const activeHomeworkRecords = homeworkRecords.filter(hw => hw.status !== 'draft');
-                  return (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Student Homework Records ({activeHomeworkRecords.length})</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        {homeworkLoading ? (
-                          <div className="text-center py-8 text-muted-foreground">
-                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto mb-2"></div>
-                            Loading homework records...
-                          </div>
-                        ) : activeHomeworkRecords.length === 0 ? (
-                          <div className="text-center py-8 text-muted-foreground">
-                            <p>No homework records yet</p>
-                            <p className="text-xs mt-2">Add homework feedback above</p>
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            {activeHomeworkRecords.map((homework, index) => (
-                              <div
-                                key={homework.id}
-                                className="border border-border rounded-lg p-4 space-y-2"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1">
-                                    <h4 className="font-semibold text-foreground">
-                                      {index + 1}. {homework.student_name}
-                                    </h4>
-                                    <p className="text-sm text-muted-foreground">
-                                      {homework.task_name}
-                                    </p>
+                <Card>
+                  <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <CardTitle className="text-base">
+                          Student Homework Records ({filteredHomeworkRecords.length})
+                        </CardTitle>
+                        {uniqueTasks.length > 1 && (
+                          <Badge variant="outline" className="text-xs">
+                            {uniqueTasks.length} Tasks
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {uniqueTasks.length > 1 
+                          ? 'Showing homework records across ' + uniqueTasks.length + ' assigned tasks in this session.'
+                          : 'Homework submissions for the assigned task.'}
+                      </p>
+                    </div>
+
+                    {/* View Mode Toggle: By Task vs By Student */}
+                    {uniqueTasks.length > 1 && (
+                      <div className="flex items-center gap-1 bg-muted p-1 rounded-lg self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => setHomeworkViewMode('by_task')}
+                          className={cn(
+                            "text-xs px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer",
+                            homeworkViewMode === 'by_task' ? "bg-white shadow-xs font-bold text-primary" : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          Group by Task
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHomeworkViewMode('by_student')}
+                          className={cn(
+                            "text-xs px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer",
+                            homeworkViewMode === 'by_student' ? "bg-white shadow-xs font-bold text-primary" : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          Group by Student
+                        </button>
+                      </div>
+                    )}
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    {/* Filters: Task, Search Student, Status */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pb-2">
+                      {uniqueTasks.length > 1 && (
+                        <div className="w-full sm:w-64">
+                          <Select 
+                            value={selectedHomeworkTaskId} 
+                            onValueChange={(val) => {
+                              setSelectedHomeworkTaskId(val);
+                              if (val !== 'all') setActiveTaskDetailId(val);
+                            }}
+                          >
+                            <SelectTrigger className="h-9 text-xs">
+                              <SelectValue placeholder="All Tasks" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">
+                                All Tasks ({uniqueTasks.length} Tasks, {homeworkRecords.filter(hw => hw.status !== 'draft').length} Records)
+                              </SelectItem>
+                              {uniqueTasks.map(t => {
+                                const count = homeworkRecords.filter(h => (h.task_id || h.task_name) === t.task_id).length;
+                                return (
+                                  <SelectItem key={t.task_id} value={t.task_id}>
+                                    {t.task_id.split('-').pop()} - {t.task_name} ({count} std)
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-muted-foreground" />
+                        <Input 
+                          placeholder="Search by student name or task..."
+                          value={homeworkSearch}
+                          onChange={(e) => setHomeworkSearch(e.target.value)}
+                          className="h-9 pl-8 text-xs"
+                        />
+                        {homeworkSearch && (
+                          <button onClick={() => setHomeworkSearch('')} className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground cursor-pointer">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="w-full sm:w-36">
+                        <Select value={homeworkStatusFilter} onValueChange={setHomeworkStatusFilter}>
+                          <SelectTrigger className="h-9 text-xs">
+                            <SelectValue placeholder="All Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Statuses</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                            <SelectItem value="submitted">Submitted</SelectItem>
+                            <SelectItem value="reviewed">Reviewed</SelectItem>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="rejected">Rejected</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {homeworkLoading ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto mb-2"></div>
+                        Loading homework records...
+                      </div>
+                    ) : filteredHomeworkRecords.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <p>No matching homework records found</p>
+                        <p className="text-xs mt-1 text-slate-400">Try adjusting your task or search filter</p>
+                      </div>
+                    ) : homeworkViewMode === 'by_student' && uniqueTasks.length > 1 ? (
+                      /* MODE 2: GROUPED BY STUDENT (Shows each of the students once with all their tasks) */
+                      <div className="space-y-4">
+                        {recordsGroupedByStudent.map((stdGroup) => {
+                          const completedCount = stdGroup.records.filter(r => r.status === 'completed').length;
+                          const pendingCount = stdGroup.records.filter(r => r.status === 'pending').length;
+                          const rejectedCount = stdGroup.records.filter(r => r.status === 'rejected').length;
+                          const submittedCount = stdGroup.records.filter(r => r.status === 'submitted' || r.status === 'reviewed').length;
+
+                          return (
+                            <div key={stdGroup.studentId} className="border border-border/80 rounded-xl overflow-hidden shadow-2xs">
+                              <div className="bg-slate-50 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center">
+                                    {stdGroup.studentName.charAt(0).toUpperCase()}
+                                  </span>
+                                  <div>
+                                    <h4 className="font-bold text-sm text-foreground">{stdGroup.studentName}</h4>
+                                    <span className="text-[11px] text-muted-foreground">{stdGroup.records.length} Tasks Assigned</span>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`px-2 py-1 rounded text-xs font-medium ${homework.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                      homework.status === 'submitted' ? 'bg-blue-100 text-blue-800' :
+                                </div>
+
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {completedCount > 0 && (
+                                    <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px]">
+                                      {completedCount} Completed
+                                    </Badge>
+                                  )}
+                                  {submittedCount > 0 && (
+                                    <Badge className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px]">
+                                      {submittedCount} Submitted
+                                    </Badge>
+                                  )}
+                                  {pendingCount > 0 && (
+                                    <Badge className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px]">
+                                      {pendingCount} Pending
+                                    </Badge>
+                                  )}
+                                  {rejectedCount > 0 && (
+                                    <Badge className="bg-rose-50 text-rose-700 border border-rose-200 text-[10px]">
+                                      {rejectedCount} Rejected
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="p-3 space-y-2 bg-background">
+                                {stdGroup.records.map((homework) => (
+                                  <div key={homework.id} className="p-2.5 rounded-lg border border-border/40 hover:bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                    <div className="space-y-0.5 flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-mono text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-semibold">
+                                          {homework.task_id}
+                                        </span>
+                                        <span className="font-semibold text-slate-800">{homework.task_name}</span>
+                                      </div>
+                                      {homework.feedback_notes && (
+                                        <p className="text-slate-500 text-[11px] italic pl-1">Note: {homework.feedback_notes}</p>
+                                      )}
+                                      {homework.submission_link && (
+                                        <div className="flex gap-2 pt-1">
+                                          {parseSubmissionLinks(homework.submission_link).map((linkObj, lIdx) => (
+                                            <a
+                                              key={lIdx}
+                                              href={linkObj.url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-primary hover:underline text-[11px] inline-flex items-center gap-1"
+                                            >
+                                              {linkObj.label} <ExternalLink className="h-2.5 w-2.5" />
+                                            </a>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="flex items-center gap-3 shrink-0">
+                                      <span className="font-bold text-slate-700">{homework.actual_earning} units</span>
+                                      <span className={cn(
+                                        "px-2 py-0.5 rounded text-[11px] font-semibold capitalize",
+                                        homework.status === 'pending' ? 'bg-amber-100 text-amber-800' :
+                                        homework.status === 'submitted' ? 'bg-blue-100 text-blue-800' :
                                         homework.status === 'reviewed' ? 'bg-purple-100 text-purple-800' :
-                                          'bg-green-100 text-green-800'
-                                      }`}>
+                                        homework.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                                        'bg-rose-100 text-rose-800'
+                                      )}>
+                                        {homework.status}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      /* MODE 1: GROUPED BY TASK OR SINGLE TASK */
+                      <div className="space-y-4">
+                        {recordsGroupedByTask.map((group, gIdx) => (
+                          <div key={group.task.task_id || gIdx} className="border border-border/80 rounded-xl overflow-hidden shadow-2xs">
+                            <div className="bg-slate-50 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60">
+                              <div className="flex items-center gap-2.5 flex-wrap">
+                                <Badge className="font-mono text-xs bg-indigo-100 text-indigo-700 border-none font-bold">
+                                  {group.task.task_id}
+                                </Badge>
+                                <h4 className="font-bold text-sm text-foreground">{group.task.task_name}</h4>
+                                <Badge variant="outline" className="text-[11px] capitalize">
+                                  {group.task.feedback_type}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground flex items-center gap-3">
+                                <span className="font-medium text-slate-600">{group.records.length} Students</span>
+                                {group.task.deadline && (
+                                  <span>Deadline: {new Date(group.task.deadline).toLocaleDateString()}</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="p-3 space-y-2.5 bg-background">
+                              {group.records.map((homework, idx) => (
+                                <div key={homework.id} className="border border-border/60 rounded-lg p-3 space-y-2 hover:border-primary/30 transition-colors">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold text-slate-400">{idx + 1}.</span>
+                                      <h5 className="font-semibold text-foreground text-sm">
+                                        {homework.student_name}
+                                      </h5>
+                                    </div>
+                                    <span className={cn(
+                                      "px-2 py-0.5 rounded text-xs font-semibold capitalize",
+                                      homework.status === 'pending' ? 'bg-amber-100 text-amber-800' :
+                                      homework.status === 'submitted' ? 'bg-blue-100 text-blue-800' :
+                                      homework.status === 'reviewed' ? 'bg-purple-100 text-purple-800' :
+                                      homework.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                                      'bg-rose-100 text-rose-800'
+                                    )}>
                                       {homework.status}
                                     </span>
                                   </div>
+
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-0.5">
+                                    <div>
+                                      <span className="text-muted-foreground block text-[10px] uppercase font-bold">Task ID</span>
+                                      <span className="font-mono font-medium text-slate-700">{homework.task_id || '-'}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground block text-[10px] uppercase font-bold">Type</span>
+                                      <span className="font-medium capitalize text-slate-700">{homework.feedback_type}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground block text-[10px] uppercase font-bold">Deadline</span>
+                                      <span className="font-medium text-slate-700">
+                                        {homework.deadline ? new Date(homework.deadline).toLocaleDateString() : '-'}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground block text-[10px] uppercase font-bold">Earning</span>
+                                      <span className={cn("font-bold", homework.status === 'completed' ? "text-emerald-600" : "text-muted-foreground")}>
+                                        {homework.actual_earning} units
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {homework.feedback_notes && (
+                                    <div className="bg-muted/40 rounded p-2 text-xs">
+                                      <p className="text-muted-foreground font-semibold">Notes:</p>
+                                      <p className="text-foreground">{homework.feedback_notes}</p>
+                                    </div>
+                                  )}
+
+                                  {homework.submission_link && (
+                                    <div className="pt-2 border-t border-border flex flex-wrap gap-2">
+                                      {parseSubmissionLinks(homework.submission_link).map((linkObj, lIdx) => (
+                                        <a
+                                          key={lIdx}
+                                          href={linkObj.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-primary hover:underline text-xs flex items-center gap-1 bg-primary/5 hover:bg-primary/10 px-2.5 py-1 rounded-md font-medium"
+                                        >
+                                          {linkObj.label} <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
-
-                                <div className="grid grid-cols-2 gap-3 text-sm">
-                                  <div>
-                                    <span className="text-muted-foreground">Task ID</span>
-                                    <p className="font-mono font-semibold text-xs text-gray-700">
-                                      {homework.task_id || '-'}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Type</span>
-                                    <p className="font-medium capitalize">
-                                      {homework.feedback_type}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Deadline</span>
-                                    <p className="font-medium">
-                                      {homework.deadline
-                                        ? new Date(homework.deadline).toLocaleDateString()
-                                        : '-'}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Earning</span>
-                                    <p className={cn("font-medium font-bold", homework.status === 'completed' ? "text-green-600" : "text-muted-foreground")}>
-                                      {homework.actual_earning} units
-                                    </p>
-                                  </div>
-                                </div>
-
-                                {homework.feedback_notes && (
-                                  <div className="bg-muted/50 rounded p-2 text-sm">
-                                    <p className="text-muted-foreground">Notes:</p>
-                                    <p className="text-foreground">{homework.feedback_notes}</p>
-                                  </div>
-                                )}
-
-                                {homework.submission_link && (
-                                  <div className="pt-2 border-t border-border flex flex-wrap gap-2">
-                                    {homework.submission_link.split(',').filter(Boolean).map((link, idx) => (
-                                      <a
-                                        key={idx}
-                                        href={link.trim().startsWith('http') ? link.trim() : `https://${link.trim()}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-primary hover:underline text-sm flex items-center gap-1 bg-primary/5 px-2 py-1 rounded"
-                                      >
-                                        View Submission {homework.submission_link!.split(',').length > 1 ? idx + 1 : ''} <ExternalLink className="h-3 w-3" />
-                                      </a>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })()}
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             )}
             </fieldset>

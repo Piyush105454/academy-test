@@ -93,6 +93,7 @@ interface TaskItem {
   created_by_name?: string;
   task_id?: string;
   task_type?: string;
+  created_by?: string;
 }
 
 interface TaskGroup {
@@ -194,6 +195,7 @@ export default function Tasks() {
   const [userRole, setUserRole] = useState<number | null>(null);
   const [isFacilitator, setIsFacilitator] = useState<boolean>(false);
   const [currentFacilitatorName, setCurrentFacilitatorName] = useState<string | null>(null);
+  const [currentInchargeName, setCurrentInchargeName] = useState<string | null>(null);
   const [coordinatorAssignedClasses, setCoordinatorAssignedClasses] = useState<string[]>([]);
 
   useEffect(() => {
@@ -254,16 +256,24 @@ export default function Tasks() {
           }
         }
 
+        const resolvedInchargeName = fullName || facName || coordName;
+
+        if (roleId !== 1 && resolvedInchargeName) {
+          setCurrentInchargeName(resolvedInchargeName);
+          setFilterIncharge(resolvedInchargeName);
+        } else {
+          setCurrentInchargeName(null);
+          setFilterIncharge('all');
+        }
+
         // Only set isFacilitator if user is strictly a Facilitator and NOT Coordinator or Admin
         if (roleId === 4 && !isCoord && roleId !== 1) {
           const resolvedName = facName || fullName;
           setIsFacilitator(true);
           setCurrentFacilitatorName(resolvedName);
-          setFilterIncharge(resolvedName);
         } else {
           setIsFacilitator(false);
           setCurrentFacilitatorName(null);
-          setFilterIncharge('all');
         }
 
         // Load Coordinator assigned classes if user is a coordinator
@@ -327,20 +337,21 @@ export default function Tasks() {
       );
     }
 
-    // Role-based Incharge filtering: Facilitators see only their own tasks
-    if (isFacilitator && currentFacilitatorName) {
-      const facLower = currentFacilitatorName.toLowerCase().trim();
+    // Role-based Incharge filtering
+    if (filterIncharge !== 'all') {
+      const inchargeLower = filterIncharge.toLowerCase().trim();
       filtered = filtered.filter((t) => 
-        (t.facilitator_name && t.facilitator_name.toLowerCase().trim() === facLower) || 
-        (t.created_by_name && t.created_by_name.toLowerCase().trim() === facLower)
+        (t.incharge_name && t.incharge_name.toLowerCase().trim() === inchargeLower) || 
+        (t.created_by_name && t.created_by_name.toLowerCase().trim() === inchargeLower) || 
+        (t.facilitator_name && t.facilitator_name.toLowerCase().trim() === inchargeLower) ||
+        (user?.id && t.created_by === user.id)
       );
-    } else {
-      if (filterIncharge !== 'all') {
-        filtered = filtered.filter((t) => t.incharge_name === filterIncharge);
-      }
-      if (filterFacilitator !== 'all') {
-        filtered = filtered.filter((t) => t.facilitator_name === filterFacilitator);
-      }
+    }
+    if (filterFacilitator !== 'all') {
+      const facLower = filterFacilitator.toLowerCase().trim();
+      filtered = filtered.filter((t) => 
+        t.facilitator_name && t.facilitator_name.toLowerCase().trim() === facLower
+      );
     }
     
     // Month filter
@@ -526,7 +537,7 @@ export default function Tasks() {
     }
 
     setTaskGroups(finalGroups);
-  }, [tasks, filterClass, filterStudent, filterSession, filterSubject, filterTaskType, filterStatus, filterIncharge, filterFacilitator, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName, coordinatorAssignedClasses, userRole]);
+  }, [tasks, filterClass, filterStudent, filterSession, filterSubject, filterTaskType, filterStatus, filterIncharge, filterFacilitator, filterDateFrom, filterDateTo, filterMonth, searchQuery, classes, isFacilitator, currentFacilitatorName, currentInchargeName, user?.id, coordinatorAssignedClasses, userRole]);
 
   const fetchClasses = async () => {
     try {
@@ -734,6 +745,7 @@ export default function Tasks() {
           incharge_name: inchargeName,
           created_by_name: creatorName || '-',
           task_type: task.feedback_type || 'Task',
+          created_by: task.created_by || '',
           class_name: task.sessions?.class_batch || 
                      (task.students?.classes && !Array.isArray(task.students.classes) ? task.students.classes.name : 
                       Array.isArray(task.students?.classes) && task.students.classes.length > 0 ? task.students.classes[0].name : '-'),
@@ -1033,14 +1045,18 @@ export default function Tasks() {
           <div className="w-full sm:w-48">
             <label className="text-sm font-medium text-foreground mb-2 block">Filter by Incharge</label>
             <Select 
-              value={filterIncharge} 
+              value={currentInchargeName && userRole !== 1 ? currentInchargeName : filterIncharge} 
               onValueChange={setFilterIncharge}
+              disabled={Boolean(currentInchargeName && userRole !== 1)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="All Incharges" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Incharges</SelectItem>
+                {!(currentInchargeName && userRole !== 1) && <SelectItem value="all">All Incharges</SelectItem>}
+                {currentInchargeName && !inchargeOptions.includes(currentInchargeName) && (
+                  <SelectItem value={currentInchargeName}>{currentInchargeName}</SelectItem>
+                )}
                 {inchargeOptions.map((name) => (
                   <SelectItem key={name} value={name}>{name}</SelectItem>
                 ))}

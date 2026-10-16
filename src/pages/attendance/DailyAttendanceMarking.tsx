@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -119,10 +119,10 @@ export default function DailyAttendanceMarking() {
         .eq('class_id', classId)
         .eq('date', selectedDate);
         
-      const attMap: Record<string, any> = {};
+      const attMap: Record<string, 'P' | 'LT' | 'A' | 'L' | 'H'> = {};
       if (data) {
         data.forEach(record => {
-          attMap[record.student_id] = record.status;
+          attMap[record.student_id] = record.status as 'P' | 'LT' | 'A' | 'L' | 'H';
         });
       }
       setAttendance(attMap);
@@ -186,6 +186,35 @@ export default function DailyAttendanceMarking() {
     return d.getDay() === 0; // 0 is Sunday
   };
 
+  const counts = useMemo(() => {
+    let p = 0;
+    let lt = 0;
+    let a = 0;
+    let l = 0;
+    let h = 0;
+    let unmarked = 0;
+
+    students.forEach((student) => {
+      const status = attendance[student.id];
+      if (status === 'P') p++;
+      else if (status === 'LT') lt++;
+      else if (status === 'A') a++;
+      else if (status === 'L') l++;
+      else if (status === 'H') h++;
+      else unmarked++;
+    });
+
+    return {
+      p,
+      lt,
+      a,
+      l,
+      h,
+      unmarked,
+      total: students.length,
+    };
+  }, [students, attendance]);
+
   return (
     <DashboardLayout>
       <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-6">
@@ -200,7 +229,7 @@ export default function DailyAttendanceMarking() {
         </div>
 
         <Card className="p-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <div>
               <h2 className="text-xl font-semibold flex items-center gap-2">
                 <CalendarIcon className="w-5 h-5 text-blue-600" />
@@ -224,6 +253,34 @@ export default function DailyAttendanceMarking() {
             </div>
           </div>
 
+          {/* Real-time Attendance Count Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total</span>
+              <span className="text-2xl font-bold text-slate-800 mt-0.5">{counts.total}</span>
+            </div>
+            <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+              <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider">Present (P)</span>
+              <span className="text-2xl font-bold text-emerald-700 mt-0.5">{counts.p}</span>
+            </div>
+            <div className="bg-rose-50/80 border border-rose-200 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+              <span className="text-[11px] font-semibold text-rose-700 uppercase tracking-wider">Absent (A)</span>
+              <span className="text-2xl font-bold text-rose-700 mt-0.5">{counts.a}</span>
+            </div>
+            <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+              <span className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider">Late (LT)</span>
+              <span className="text-2xl font-bold text-amber-700 mt-0.5">{counts.lt}</span>
+            </div>
+            <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+              <span className="text-[11px] font-semibold text-blue-700 uppercase tracking-wider">Leave (L)</span>
+              <span className="text-2xl font-bold text-blue-700 mt-0.5">{counts.l}</span>
+            </div>
+            <div className="bg-purple-50/80 border border-purple-200 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+              <span className="text-[11px] font-semibold text-purple-700 uppercase tracking-wider">Holiday (H)</span>
+              <span className="text-2xl font-bold text-purple-700 mt-0.5">{counts.h}</span>
+            </div>
+          </div>
+
           {isHoliday() && (
             <div className="p-4 mb-6 text-amber-600 bg-amber-50 rounded-lg border border-amber-200">
               <h3 className="font-semibold">Sunday / Holiday Warning</h3>
@@ -232,14 +289,37 @@ export default function DailyAttendanceMarking() {
           )}
 
           <>
-            <div className="flex justify-between items-center pb-4 border-b">
-              <span className="text-xs font-semibold text-slate-500 tracking-wider">BULK ACTIONS</span>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-xs font-semibold text-slate-500 tracking-wider">BULK ACTIONS</span>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="text-green-700 border-green-200 hover:bg-green-50" onClick={() => handleBulkMark('P')}>MARK ALL P</Button>
                   <Button size="sm" variant="outline" className="text-red-700 border-red-200 hover:bg-red-50" onClick={() => handleBulkMark('A')}>MARK ALL A</Button>
                   <Button size="sm" variant="outline" className="text-purple-700 border-purple-200 hover:bg-purple-50" onClick={() => handleBulkMark('H')}>MARK ALL H</Button>
                 </div>
               </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">
+                  <span className="w-2 h-2 rounded-full bg-green-600"></span>
+                  Present: {counts.p}
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200">
+                  <span className="w-2 h-2 rounded-full bg-red-600"></span>
+                  Absent: {counts.a}
+                </span>
+                {counts.lt > 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                    Late: {counts.lt}
+                  </span>
+                )}
+                {counts.unmarked > 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                    Unmarked: {counts.unmarked}
+                  </span>
+                )}
+              </div>
+            </div>
 
               <div className="mt-4">
                 <div className="flex justify-between items-center pb-3 border-b text-xs font-semibold text-slate-500 tracking-wider">

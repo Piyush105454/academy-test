@@ -18,6 +18,25 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { formatSingleSessionCode } from '@/utils/sessionIdGenerator';
 
+const formatDateDMY = (dateStr?: string) => {
+  if (!dateStr || dateStr === '-') return '-';
+  const trimmed = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [yyyy, mm, dd] = trimmed.split('-');
+    return `${dd}/${mm}/${yyyy}`;
+  }
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  } catch {
+    return dateStr;
+  }
+};
+
 interface FeedbackData {
   id: string;
   session_id_code?: string;
@@ -396,7 +415,7 @@ export default function FeedbackDetails() {
         <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-4">
           <h2 className="text-sm font-bold text-gray-950 mb-2">{feedback.title}</h2>
           <div className="grid grid-cols-3 gap-y-2 gap-x-4 text-xs text-gray-700">
-             <p><strong>Date:</strong> {new Date(feedback.session_date).toLocaleDateString('en-IN')}</p>
+             <p><strong>Date:</strong> {formatDateDMY(feedback.session_date)}</p>
              <p><strong>Time:</strong> {feedback.session_time}</p>
              <p><strong>Class:</strong> {feedback.class_batch || '-'}</p>
              <p><strong>Facilitator:</strong> {feedback.facilitator_name || '-'}</p>
@@ -602,7 +621,7 @@ export default function FeedbackDetails() {
             <div>
               <h1 className="text-2xl font-bold text-foreground">Feedback Details</h1>
               <p className="text-sm text-muted-foreground">
-                {feedback.title} - {new Date(feedback.session_date).toLocaleDateString()}
+                {feedback.title} - {formatDateDMY(feedback.session_date)}
               </p>
             </div>
           </div>
@@ -619,7 +638,7 @@ export default function FeedbackDetails() {
               <Button onClick={async () => {
                 const XLSX = await import('xlsx');
                 const data = [{
-                  Date: new Date(feedback.session_date).toLocaleDateString(),
+                  Date: formatDateDMY(feedback.session_date),
                   Time: feedback.session_time,
                   Class: feedback.class_batch || '-',
                   Facilitator: feedback.facilitator_name || '-',
@@ -666,7 +685,7 @@ export default function FeedbackDetails() {
               </div>
               <div>
                 <span className="text-muted-foreground block text-xs uppercase tracking-wider">Date</span>
-                <p className="font-medium mt-0.5">{new Date(feedback.session_date).toLocaleDateString()}</p>
+                <p className="font-medium mt-0.5">{formatDateDMY(feedback.session_date)}</p>
               </div>
               <div>
                 <span className="text-muted-foreground block text-xs uppercase tracking-wider">Time</span>

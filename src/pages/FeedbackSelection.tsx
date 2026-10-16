@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { FileText, MoreVertical, Eye, Plus, Search, X, GraduationCap, Upload, Check, ChevronsUpDown, ExternalLink, Download, Video, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -76,6 +76,7 @@ interface FeedbackSession {
   seating_view_rating: number | null;
   session_strength: number | null;
   class_batch: string | null;
+  designations?: string[] | null;
   recorded_at: string | null;
   subject_name?: string | null;
   recording_url?: string | null;
@@ -180,6 +181,8 @@ export default function FeedbackSelection() {
   const [coordinatorFilter, setCoordinatorFilter] = useState<string | null>(null);
   const [subjectFilter, setSubjectFilter] = useState<string | null>(null);
   const [sessionTypeFilter, setSessionTypeFilter] = useState<string | null>(null);
+  const [classFilter, setClassFilter] = useState<string | null>(null);
+  const [designationFilter, setDesignationFilter] = useState<string | null>(null);
   const [dateFromFilter, setDateFromFilter] = useState<string>(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
@@ -191,6 +194,25 @@ export default function FeedbackSelection() {
   const [sortColumn, setSortColumn] = useState<keyof FeedbackSession | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null);
         const { selectedYear, getDateRange } = useAcademicYear();
+
+  
+  const availableClasses = useMemo(() => {
+    return [...new Set(feedbackSessions.map(s => s.class_batch).filter(Boolean))].sort() as string[];
+  }, [feedbackSessions]);
+
+  const availableDesignations = useMemo(() => {
+    const set = new Set<string>();
+    feedbackSessions.forEach(s => {
+      const des = (s as any).designations;
+      if (Array.isArray(des)) {
+        des.forEach(d => { if (d) set.add(d); });
+      } else if (typeof des === 'string' && des) {
+        set.add(des);
+      }
+    });
+    ['1. CCC', '2. Junior Fellow', '3. Senior Fellow'].forEach(d => set.add(d));
+    return Array.from(set).sort();
+  }, [feedbackSessions]);
 
   const [isAddFeedbackDialogOpen, setIsAddFeedbackDialogOpen] = useState(false);
   const [committedSessions, setCommittedSessions] = useState<FeedbackSession[]>([]);
@@ -340,6 +362,22 @@ export default function FeedbackSelection() {
     }
 
     
+
+    
+    // Class filter
+    if (classFilter) filtered = filtered.filter(s => s.class_batch === classFilter);
+
+    // Designation filter
+    if (designationFilter) {
+      filtered = filtered.filter(s => {
+        const des = (s as any).designations;
+        if (!des) return false;
+        if (Array.isArray(des)) {
+          return des.some(d => d.toLowerCase().includes(designationFilter.toLowerCase()) || designationFilter.toLowerCase().includes(d.toLowerCase()));
+        }
+        return String(des).toLowerCase().includes(designationFilter.toLowerCase());
+      });
+    }
 
     // Sorting
     if (sortColumn && sortDirection) {
@@ -673,7 +711,7 @@ export default function FeedbackSelection() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               {/* Row 2 */}
               {/* Organisation Filter */}
               <div>
@@ -790,7 +828,36 @@ export default function FeedbackSelection() {
                 </Select>
               </div>
 
-                              <div>
+                              
+              {/* Class Filter */}
+              <div>
+                <label className="text-xs font-medium mb-1 block">Class</label>
+                <Select value={classFilter || 'all'} onValueChange={(v) => setClassFilter(v === 'all' ? null : v)}>
+                  <SelectTrigger className="h-9 truncate"><SelectValue placeholder="All Classes" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Classes</SelectItem>
+                    {availableClasses.map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Designation Filter */}
+              <div>
+                <label className="text-xs font-medium mb-1 block">Designation</label>
+                <Select value={designationFilter || 'all'} onValueChange={(v) => setDesignationFilter(v === 'all' ? null : v)}>
+                  <SelectTrigger className="h-9 truncate"><SelectValue placeholder="All Designations" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Designations</SelectItem>
+                    {availableDesignations.map(d => (
+                      <SelectItem key={d} value={d}>{d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
                   <label className="text-xs font-medium mb-1 block">Status</label>
                   <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? null : v)}>
                     <SelectTrigger className="h-9 truncate"><SelectValue placeholder="All Statuses" /></SelectTrigger>

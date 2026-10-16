@@ -81,6 +81,7 @@ interface Session {
   centre_id: string | null;
   centre_time_slot_id: string | null;
   class_batch: string | null;
+  designations?: string[] | null;
   centre_name?: string | null;
   organization_name?: string | null;
   module_no?: string | null;
@@ -254,9 +255,30 @@ export default function Sessions() {
   const [dateToFilter, setDateToFilter] = useState<string>(initialBounds.toStr);
   const [sessionTypeFilter, setSessionTypeFilter] = useState<string | null>(null);
   const [subjectFilter, setSubjectFilter] = useState<string | null>(null);
+  const [classFilter, setClassFilter] = useState<string | null>(null);
+  const [designationFilter, setDesignationFilter] = useState<string | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof Session | null>('session_date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('asc');
   const { selectedYear, getDateRange } = useAcademicYear();
+  
+  const availableClasses = useMemo(() => {
+    return [...new Set(sessions.map(s => s.class_batch).filter(Boolean))].sort() as string[];
+  }, [sessions]);
+
+  const availableDesignations = useMemo(() => {
+    const set = new Set<string>();
+    sessions.forEach(s => {
+      const des = (s as any).designations;
+      if (Array.isArray(des)) {
+        des.forEach(d => { if (d) set.add(d); });
+      } else if (typeof des === 'string' && des) {
+        set.add(des);
+      }
+    });
+    ['1. CCC', '2. Junior Fellow', '3. Senior Fellow'].forEach(d => set.add(d));
+    return Array.from(set).sort();
+  }, [sessions]);
+
   const todayStr = useMemo(() => getLocalDateString(new Date()), []);
   const tomorrowStr = useMemo(() => {
     const d = new Date();
@@ -737,7 +759,7 @@ export default function Sessions() {
                   </div>
 
                   {/* Filter Row 1: Status, Time, Date Range */}
-                  <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+                  <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end flex-wrap">
                                         {(currentTab === 'all' || currentTab === 'facilitator') && (
                     <div className="w-full sm:w-48">
                       <label className="text-xs font-medium text-blue-600 mb-1 block">
@@ -973,8 +995,49 @@ export default function Sessions() {
                       </Select>
                     </div>
 
+                    
+                    {/* Class Filter */}
+                    <div className="w-full sm:w-48">
+                      <label className="text-sm font-medium text-foreground mb-2 block">
+                        Class
+                      </label>
+                      <Select value={classFilter || 'all'} onValueChange={(value) => setClassFilter(value === 'all' ? null : value)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select class" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Classes</SelectItem>
+                          {availableClasses.map((cls) => (
+                            <SelectItem key={cls} value={cls}>
+                              {cls}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Designation Filter */}
+                    <div className="w-full sm:w-48">
+                      <label className="text-sm font-medium text-foreground mb-2 block">
+                        Designation
+                      </label>
+                      <Select value={designationFilter || 'all'} onValueChange={(value) => setDesignationFilter(value === 'all' ? null : value)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select designation" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Designations</SelectItem>
+                          {availableDesignations.map((des) => (
+                            <SelectItem key={des} value={des}>
+                              {des}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     {/* Active Filters Summary */}
-                    {(searchQuery || facilitatorStatusFilter || coordinatorStatusFilter || supervisorStatusFilter || timeFilter || dateFromFilter || dateToFilter || volunteerFilter || facilitatorFilter || coordinatorFilter || categoryFilter || subjectFilter) && (
+                    {(searchQuery || facilitatorStatusFilter || coordinatorStatusFilter || supervisorStatusFilter || timeFilter || dateFromFilter || dateToFilter || volunteerFilter || facilitatorFilter || coordinatorFilter || categoryFilter || subjectFilter || classFilter || designationFilter) && (
                       <div className="text-sm text-muted-foreground mt-2 sm:mt-0 w-full sm:w-auto">
                         Showing {filteredSessions.length} of {sessions.length} sessions
                       </div>
