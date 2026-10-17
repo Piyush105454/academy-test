@@ -35,6 +35,8 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { formatSingleSessionCode } from '@/utils/sessionIdGenerator';
+import { getDirectImageUrl, handleImageError } from '@/utils/imageUtils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface SessionRecording {
   id: string;
@@ -148,6 +150,7 @@ export default function SessionRecording() {
   const [userRole, setUserRole] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
     const [uploadingPictures, setUploadingPictures] = useState(false);
+  const [previewPictureUrl, setPreviewPictureUrl] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [savingStudents, setSavingStudents] = useState(false);
@@ -2131,7 +2134,38 @@ export default function SessionRecording() {
         <div className="flex justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
-      </DashboardLayout>
+      
+      {/* Picture Lightbox Preview Modal */}
+      <Dialog open={!!previewPictureUrl} onOpenChange={(open) => !open && setPreviewPictureUrl(null)}>
+        <DialogContent className="max-w-3xl p-4 bg-background/95 backdrop-blur-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between text-base">
+              <span>Session Picture Preview</span>
+              {previewPictureUrl && (
+                <a
+                  href={previewPictureUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-normal mr-6"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Open Original
+                </a>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-center p-2 bg-slate-950/5 dark:bg-slate-950/50 rounded-xl overflow-hidden min-h-[300px] max-h-[70vh]">
+            {previewPictureUrl && (
+              <img
+                src={getDirectImageUrl(previewPictureUrl)}
+                alt="Session Picture Preview"
+                className="max-h-[65vh] w-auto max-w-full object-contain rounded-lg shadow-sm"
+                onError={(e) => handleImageError(e, previewPictureUrl)}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </DashboardLayout>
     );
   }
 
@@ -2809,57 +2843,136 @@ export default function SessionRecording() {
                         </p>
                       </div>
                       
-                      <div className="mt-4 pt-4 border-t">
-                        <Label className="text-sm">Upload Session Pictures (Max 3)</Label>
-                        <div className="mt-2 flex items-center gap-3">
-                          <Button 
-                            variant="outline" 
-                            type="button" 
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={uploadingPictures || ((formData as any).session_pictures?.length || 0) >= 3}
-                          >
-                            {uploadingPictures ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <UploadCloud className="h-4 w-4 mr-2" />}
-                            Upload Pictures
-                          </Button>
-                          <input 
-                            type="file" 
-                            ref={fileInputRef} 
-                            className="hidden" 
-                            multiple 
-                            accept="image/*"
-                            onChange={handlePictureUpload} 
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {((formData as any).session_pictures?.length || 0)} / 3 uploaded
-                          </span>
+                      <div className="mt-5 pt-4 border-t space-y-3">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div>
+                            <Label className="text-sm font-semibold text-foreground">Upload Session Pictures (Max 3)</Label>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Add up to 3 pictures from the classroom session to verify attendance & engagement
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
+                              {((formData as any).session_pictures?.length || 0)} / 3 uploaded
+                            </span>
+                            {((formData as any).session_pictures?.length || 0) < 3 && (
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                type="button" 
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={uploadingPictures || isFeedbackLocked}
+                                className="h-8 text-xs gap-1.5"
+                              >
+                                {uploadingPictures ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
+                                Upload Picture
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                        {((formData as any).session_pictures?.length > 0) && (
-                          <div className="mt-3 flex gap-2 flex-wrap">
-                            {((formData as any).session_pictures).map((pic: string, index: number) => (
-                              <div key={index} className="relative group border rounded p-1">
-                                <a href={pic} target="_blank" rel="noopener noreferrer">
-                                  <img src={pic.replace('/view', '/preview')} alt="Session Picture" className="h-20 w-32 object-cover rounded" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded">
-                                    <ExternalLink className="h-5 w-5 text-white" />
-                                  </div>
-                                </a>
-                                <Button 
-                                  variant="destructive" 
-                                  size="icon" 
-                                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full" 
+
+                        {/* Hidden file input */}
+                        <input 
+                          type="file" 
+                          ref={fileInputRef} 
+                          className="hidden" 
+                          multiple 
+                          accept="image/*"
+                          onChange={handlePictureUpload} 
+                        />
+
+                        {/* 1 Row Gallery Cards */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 w-full pt-1">
+                          {((formData as any).session_pictures || []).map((pic: string, index: number) => (
+                            <div 
+                              key={index} 
+                              className="relative group rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900/5 shadow-sm hover:shadow-md transition-all duration-200 aspect-[16/10] sm:aspect-[4/3] flex flex-col justify-between"
+                            >
+                              <img 
+                                src={getDirectImageUrl(pic)} 
+                                alt={`Session Photo ${index + 1}`} 
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                onError={(e) => handleImageError(e, pic)}
+                              />
+                              
+                              {/* Top Bar: Badge & Remove button */}
+                              <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between z-10">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-black/70 text-white backdrop-blur-md shadow-sm">
+                                  Photo {index + 1}
+                                </span>
+                                {!isFeedbackLocked && (
+                                  <button 
+                                    type="button" 
+                                    className="h-6 w-6 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center shadow-md transition-all hover:scale-110 active:scale-95" 
+                                    title="Remove this photo"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      const newPics = [...(formData as any).session_pictures];
+                                      newPics.splice(index, 1);
+                                      setFormData({ ...formData, session_pictures: newPics } as any);
+                                    }}
+                                  >
+                                    <X className="h-3.5 w-3.5 stroke-[2.5]" />
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Hover Overlay with Preview and Drive links */}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end justify-between p-2.5 z-10">
+                                <button
+                                  type="button"
                                   onClick={(e) => {
                                     e.preventDefault();
-                                    const newPics = [...(formData as any).session_pictures];
-                                    newPics.splice(index, 1);
-                                    setFormData({ ...formData, session_pictures: newPics } as any);
+                                    e.stopPropagation();
+                                    setPreviewPictureUrl(pic);
                                   }}
+                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-white bg-white/20 hover:bg-white/30 backdrop-blur-md px-2.5 py-1 rounded-md transition-colors"
                                 >
-                                  <X className="h-3 w-3" />
-                                </Button>
+                                  <Eye className="h-3.5 w-3.5" /> View
+                                </button>
+                                <a 
+                                  href={pic} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-white bg-white/20 hover:bg-white/30 backdrop-blur-md px-2.5 py-1 rounded-md transition-colors"
+                                  title="Open in Google Drive"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" /> Drive
+                                </a>
                               </div>
-                            ))}
-                          </div>
-                        )}
+                            </div>
+                          ))}
+
+                          {/* Upload Slot if less than 3 pictures */}
+                          {((formData as any).session_pictures?.length || 0) < 3 && (
+                            uploadingPictures ? (
+                              <div className="rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 aspect-[16/10] sm:aspect-[4/3] flex flex-col items-center justify-center p-3 text-center">
+                                <Loader2 className="h-7 w-7 text-primary animate-spin mb-2" />
+                                <span className="text-xs font-semibold text-primary">Uploading to Drive...</span>
+                                <span className="text-[10px] text-muted-foreground mt-0.5">Please wait</span>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={uploadingPictures || isFeedbackLocked}
+                                className="rounded-xl border-2 border-dashed border-slate-300 hover:border-primary hover:bg-primary/5 dark:border-slate-700 dark:hover:border-primary aspect-[16/10] sm:aspect-[4/3] flex flex-col items-center justify-center p-3 text-center transition-all group cursor-pointer"
+                              >
+                                <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-800 group-hover:bg-primary/10 flex items-center justify-center mb-2 transition-colors">
+                                  <UploadCloud className="h-5 w-5 text-slate-500 group-hover:text-primary transition-colors" />
+                                </div>
+                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-primary transition-colors">
+                                  + Add Picture
+                                </span>
+                                <span className="text-[10px] text-muted-foreground mt-0.5">
+                                  {3 - ((formData as any).session_pictures?.length || 0)} slot{3 - ((formData as any).session_pictures?.length || 0) > 1 ? 's' : ''} left
+                                </span>
+                              </button>
+                            )
+                          )}
+                        </div>
                       </div>
                     {(formData as any).record_sheet_link && (
                       <a
@@ -3474,7 +3587,7 @@ export default function SessionRecording() {
                               <div className="text-xs text-muted-foreground flex items-center gap-3">
                                 <span className="font-medium text-slate-600">{group.records.length} Students</span>
                                 {group.task.deadline && (
-                                  <span>Deadline: {new Date(group.task.deadline).toLocaleDateString()}</span>
+                                  <span>Deadline: {new Date(group.task.deadline).toLocaleDateString()} {new Date(group.task.deadline).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
                                 )}
                               </div>
                             </div>
@@ -3513,7 +3626,14 @@ export default function SessionRecording() {
                                     <div>
                                       <span className="text-muted-foreground block text-[10px] uppercase font-bold">Deadline</span>
                                       <span className="font-medium text-slate-700">
-                                        {homework.deadline ? new Date(homework.deadline).toLocaleDateString() : '-'}
+                                        {homework.deadline ? (
+                                        <>
+                                          <span>{new Date(homework.deadline).toLocaleDateString()}</span>{' '}
+                                          <span className="text-[10px] text-muted-foreground font-normal">
+                                            {new Date(homework.deadline).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                          </span>
+                                        </>
+                                      ) : '-'}
                                       </span>
                                     </div>
                                     <div>

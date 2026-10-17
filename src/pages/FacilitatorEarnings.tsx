@@ -395,7 +395,7 @@ export default function FacilitatorEarnings() {
               REWARDS & EARNINGS
             </p>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              My Facilitator Earnings
+              My Session Reward
             </h1>
             <p className="text-sm text-slate-500 mt-1">
               Select eligible sessions and submit one consolidated encashment request.

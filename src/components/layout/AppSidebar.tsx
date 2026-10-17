@@ -25,6 +25,40 @@ interface NavGroup {
   requiredRole?: number | null;
 }
 
+const renderNavTitle = (title: string, isActive: boolean) => {
+  const match = title.match(/^(.*?)_?(by\s+(Facilitator|coordinator|Coordinator|Supervisor|supervisor))$/i);
+  if (match) {
+    const main = match[1].replace(/_$/, '');
+    const rolePart = match[2];
+    const roleLower = rolePart.toLowerCase();
+
+    let colorClass = 'text-primary';
+    let activeColorClass = 'text-white/90';
+
+    if (roleLower.includes('facilitator')) {
+      colorClass = 'text-pink-600 dark:text-pink-400 font-semibold';
+      activeColorClass = 'text-pink-200 font-semibold';
+    } else if (roleLower.includes('coordinator')) {
+      colorClass = 'text-emerald-600 dark:text-emerald-400 font-semibold';
+      activeColorClass = 'text-emerald-200 font-semibold';
+    } else if (roleLower.includes('supervisor')) {
+      colorClass = 'text-amber-500 dark:text-amber-400 font-semibold';
+      activeColorClass = 'text-amber-200 font-semibold';
+    }
+
+    return (
+      <span className="truncate flex items-baseline gap-1" title={title}>
+        <span>{main}_</span>
+        <span className={cn("text-[11px] italic", isActive ? activeColorClass : colorClass)}>
+          {rolePart}
+        </span>
+      </span>
+    );
+  }
+
+  return <span className="truncate" title={title}>{title}</span>;
+};
+
 const navGroups: NavGroup[] = [
   {
     label: 'Main',
@@ -42,9 +76,9 @@ const navGroups: NavGroup[] = [
       { title: 'Curriculum', url: '/curriculum', icon: BookOpen, requiredRole: null, studentVisible: false },
       { title: 'All Sessions', url: '/sessions', icon: BookOpen, requiredRole: null, studentVisible: false },
       { title: 'All Feedbacks', url: '/feedback', icon: FileText, requiredRole: null, studentVisible: false },
-      { title: 'Session Planner_by Facilitator', url: '/sessions?tab=facilitator', icon: BookOpen, requiredRole: null, studentVisible: false },
-      { title: 'Record Feedback_by coordinator', url: '/sessions?tab=coordinator', icon: FileText, requiredRole: null, studentVisible: false },
-      { title: 'Track & Review_by Supervisor', url: '/sessions?tab=supervisor', icon: ClipboardList, requiredRole: null, studentVisible: false },
+      { title: 'Session Prep_by Facilitator', url: '/sessions?tab=facilitator', icon: BookOpen, requiredRole: null, studentVisible: false },
+      { title: 'Record Feedback_by coordinator', url: '/sessions?tab=coordinator', icon: FileText, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
+      { title: 'Track & Review_by Supervisor', url: '/sessions?tab=supervisor', icon: ClipboardList, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
     ]
   },
   {
@@ -63,8 +97,7 @@ const navGroups: NavGroup[] = [
     items: [
       // Teacher / Employee Views (Only Role 4)
       { title: 'My Work', url: '/academy/my-work', icon: ClipboardList, requiredRole: 4, studentVisible: false },
-      { title: 'My Session Earnings', url: '/facilitator-earnings', icon: Wallet, requiredRole: 4, studentVisible: false },
-      { title: 'My Earnings', url: '/academy/my-earnings', icon: FileText, requiredRole: 4, studentVisible: false },
+      { title: 'My Task Earnings', url: '/academy/my-earnings', icon: FileText, requiredRole: 4, studentVisible: false },
       { title: 'My Goals', url: '/academy/my-goals', icon: FileText, requiredRole: 4, studentVisible: false },
       { title: 'Leaderboard', url: '/academy/leaderboard', icon: Users2, requiredRole: 4, studentVisible: false },
       
@@ -79,7 +112,7 @@ const navGroups: NavGroup[] = [
     label: 'Rewards & Earnings',
     studentVisible: false,
     items: [
-      { title: 'My Facilitator Earnings', url: '/facilitator-earnings', icon: Wallet, requiredRole: null, studentVisible: false },
+      { title: 'My Session Reward', url: '/facilitator-earnings', icon: Wallet, requiredRole: null, studentVisible: false },
       { title: 'Student Earnings', url: '/admin-earnings', icon: ClipboardList, requiredRole: null, studentVisible: false },
       { title: 'Facilitator Earnings', url: '/admin-facilitator-earnings', icon: ClipboardList, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
       { title: 'Volunteer Log Hours', url: '/volunteer-log-hours', icon: Clock, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
@@ -276,7 +309,7 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
                         )}
                       >
                         <item.icon className="h-4 w-4 flex-shrink-0" />
-                        <span className="truncate" title={item.title}>{item.title}</span>
+                        {renderNavTitle(item.title, isActive)}
                       </NavLink>
                     );
                   })}

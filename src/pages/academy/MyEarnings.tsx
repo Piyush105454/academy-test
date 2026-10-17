@@ -85,7 +85,7 @@ export default function MyEarnings() {
     <DashboardLayout>
       <div className="p-6 max-w-5xl mx-auto space-y-8">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">My Earnings</h1>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">My Task Earnings</h1>
           <p className="text-sm text-slate-500 mt-1">Real-time transparent approved, pending, and expected earnings.</p>
         </div>
 

@@ -3,6 +3,7 @@ import { ArrowLeft, Download, Edit } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
+import { getDirectImageUrl, handleImageError } from '@/utils/imageUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -1037,14 +1038,33 @@ export default function FeedbackDetails() {
                         <TableRow>
                           <TableCell className="font-semibold">Session Pictures</TableCell>
                           <TableCell>
-                            <div className="flex gap-2 flex-wrap">
-                              {((feedback as any).session_pictures).map((pic: string, index: number) => (
-                                <a key={index} href={pic} target="_blank" rel="noopener noreferrer">
-                                  <img src={pic.replace('/view', '/preview')} alt="Session Picture" className="h-16 w-24 object-cover rounded border border-gray-200" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                                </a>
-                              ))}
-                            </div>
-                          </TableCell>
+                            
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl">
+                                {((feedback as any).session_pictures).map((pic: string, index: number) => (
+                                  <div key={index} className="relative group rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 shadow-sm hover:shadow-md transition-all aspect-[4/3]">
+                                    <img 
+                                      src={getDirectImageUrl(pic)} 
+                                      alt={`Session Picture ${index + 1}`} 
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                                      onError={(e) => handleImageError(e, pic)}
+                                    />
+                                    <div className="absolute top-2 left-2 z-10">
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-black/60 text-white backdrop-blur-md">
+                                        Photo {index + 1}
+                                      </span>
+                                    </div>
+                                    <a 
+                                      href={pic} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer" 
+                                      className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 text-white gap-1.5 text-xs font-medium"
+                                    >
+                                      <ExternalLink className="h-4 w-4" /> View Full
+                                    </a>
+                                  </div>
+                                ))}
+                              </div>
+                            </TableCell>
                         </TableRow>
                       )}
                       {feedback.coordinator_mic_sound_rating && (

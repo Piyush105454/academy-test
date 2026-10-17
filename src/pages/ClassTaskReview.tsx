@@ -417,9 +417,14 @@ export default function ClassTaskReview() {
                                 {task.task_name}
                               </TableCell>
                               <TableCell className="text-xs">
-                                <div className="flex items-center gap-1 text-muted-foreground">
-                                  <Clock className="h-3 w-3" />
-                                  {new Date(task.deadline).toLocaleDateString()}
+                                <div className="flex flex-col text-muted-foreground">
+                                  <div className="flex items-center gap-1 font-medium text-foreground">
+                                    <Clock className="h-3 w-3 text-primary shrink-0" />
+                                    <span>{new Date(task.deadline).toLocaleDateString()}</span>
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground pl-4">
+                                    {new Date(task.deadline).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                  </span>
                                 </div>
                               </TableCell>
                               <TableCell>

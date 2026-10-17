@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, ExternalLink, ClipboardList, ChevronRight, MoreHorizontal, Eye, Trash2, BookOpen, Calendar, ArrowUpDown } from 'lucide-react';
+import { Search, Plus, ExternalLink, ClipboardList, ChevronRight, MoreHorizontal, Eye, Trash2, BookOpen, Calendar, ArrowUpDown, Clock } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { logActivity } from '@/utils/activityLogger';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -68,6 +68,19 @@ const formatDateDisplay = (dateStr?: string) => {
     return `${day}/${month}/${year}`;
   } catch (e) {
     return dateStr;
+  }
+};
+
+const formatTimeDisplay = (dateStr?: string) => {
+  if (!dateStr || dateStr === '-') return null;
+  const trimmed = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch (e) {
+    return null;
   }
 };
 
@@ -1271,7 +1284,17 @@ export default function Tasks() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs whitespace-nowrap">
-                          {formatDateDisplay(group.due_date)}
+                          <div className="font-medium">{formatDateDisplay(group.due_date)}</div>
+                          {(() => {
+                            const time = formatTimeDisplay(group.due_date);
+                            if (!time) return null;
+                            return (
+                              <div className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                                <Clock className="h-3 w-3 inline text-primary shrink-0" />
+                                {time}
+                              </div>
+                            );
+                          })()}
                         </TableCell>
                         
                         <TableCell className="text-sm font-medium text-center">

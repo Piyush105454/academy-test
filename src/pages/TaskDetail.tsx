@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Edit2, Trash2, XCircle, MessageSquare, Pencil, Calendar, Download } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Edit2, Trash2, XCircle, MessageSquare, Pencil, Calendar, Download, Clock } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -97,6 +97,19 @@ const getClassAbbr = (name?: string): string => {
   if (clean.includes('Class 10')) return 'C10';
   if (clean.includes('Class 8')) return 'C8';
   return clean.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 4);
+};
+
+const formatDeadlineTime = (dateStr?: string | null) => {
+  if (!dateStr || dateStr === '-') return null;
+  const trimmed = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch (e) {
+    return null;
+  }
 };
 
 const formatDescriptionText = (desc?: string): string => {
@@ -650,7 +663,7 @@ export default function TaskDetail() {
              <p><strong>Facilitator:</strong> {taskGroup.facilitator_name || '-'}</p>
              <p><strong>Year:</strong> {taskGroup.academic_year || '-'}</p>
              <p><strong>Created:</strong> {new Date(taskGroup.created_at).toLocaleDateString()}</p>
-             <p><strong>Deadline:</strong> {taskGroup.due_date ? new Date(taskGroup.due_date).toLocaleDateString() : '-'}</p>
+             <p><strong>Deadline:</strong> {taskGroup.due_date ? `${new Date(taskGroup.due_date).toLocaleDateString()}${formatDeadlineTime(taskGroup.due_date) ? ' ' + formatDeadlineTime(taskGroup.due_date) : ''}` : '-'}</p>
              <p><strong>Total Students:</strong> {taskGroup.tasks.length}</p>
              <p><strong>Completed:</strong> {taskGroup.tasks.filter(t => t.status === 'completed').length}</p>
           </div>
@@ -844,7 +857,25 @@ export default function TaskDetail() {
               </div>
               <div>
                 <span className="text-sm text-muted-foreground">Deadline</span>
-                <p className="font-medium">{taskGroup.due_date ? new Date(taskGroup.due_date).toLocaleDateString() : '-'}</p>
+                <div className="font-medium text-sm">
+                  {taskGroup.due_date ? (
+                    <div>
+                      <span>{new Date(taskGroup.due_date).toLocaleDateString()}</span>
+                      {(() => {
+                        const time = formatDeadlineTime(taskGroup.due_date);
+                        if (!time) return null;
+                        return (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5 font-normal">
+                            <Clock className="h-3 w-3 text-primary shrink-0" />
+                            {time}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    '-'
+                  )}
+                </div>
               </div>
               <div>
                 <span className="text-sm text-muted-foreground">Total Students</span>
@@ -936,7 +967,18 @@ export default function TaskDetail() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex-1">
                       <div className="font-medium text-foreground">{task.student_name}</div>
-                      <div className="text-sm text-muted-foreground">{task.class_name}</div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span>{task.class_name}</span>
+                        {task.due_date && (
+                          <>
+                            <span>•</span>
+                            <span className="flex items-center gap-1 font-medium text-slate-600">
+                              <Clock className="h-3 w-3 text-orange-500 shrink-0" />
+                              Deadline: {new Date(task.due_date).toLocaleDateString()}{formatDeadlineTime(task.due_date) ? ' ' + formatDeadlineTime(task.due_date) : ''}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <Badge

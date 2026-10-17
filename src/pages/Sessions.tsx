@@ -74,6 +74,8 @@ interface Session {
   topics_covered: string | null;
   videos: string | null;
   quiz_content_ppt: string | null;
+  record_sheet_link?: string | null;
+  final_content_ppt?: string | null;
   facilitator_name: string | null;
   volunteer_name: string | null;
   coordinator_name: string | null;
@@ -257,12 +259,21 @@ export default function Sessions() {
   const [subjectFilter, setSubjectFilter] = useState<string | null>(null);
   const [classFilter, setClassFilter] = useState<string | null>(null);
   const [designationFilter, setDesignationFilter] = useState<string | null>(null);
+  const [sessionStatusFilter, setSessionStatusFilter] = useState<string | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof Session | null>('session_date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('asc');
   const { selectedYear, getDateRange } = useAcademicYear();
   
   const availableClasses = useMemo(() => {
     return [...new Set(sessions.map(s => s.class_batch).filter(Boolean))].sort() as string[];
+  }, [sessions]);
+
+    const availableSessionStatuses = useMemo(() => {
+    const set = new Set<string>(['committed', 'completed', 'cancelled', 'rescheduled', 'in_progress']);
+    sessions.forEach(s => {
+      if (s.status) set.add(s.status.toLowerCase());
+    });
+    return Array.from(set).sort();
   }, [sessions]);
 
   const availableDesignations = useMemo(() => {
@@ -812,6 +823,25 @@ export default function Sessions() {
                     </div>
                     )}
 
+                                        {/* Session Status Filter */}
+                    <div className="w-full sm:w-48">
+                      <label className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-1 block">
+                        Session Status
+                      </label>
+                      <Select value={sessionStatusFilter || 'all'} onValueChange={(value) => setSessionStatusFilter(value === 'all' ? null : value)}>
+                        <SelectTrigger className="w-full text-xs h-9">
+                          <SelectValue placeholder="All Session Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Session Status</SelectItem>
+                          {availableSessionStatuses.map((st) => (
+                            <SelectItem key={st} value={st} className="capitalize">
+                              {st.replace('_', ' ')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     {/* Time Filter */}
                     <div className="w-full sm:w-48">
                       <label className="text-sm font-medium text-foreground mb-2 block">Time
@@ -1037,7 +1067,7 @@ export default function Sessions() {
                     </div>
 
                     {/* Active Filters Summary */}
-                    {(searchQuery || facilitatorStatusFilter || coordinatorStatusFilter || supervisorStatusFilter || timeFilter || dateFromFilter || dateToFilter || volunteerFilter || facilitatorFilter || coordinatorFilter || categoryFilter || subjectFilter || classFilter || designationFilter) && (
+                    {(searchQuery || facilitatorStatusFilter || coordinatorStatusFilter || supervisorStatusFilter || timeFilter || dateFromFilter || dateToFilter || volunteerFilter || facilitatorFilter || coordinatorFilter || categoryFilter || subjectFilter || classFilter || designationFilter || sessionStatusFilter) && (
                       <div className="text-sm text-muted-foreground mt-2 sm:mt-0 w-full sm:w-auto">
                         Showing {filteredSessions.length} of {sessions.length} sessions
                       </div>
@@ -1214,14 +1244,14 @@ export default function Sessions() {
                           </div>
                         </TableHead>
 )}
-                        <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('status')}>
-                            <div className="flex items-center gap-1">
-                              Status
-                              <span className={sortColumn === 'status' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
-                                {getSortIndicator('status')}
-                              </span>
-                            </div>
+                        <TableHead className="min-w-[130px] font-semibold cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('status')}>
+                          <div className="flex items-center gap-1">
+                            Session Status
+                            <span className="text-xs">{getSortIndicator('status')}</span>
+                          </div>
                         </TableHead>
+                        <TableHead className="min-w-[130px] font-semibold">Impact PPT Link</TableHead>
+                        <TableHead className="min-w-[130px] font-semibold">Video Recording</TableHead>
                         <TableHead className="min-w-[80px]">Delayed</TableHead>
                         <TableHead className="min-w-[80px]">Actions</TableHead>
                       </TableRow>
@@ -1315,9 +1345,47 @@ export default function Sessions() {
                               session.status === 'rescheduled' ? 'secondary' :
                               session.status === 'cancelled' ? 'destructive' :
                               'outline'
-                            }>
+                            } className="capitalize whitespace-nowrap">
                               {session.status}
                             </Badge>
+                          </TableCell>
+                          
+                          {/* Impact PPT Link */}
+                          <TableCell>
+                            {session.record_sheet_link || (session as any).final_content_ppt ? (
+                              <a
+                                href={session.record_sheet_link || (session as any).final_content_ppt}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline bg-blue-50/80 hover:bg-blue-100 px-2.5 py-1.5 rounded-md border border-blue-200 transition-colors whitespace-nowrap"
+                                title="Open Session PPT Slide Link"
+                              >
+                                <FileText className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                                <span>PPT Slide</span>
+                                <ExternalLink className="h-3 w-3 text-blue-500 shrink-0" />
+                              </a>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
+
+                          {/* Video Recording */}
+                          <TableCell>
+                            {session.recording_url ? (
+                              <a
+                                href={session.recording_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-800 hover:underline bg-emerald-50/80 hover:bg-emerald-100 px-2.5 py-1.5 rounded-md border border-emerald-200 transition-colors whitespace-nowrap"
+                                title="Watch Session Video Recording"
+                              >
+                                <Video className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                                <span>Watch Video</span>
+                                <ExternalLink className="h-3 w-3 text-emerald-500 shrink-0" />
+                              </a>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-center">
                             {isDelayed(session) ? <Badge variant="destructive">Yes</Badge> : <Badge variant="secondary">No</Badge>}
@@ -1506,6 +1574,20 @@ export default function Sessions() {
                         </Badge>
                       </div>
 
+                                            {/* Impact PPT Link */}
+                      {(session.record_sheet_link || (session as any).final_content_ppt) ? (
+                        <div className="text-xs">
+                          <span className="text-muted-foreground block">Impact PPT</span>
+                          <a
+                            href={session.record_sheet_link || (session as any).final_content_ppt}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline font-medium text-sm inline-flex items-center gap-1 mt-1"
+                          >
+                            <FileText className="h-3.5 w-3.5" /> View PPT Slide
+                          </a>
+                        </div>
+                      ) : null}
                       {/* Recording Status */}
                       {session.recording_url || session.recording_status ? (
                         <div className="text-xs">

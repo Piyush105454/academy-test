@@ -858,7 +858,7 @@ export default function FeedbackSelection() {
               </div>
 
               <div>
-                  <label className="text-xs font-medium mb-1 block">Status</label>
+                  <label className="text-xs font-medium mb-1 block">Session Status</label>
                   <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? null : v)}>
                     <SelectTrigger className="h-9 truncate"><SelectValue placeholder="All Statuses" /></SelectTrigger>
                     <SelectContent>
@@ -1036,10 +1036,11 @@ export default function FeedbackSelection() {
                             </span>
                           </div>
                         </TableHead>
-                        <TableHead className="min-w-[100px] text-center">Session Video Recording</TableHead>
-                        <TableHead className="min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('status')}>
+                        <TableHead className="min-w-[120px] text-center">Impact PPT Link</TableHead>
+                        <TableHead className="min-w-[120px] text-center">Session Video Recording</TableHead>
+                        <TableHead className="min-w-[130px] font-semibold cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('status')}>
                           <div className="flex items-center gap-1">
-                            Status
+                            Session Status
                             <span className={sortColumn === 'status' ? 'font-bold text-foreground' : 'text-muted-foreground'}>
                               {getSortIndicator('status')}
                             </span>
@@ -1083,6 +1084,18 @@ export default function FeedbackSelection() {
                         <TableCell>{new Date(session.session_date).toLocaleDateString("en-GB")}</TableCell>
                         <TableCell>{session.session_time || '-'}</TableCell>
                         
+                        <TableCell className="text-center">
+                          {(session as any).record_sheet_link || (session as any).final_content_ppt ? (
+                            <a
+                              href={(session as any).record_sheet_link || (session as any).final_content_ppt}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline bg-blue-50 px-2 py-1 rounded"
+                            >
+                              <FileText className="h-3 w-3" /> PPT
+                            </a>
+                          ) : '-'}
+                        </TableCell>
                         <TableCell className="text-center">
                           {session.recording_url ? (
                             <a href={session.recording_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-md transition-colors font-medium">
