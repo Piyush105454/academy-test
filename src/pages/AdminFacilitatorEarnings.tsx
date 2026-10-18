@@ -585,12 +585,33 @@ export default function AdminFacilitatorEarnings() {
         return;
       }
       
-      const { error } = await supabase
-        .from('facilitator_earnings')
-        .update({ amount })
-        .eq('id', id);
+      if (id.startsWith('unrecorded_')) {
+        const sessionId = id.replace('unrecorded_', '');
+        const targetRec = allDetailRecords.find(r => r.id === id);
+        const facilitatorId = selectedFacilitator?.id || targetRec?.facilitator_id;
+        if (!facilitatorId) {
+          toast.error('Facilitator ID not found');
+          return;
+        }
 
-      if (error) throw error;
+        const { error } = await supabase
+          .from('facilitator_earnings')
+          .insert({
+            facilitator_id: facilitatorId,
+            session_id: sessionId,
+            amount: amount,
+            status: 'pending'
+          });
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('facilitator_earnings')
+          .update({ amount })
+          .eq('id', id);
+
+        if (error) throw error;
+      }
 
       // Also update storedPayments in localStorage if present
       const storedPayments = getStoredPayments();
@@ -1274,7 +1295,7 @@ export default function AdminFacilitatorEarnings() {
                                           className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5 inline-flex items-center gap-1 whitespace-nowrap"
                                           title={record.delay_reason || "Delayed Session: 50% facilitator payout applied"}
                                         >
-                                          ⚠️ Delayed (-50%)
+                                          {record.amount !== Math.round(perSessionAmount / 2) ? `⚠️ Delayed (Custom ₹${record.amount})` : '⚠️ Delayed (-50%)'}
                                         </span>
                                         <span 
                                           className="text-[9px] text-amber-700 italic mt-0.5 max-w-[150px] truncate block text-right cursor-help"
@@ -1285,7 +1306,7 @@ export default function AdminFacilitatorEarnings() {
                                       </div>
                                     ) : (
                                       <span className="text-[10px] text-muted-foreground mt-0.5">
-                                        Standard (₹{perSessionAmount})
+                                        {record.amount !== perSessionAmount ? `Custom (₹${record.amount})` : `Standard (₹${perSessionAmount})`}
                                       </span>
                                     )}
                                   </div>
@@ -1367,21 +1388,17 @@ export default function AdminFacilitatorEarnings() {
                                         </DropdownMenuItem>
                                       )}
 
-                                      {!record.is_unrecorded && (
-                                        <>
-                                          <DropdownMenuSeparator />
-                                          <DropdownMenuItem 
-                                            onClick={() => {
-                                              setEditingEarningId(record.id);
-                                              setEditEarningAmount(record.amount.toString());
-                                            }} 
-                                            className="gap-2 cursor-pointer"
-                                          >
-                                            <Edit3 className="h-3.5 w-3.5 text-blue-600" />
-                                            Edit Amount
-                                          </DropdownMenuItem>
-                                        </>
-                                      )}
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem 
+                                        onClick={() => {
+                                          setEditingEarningId(record.id);
+                                          setEditEarningAmount(record.amount.toString());
+                                        }} 
+                                        className="gap-2 cursor-pointer"
+                                      >
+                                        <Edit3 className="h-3.5 w-3.5 text-blue-600" />
+                                        Edit Amount
+                                      </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
                                 )}

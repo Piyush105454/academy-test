@@ -5,8 +5,9 @@
  * - A session is delayed if:
  *   1) It is completed/recorded and recorded_at date > session_date
  *   2) It is not completed and session_date < today's date
- * - When a session is delayed, the facilitator earning is HALVED (50% deduction).
+ * - When a session is delayed, the facilitator earning is HALVED (50% deduction) by default.
  *   E.g., if standard rate is ₹200, the delayed rate is ₹100.
+ * - If an explicit/custom amount is saved by admin, that custom amount takes precedence.
  */
 
 export const isSessionDelayed = (session: any): boolean => {
@@ -60,20 +61,17 @@ export const calculateFacilitatorSessionAmount = (
   perSessionAmount: number = 200,
   existingAmount?: number | null
 ): number => {
+  // If an existing/custom amount has been explicitly specified or saved, ALWAYS respect it!
+  if (existingAmount !== undefined && existingAmount !== null && !isNaN(existingAmount) && existingAmount >= 0) {
+    return existingAmount;
+  }
+
   const delayed = isSessionDelayed(session);
   const halfRate = Math.round(perSessionAmount / 2);
 
   if (delayed) {
-    // If delayed, earning MUST be half rate (50% deduction)
-    if (existingAmount !== undefined && existingAmount !== null && existingAmount > 0) {
-      return Math.min(existingAmount, halfRate);
-    }
     return halfRate;
   }
 
-  // Not delayed: return existing amount or full rate
-  if (existingAmount !== undefined && existingAmount !== null && existingAmount > 0) {
-    return existingAmount;
-  }
   return perSessionAmount;
 };

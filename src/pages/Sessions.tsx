@@ -108,6 +108,8 @@ interface Session {
   created_at: string;
   updated_at: string;
   feedback_unlocked?: boolean;
+  logged_hours_in_benevity?: boolean;
+  benevity_id?: string | null;
 }
 
 const getLocalDateString = (date: Date) => {
@@ -260,6 +262,7 @@ export default function Sessions() {
   const [classFilter, setClassFilter] = useState<string | null>(null);
   const [designationFilter, setDesignationFilter] = useState<string | null>(null);
   const [sessionStatusFilter, setSessionStatusFilter] = useState<string | null>(null);
+  const [benevityFilter, setBenevityFilter] = useState<string | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof Session | null>('session_date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('asc');
   const { selectedYear, getDateRange } = useAcademicYear();
@@ -317,6 +320,8 @@ export default function Sessions() {
               ...s,
               ...payload.new,
               // Preserve transformed fields if they exist
+              logged_hours_in_benevity: s.logged_hours_in_benevity,
+              benevity_id: s.benevity_id,
               coordinator_name: s.coordinator_name,
               centre_name: s.centre_name,
               centre_location: s.centre_location,
@@ -363,10 +368,49 @@ export default function Sessions() {
         .order('session_date', { ascending: true });
 
       if (error) throw error;
+
+      // Fetch session hours tracker records
+      let hoursTrackers: any[] = [];
+      try {
+        const { data: trackerData } = await supabase
+          .from('session_hours_tracker' as any)
+          .select('id, session_id, logged_hours_in_benevity, notes, validation_id');
+        hoursTrackers = trackerData || [];
+      } catch (err) {
+        console.warn('Could not fetch session_hours_tracker:', err);
+      }
+
+      let storedBenevity: Record<string, string> = {};
+      try {
+        const stored = localStorage.getItem('volunteer_benevity_ids_v1');
+        if (stored) storedBenevity = JSON.parse(stored);
+      } catch (e) {
+        // ignore
+      }
+
+      const trackerMap = new Map<string, any>();
+      hoursTrackers.forEach((t: any) => {
+        if (t.session_id) trackerMap.set(t.session_id, t);
+      });
       
       // Transform data to flatten relationships
-      const transformedData = (data || []).map((session: any) => ({
+      const transformedData = (data || []).map((session: any) => {
+        const tracker = trackerMap.get(session.id);
+        const storedId = storedBenevity[session.id] || tracker?.validation_id || (tracker?.notes?.includes('BENEVITY_ID:') ? tracker.notes.split('BENEVITY_ID:')[1].trim() : null);
+        const hasBenevityId = Boolean(storedId && storedId.trim() !== '' && storedId !== '-');
+        let isLoggedBenevity = false;
+        if (tracker?.logged_hours_in_benevity === true) {
+          isLoggedBenevity = true;
+        } else if (tracker?.logged_hours_in_benevity === false) {
+          isLoggedBenevity = false;
+        } else if (hasBenevityId) {
+          isLoggedBenevity = true;
+        }
+
+        return {
         ...session,
+        logged_hours_in_benevity: isLoggedBenevity,
+        benevity_id: hasBenevityId ? storedId : null,
         coordinator_name: session.coordinators?.name || null,
         coordinator_email: session.coordinators?.email || null,
           organization_name: session.volunteers?.organization_name || null,
@@ -388,7 +432,8 @@ export default function Sessions() {
                           if (tn.includes('cc') || tn.includes('certified') || tn.includes('computer course')) return 'Certified Computer Course';
                           return null;
                        })(),
-        }));
+        };
+      });
 
       const processedWithCodes = attachSessionIdCodes(transformedData);
       
@@ -842,6 +887,24 @@ export default function Sessions() {
                         </SelectContent>
                       </Select>
                     </div>
+
+                    {(currentTab === 'all' || currentTab === 'supervisor') && (
+                    <div className="w-full sm:w-48">
+                      <label className="text-xs font-medium text-emerald-600 mb-1 block">
+                        Log Benevity
+                      </label>
+                      <Select value={benevityFilter || 'all'} onValueChange={(value) => setBenevityFilter(value === 'all' ? null : value)}>
+                        <SelectTrigger className="bg-emerald-50/50 border-emerald-200 text-xs h-9">
+                          <SelectValue placeholder="All Benevity" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Benevity</SelectItem>
+                          <SelectItem value="yes">Logged (Yes)</SelectItem>
+                          <SelectItem value="no">Not Logged (No)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    )}
                     {/* Time Filter */}
                     <div className="w-full sm:w-48">
                       <label className="text-sm font-medium text-foreground mb-2 block">Time
@@ -1067,7 +1130,7 @@ export default function Sessions() {
                     </div>
 
                     {/* Active Filters Summary */}
-                    {(searchQuery || facilitatorStatusFilter || coordinatorStatusFilter || supervisorStatusFilter || timeFilter || dateFromFilter || dateToFilter || volunteerFilter || facilitatorFilter || coordinatorFilter || categoryFilter || subjectFilter || classFilter || designationFilter || sessionStatusFilter) && (
+                    {(searchQuery || facilitatorStatusFilter || coordinatorStatusFilter || supervisorStatusFilter || timeFilter || dateFromFilter || dateToFilter || volunteerFilter || facilitatorFilter || coordinatorFilter || categoryFilter || subjectFilter || classFilter || designationFilter || sessionStatusFilter || benevityFilter) && (
                       <div className="text-sm text-muted-foreground mt-2 sm:mt-0 w-full sm:w-auto">
                         Showing {filteredSessions.length} of {sessions.length} sessions
                       </div>
@@ -1250,6 +1313,14 @@ export default function Sessions() {
                             <span className="text-xs">{getSortIndicator('status')}</span>
                           </div>
                         </TableHead>
+                        {(currentTab === 'all' || currentTab === 'supervisor') && (
+                        <TableHead className="min-w-[120px] font-semibold cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleColumnSort('logged_hours_in_benevity' as any)}>
+                          <div className="flex items-center gap-1">
+                            Log Benevity
+                            <span className="text-xs">{getSortIndicator('logged_hours_in_benevity' as any)}</span>
+                          </div>
+                        </TableHead>
+                        )}
                         <TableHead className="min-w-[130px] font-semibold">Impact PPT Link</TableHead>
                         <TableHead className="min-w-[130px] font-semibold">Video Recording</TableHead>
                         <TableHead className="min-w-[80px]">Delayed</TableHead>
@@ -1349,6 +1420,21 @@ export default function Sessions() {
                               {session.status}
                             </Badge>
                           </TableCell>
+                          
+                          {/* Log Benevity */}
+                          {(currentTab === 'all' || currentTab === 'supervisor') && (
+                          <TableCell>
+                            {session.logged_hours_in_benevity ? (
+                              <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 font-semibold px-2.5 py-0.5 whitespace-nowrap">
+                                Yes
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200 font-semibold px-2.5 py-0.5 whitespace-nowrap">
+                                No
+                              </Badge>
+                            )}
+                          </TableCell>
+                          )}
                           
                           {/* Impact PPT Link */}
                           <TableCell>
@@ -1588,6 +1674,20 @@ export default function Sessions() {
                           </a>
                         </div>
                       ) : null}
+                      {(currentTab === 'all' || currentTab === 'supervisor') && (
+                        <div className="text-xs">
+                          <span className="text-muted-foreground block">Log Benevity</span>
+                          {session.logged_hours_in_benevity ? (
+                            <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 font-semibold px-2 py-0.5 mt-1">
+                              Yes
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200 font-semibold px-2 py-0.5 mt-1">
+                              No
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                       {/* Recording Status */}
                       {session.recording_url || session.recording_status ? (
                         <div className="text-xs">

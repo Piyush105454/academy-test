@@ -1193,10 +1193,6 @@ export default function SessionRecording() {
         toast.error("Feedback by Coordinator is required");
         return;
       }
-      if (!formData.recording_url || formData.recording_url.trim() === '') {
-        toast.error("Session Video Recording URL is required");
-        return;
-      }
       if (!formData.coordinator_mic_sound_rating || formData.coordinator_mic_sound_rating < 1 || formData.coordinator_mic_sound_rating > 10) {
         toast.error("Coordinator Mic/Sound Quality rating is required (1-10)");
         return;
@@ -2987,6 +2983,43 @@ export default function SessionRecording() {
                     )}
                   </CardContent>
                 </Card>
+
+                {/* Session Video Recording */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <ExternalLink className="h-4 w-4" />
+                      Session Video Recording <span className="text-xs text-muted-foreground font-normal">(Optional)</span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <Label htmlFor="recording_url" className="text-sm">Session Video Recording URL <span className="text-xs text-muted-foreground font-normal">(Optional)</span></Label>
+                      <Input
+                        id="recording_url"
+                        type="url"
+                        value={formData.recording_url || ''}
+                        onChange={(e) => setFormData({ ...formData, recording_url: e.target.value })}
+                        placeholder="https://example.com/recording"
+                        className="w-full"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Paste the link to the recorded session video (e.g. Google Drive, Zoom, YouTube)
+                      </p>
+                      {formData.recording_url && (
+                        <a
+                          href={formData.recording_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-primary hover:underline text-sm mt-2"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          View Recording
+                        </a>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             )}
 
@@ -3729,39 +3762,6 @@ export default function SessionRecording() {
                   placeholder="Feedback from incharge or reviewer"
                   minHeight="120px"
                 />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <ExternalLink className="h-4 w-4" />
-                  Session Video Recording <span className="text-destructive">*</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <Label htmlFor="recording_url" className="text-sm">Session Video Recording URL <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="recording_url"
-                    type="url"
-                    value={formData.recording_url}
-                    onChange={(e) => setFormData({ ...formData, recording_url: e.target.value })}
-                    placeholder="https://example.com/recording"
-                    className="w-full"
-                  />
-                  {formData.recording_url && (
-                    <a
-                      href={formData.recording_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-primary hover:underline text-sm mt-2"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      View Recording
-                    </a>
-                  )}
-                </div>
               </CardContent>
             </Card>
 
