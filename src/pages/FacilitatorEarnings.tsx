@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Loader2, ArrowUpDown, ChevronDown, CheckCircle2, Clock, Check, AlertCircle } from 'lucide-react';
+import { Search, Loader2, ArrowUpDown, ChevronDown, CheckCircle2, Clock, Check, AlertCircle, FileText, Video } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
@@ -55,6 +55,9 @@ interface FacilitatorSessionItem {
   paid_at?: string;
   is_delayed?: boolean;
   delay_reason?: string | null;
+  record_sheet_link?: string | null;
+  final_content_ppt?: string | null;
+  recording_url?: string | null;
 }
 
 export default function FacilitatorEarnings() {
@@ -164,7 +167,10 @@ export default function FacilitatorEarnings() {
           status,
           facilitator_name,
           facilitator_feedback_status,
-          recorded_at
+          recorded_at,
+          record_sheet_link,
+          final_content_ppt,
+          recording_url
         `)
         .ilike('status', 'completed')
         .ilike('facilitator_name', `%${facName}%`)
@@ -227,6 +233,9 @@ export default function FacilitatorEarnings() {
           is_delayed: isDelayed,
           delay_reason: delayReason,
           earning_status_raw: earning?.status,
+          record_sheet_link: sess.record_sheet_link,
+          final_content_ppt: sess.final_content_ppt,
+          recording_url: sess.recording_url,
         };
       });
 
@@ -585,6 +594,12 @@ export default function FacilitatorEarnings() {
                     <TableHead className="font-bold text-slate-600 uppercase text-[11px] min-w-[110px]">
                       DATE
                     </TableHead>
+                    <TableHead className="font-bold text-slate-600 uppercase text-[11px] min-w-[130px]">
+                      IMPACT PPT LINK
+                    </TableHead>
+                    <TableHead className="font-bold text-slate-600 uppercase text-[11px] min-w-[130px]">
+                      VIDEO RECORDING
+                    </TableHead>
                     <TableHead className="font-bold text-slate-600 uppercase text-[11px] min-w-[90px]">
                       AMOUNT
                     </TableHead>
@@ -650,6 +665,42 @@ export default function FacilitatorEarnings() {
                         {/* DATE */}
                         <TableCell className="text-slate-600 whitespace-nowrap">
                           {formattedDate}
+                        </TableCell>
+
+                        {/* IMPACT PPT LINK */}
+                        <TableCell>
+                          {session.record_sheet_link || session.final_content_ppt ? (
+                            <a
+                              href={session.record_sheet_link || session.final_content_ppt}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline bg-blue-50/80 hover:bg-blue-100 px-2 py-1 rounded-md border border-blue-200 transition-colors whitespace-nowrap"
+                              title="Open Session PPT Slide Link"
+                            >
+                              <FileText className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                              <span>PPT Slide</span>
+                            </a>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </TableCell>
+
+                        {/* VIDEO RECORDING */}
+                        <TableCell>
+                          {session.recording_url ? (
+                            <a
+                              href={session.recording_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-600 hover:text-purple-800 hover:underline bg-purple-50/80 hover:bg-purple-100 px-2 py-1 rounded-md border border-purple-200 transition-colors whitespace-nowrap"
+                              title="Watch Session Video Recording"
+                            >
+                              <Video className="h-3.5 w-3.5 text-purple-600 shrink-0" />
+                              <span>Watch Video</span>
+                            </a>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
                         </TableCell>
 
                         {/* AMOUNT */}

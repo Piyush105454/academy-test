@@ -13,7 +13,9 @@ import {
   Edit3, 
   Clock,
   X,
-  AlertTriangle
+  AlertTriangle,
+  FileText,
+  Video
 } from 'lucide-react';
 import { 
   isSessionDelayed, 
@@ -85,6 +87,9 @@ interface SessionData {
   status?: string;
   facilitator_feedback_status?: string;
   recorded_at?: string | null;
+  record_sheet_link?: string | null;
+  final_content_ppt?: string | null;
+  recording_url?: string | null;
 }
 
 interface EarningRecord {
@@ -379,6 +384,9 @@ export default function AdminFacilitatorEarnings() {
             status,
             facilitator_feedback_status,
             recorded_at,
+            record_sheet_link,
+            final_content_ppt,
+            recording_url,
             coordinators:coordinator_id(name)
           )
         `)
@@ -446,6 +454,9 @@ export default function AdminFacilitatorEarnings() {
           status,
           facilitator_feedback_status,
           recorded_at,
+          record_sheet_link,
+          final_content_ppt,
+          recording_url,
           coordinators:coordinator_id(name)
         `)
         .ilike('status', 'completed')
@@ -1112,7 +1123,7 @@ export default function AdminFacilitatorEarnings() {
                 </div>
               </div>
 
-              {/* Horizontal Scrollable Table with ALL 14 COLUMNS */}
+              {/* Horizontal Scrollable Table with ALL 16 COLUMNS */}
               {loadingRecords ? (
                 <div className="flex justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -1132,6 +1143,8 @@ export default function AdminFacilitatorEarnings() {
                         <TableHead className="min-w-[130px]">Facilitator</TableHead>
                         <TableHead className="min-w-[100px]">Class</TableHead>
                         <TableHead className="whitespace-nowrap min-w-[100px]">Date</TableHead>
+                        <TableHead className="min-w-[130px] font-semibold">Impact PPT Link</TableHead>
+                        <TableHead className="min-w-[130px] font-semibold">Video Recording</TableHead>
                         <TableHead className="text-right font-bold min-w-[90px]">Amount</TableHead>
                         <TableHead className="min-w-[110px]">Status</TableHead>
                         <TableHead className="min-w-[140px]">Transaction ID</TableHead>
@@ -1141,7 +1154,7 @@ export default function AdminFacilitatorEarnings() {
                     <TableBody>
                       {filteredDetailRecords.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={16} className="text-center py-8 text-muted-foreground">
                             No sessions found matching your filters.
                           </TableCell>
                         </TableRow>
@@ -1203,6 +1216,42 @@ export default function AdminFacilitatorEarnings() {
                               {/* 10. DATE */}
                               <TableCell className="whitespace-nowrap font-medium">
                                 {s.session_date ? new Date(s.session_date).toLocaleDateString('en-GB') : '-'}
+                              </TableCell>
+
+                              {/* 10a. IMPACT PPT LINK */}
+                              <TableCell>
+                                {s.record_sheet_link || s.final_content_ppt ? (
+                                  <a
+                                    href={s.record_sheet_link || s.final_content_ppt}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline bg-blue-50/80 hover:bg-blue-100 px-2 py-1 rounded-md border border-blue-200 transition-colors whitespace-nowrap"
+                                    title="Open Session PPT Slide Link"
+                                  >
+                                    <FileText className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                                    <span>PPT Slide</span>
+                                  </a>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+
+                              {/* 10b. VIDEO RECORDING */}
+                              <TableCell>
+                                {s.recording_url ? (
+                                  <a
+                                    href={s.recording_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-600 hover:text-purple-800 hover:underline bg-purple-50/80 hover:bg-purple-100 px-2 py-1 rounded-md border border-purple-200 transition-colors whitespace-nowrap"
+                                    title="Watch Session Video Recording"
+                                  >
+                                    <Video className="h-3.5 w-3.5 text-purple-600 shrink-0" />
+                                    <span>Watch Video</span>
+                                  </a>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
                               </TableCell>
 
                               {/* 11. AMOUNT */}
