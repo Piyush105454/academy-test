@@ -203,8 +203,9 @@ export default function Facilitators() {
     try {
       const normalizedEmail = formData.email.trim().toLowerCase();
 
+      let isDualRoleWithCoord = false;
       if (!editingId) {
-        // Check if email already exists in coordinators
+        // Check if email already exists in coordinators (dual role allowed)
         const { data: existingCoord } = await (supabase as any)
           .from('coordinators')
           .select('id, name')
@@ -212,20 +213,7 @@ export default function Facilitators() {
           .maybeSingle();
 
         if (existingCoord) {
-          toast.error(`This email is already registered as a Coordinator (${existingCoord.name}). Cannot register duplicate user.`);
-          return;
-        }
-
-        // Check if email already exists in user_profiles
-        const { data: existingProfile } = await (supabase as any)
-          .from('user_profiles')
-          .select('id')
-          .ilike('email', normalizedEmail)
-          .maybeSingle();
-
-        if (existingProfile) {
-          toast.error('This email is already registered to an existing user in the system.');
-          return;
+          isDualRoleWithCoord = true;
         }
       }
 
@@ -264,7 +252,7 @@ export default function Facilitators() {
           await supabase.from('user_profiles').update({ is_active: formData.status === 'active' }).ilike('email', normalizedEmail);
         } catch(e) {}
         
-        toast.success('Facilitator created successfully');
+        toast.success(isDualRoleWithCoord ? 'Facilitator created! (Dual role: Coordinator & Facilitator can now switch roles)' : 'Facilitator created successfully');
 
       }
 

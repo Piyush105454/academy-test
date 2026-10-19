@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import wesLogo from '@/assets/wes-logo.jpg';
 import { useState, useEffect } from 'react';
+import { RoleSwitcher } from './RoleSwitcher';
 import { ResetPasswordDialog } from './ResetPasswordDialog';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -142,6 +143,9 @@ export function StudentSidebar({ collapsed = false }: { collapsed?: boolean }) {
             </>
           )}
         </nav>
+
+        {/* Role Switcher Section */}
+        <RoleSwitcher variant="sidebar" />
 
          {/* Bottom Actions */}
         <div className="p-3 md:p-4 border-t border-border space-y-1">

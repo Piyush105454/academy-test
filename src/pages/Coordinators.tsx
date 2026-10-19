@@ -170,22 +170,7 @@ export function Coordinators() {
       setSavingEdit(true);
       const normalizedEmail = editForm.email.trim().toLowerCase();
 
-      // Check if email belongs to an existing facilitator
-      const { data: existingFac } = await (supabase as any)
-        .from('facilitators')
-        .select('id, name')
-        .ilike('email', normalizedEmail)
-        .maybeSingle();
-
-      if (existingFac) {
-        toast({
-          title: 'Email Already Registered',
-          description: `This email is already registered as a Facilitator (${existingFac.name}). Cannot use duplicate email.`,
-          variant: 'destructive',
-        });
-        setSavingEdit(false);
-        return;
-      }
+      // Dual role check (allowed across coordinator and facilitator)
 
       const { error } = await supabase
         .from('coordinators')

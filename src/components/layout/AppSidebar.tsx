@@ -5,6 +5,7 @@ import { useDeveloperMode } from '@/contexts/DeveloperModeContext';
 import { cn } from '@/lib/utils';
 import wesLogo from '@/assets/wes-logo.jpg';
 import { useState, useEffect, useRef } from 'react';
+import { RoleSwitcher } from './RoleSwitcher';
 import { supabase } from '@/integrations/supabase/client';
 import { Switch } from '@/components/ui/switch';
 
@@ -319,22 +320,8 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
           })}
         </nav>
 
-                {/* Switch Role Section */}
-        {assignedRoles.length > 1 && (
-          <div className="p-3 md:p-4 border-t border-border space-y-2">
-            <div className="text-xs font-semibold text-muted-foreground mb-2 px-1">Switch Role</div>
-            {assignedRoles.filter(r => r !== userRole).map(roleId => (
-              <button
-                key={roleId}
-                onClick={() => handleSwitchRole(roleId)}
-                className="flex items-center gap-3 w-full px-3 py-2 rounded-lg transition-colors text-sm font-medium text-foreground hover:bg-muted/50"
-              >
-                <Users className="h-4 w-4 flex-shrink-0 text-blue-500" />
-                <span className="truncate">Switch to {roleNames[roleId] || 'Unknown'}</span>
-              </button>
-            ))}
-          </div>
-        )}
+                {/* Role Switcher Section */}
+        <RoleSwitcher variant="sidebar" />
 
         {/* Sign Out Button */}
         <div className="p-3 md:p-4 border-t border-border">

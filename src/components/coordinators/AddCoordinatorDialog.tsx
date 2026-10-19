@@ -73,39 +73,14 @@ export function AddCoordinatorDialog({
         return;
       }
 
-      // Check if email exists in facilitators
+      // Check if email exists in facilitators (allow dual role!)
       const { data: existingFac } = await (supabase as any)
         .from('facilitators')
         .select('id, name')
         .ilike('email', normalizedEmail)
         .maybeSingle();
 
-      if (existingFac) {
-        toast({
-          title: 'Email Already Registered',
-          description: `This email is already registered as a Facilitator (${existingFac.name}). Duplicate registration across roles is not allowed.`,
-          variant: 'destructive',
-        });
-        setLoading(false);
-        return;
-      }
-
-      // Check if email exists in user_profiles
-      const { data: existingProfile } = await (supabase as any)
-        .from('user_profiles')
-        .select('id')
-        .ilike('email', normalizedEmail)
-        .maybeSingle();
-
-      if (existingProfile) {
-        toast({
-          title: 'Email Already Registered',
-          description: 'This email is already registered to an existing account in the system.',
-          variant: 'destructive',
-        });
-        setLoading(false);
-        return;
-      }
+      const isDualRole = !!existingFac;
 
       const { error } = await (supabase as any)
         .from('coordinators')
@@ -118,7 +93,9 @@ export function AddCoordinatorDialog({
 
       toast({
         title: 'Success',
-        description: 'Coordinator added successfully',
+        description: isDualRole 
+          ? 'Coordinator added! (Dual role: Coordinator & Facilitator can now switch roles)' 
+          : 'Coordinator added successfully',
       });
 
       setFormData({

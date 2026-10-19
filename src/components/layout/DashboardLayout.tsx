@@ -1,3 +1,4 @@
+import { RoleSwitcher } from './RoleSwitcher';
 import { ReactNode, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -264,6 +265,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 </SelectContent>
               </Select>
             </div>
+            
+            {/* Quick Role Switcher Pill in Top Header */}
+            <div className="ml-2">
+              <RoleSwitcher variant="header" />
+            </div>
           </div>
 
           {/* Profile Dropdown */}
@@ -305,6 +311,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <Settings className="h-4 w-4 mr-2" />
                 <span>Settings</span>
               </DropdownMenuItem>
+
+              {/* Role Switcher in Profile Menu */}
+              <RoleSwitcher variant="profile-menu" />
 
               <DropdownMenuSeparator />
 

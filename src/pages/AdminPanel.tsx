@@ -241,15 +241,17 @@ export default function AdminPanel() {
 
       if (editingUser) {
         // Update existing user
+        // Update user_profiles (gracefully handle assigned_roles)
+        const updatePayload: any = {
+          email: formData.email,
+          full_name: formData.full_name,
+          role_id: parseInt(formData.role_id),
+          updated_at: new Date().toISOString(),
+        };
+
         const { error } = await supabase
           .from('user_profiles')
-          .update({
-            email: formData.email,
-            full_name: formData.full_name,
-            role_id: parseInt(formData.role_id),
-            assigned_roles: formData.assigned_roles,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq('id', editingUser.id);
 
         if (error) throw error;
@@ -512,32 +514,34 @@ export default function AdminPanel() {
                     <p className="text-xs text-muted-foreground mt-1">Leave blank to keep current password</p>
                   </div>
                 )}
-                <div className="flex gap-3 pt-4">
+                <div>
+                  <Label className="mb-2 block">Additional Roles (Switch Role Feature)</Label>
+                  <p className="text-xs text-muted-foreground mb-2">Users with coordinator and facilitator accounts on the same email automatically receive switch role options.</p>
+                  <div className="flex flex-col gap-2 p-3 border rounded-md bg-muted/30">
+                    {roles.map(role => (
+                      <label key={role.id} className="flex items-center gap-2 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 rounded border-gray-300"
+                          checked={formData.assigned_roles?.includes(role.id) || false} 
+                          onChange={(e) => {
+                           if(e.target.checked) setFormData({...formData, assigned_roles: [...(formData.assigned_roles || []), role.id]})
+                           else setFormData({...formData, assigned_roles: (formData.assigned_roles || []).filter(id => id !== role.id)})
+                        }} />
+                        <span className="text-sm font-medium">{role.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
                   <Button
                     variant="outline"
                     onClick={handleCloseDialog}
                   >
                     Cancel
                   </Button>
-                                    <div>
-                    <Label className="mb-2 block">Additional Roles (Switch Role Feature)</Label>
-                    <div className="flex flex-col gap-2 p-3 border rounded-md bg-muted/30">
-                      {roles.map(role => (
-                        <label key={role.id} className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            className="w-4 h-4 rounded border-gray-300"
-                            checked={formData.assigned_roles?.includes(role.id) || false} 
-                            onChange={(e) => {
-                             if(e.target.checked) setFormData({...formData, assigned_roles: [...(formData.assigned_roles || []), role.id]})
-                             else setFormData({...formData, assigned_roles: (formData.assigned_roles || []).filter(id => id !== role.id)})
-                          }} />
-                          <span className="text-sm font-medium">{role.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                    <Button onClick={handleSaveUser}>
+                  <Button onClick={handleSaveUser}>
                     {editingUser ? 'Update User' : 'Add User'}
                   </Button>
                 </div>
