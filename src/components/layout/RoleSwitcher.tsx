@@ -20,7 +20,14 @@ const ROLE_ICONS: Record<number, any> = {
   5: BookOpen,
 };
 
+// Flag to easily toggle role switch buttons visibility without removing any code
+const SHOW_ROLE_SWITCHER = false;
+
 export function RoleSwitcher({ variant = 'header' }: { variant?: 'header' | 'sidebar' | 'profile-menu' }) {
+  if (!SHOW_ROLE_SWITCHER) {
+    return null;
+  }
+
   const { userRole, availableRoles, isMultiRole, switchRole, isLoading } = useUserRole();
 
   if (isLoading || !userRole) {

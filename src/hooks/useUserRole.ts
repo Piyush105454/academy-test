@@ -46,20 +46,22 @@ export function useUserRole() {
         // 1. Fetch user_profile
         const { data: profile } = await supabase
           .from('user_profiles')
-          .select('id, role_id')
+          .select('id, role_id, bio')
           .eq('id', user.id)
           .maybeSingle();
 
         let activeRoleId = profile?.role_id;
+        let profileBio = profile?.bio;
 
         if (!profile && email) {
           const { data: emailProfile } = await supabase
             .from('user_profiles')
-            .select('id, role_id')
+            .select('id, role_id, bio')
             .ilike('email', email)
             .limit(1)
             .maybeSingle();
           if (emailProfile?.role_id) activeRoleId = emailProfile.role_id;
+          if (emailProfile?.bio) profileBio = emailProfile.bio;
         }
 
         if (activeRoleId) rolesSet.add(activeRoleId);
@@ -92,20 +94,44 @@ export function useUserRole() {
         if (email) {
           const { data: stud } = await supabase
             .from('students')
-            .select('id, status')
+            .select('id')
             .ilike('email', email)
             .maybeSingle();
-          if (stud && stud.status !== 'inactive') {
+          if (stud) {
             rolesSet.add(5); // Student
           }
         }
 
-        // Admin (role 1) has authority to switch to staff roles
-        if (activeRoleId === 1) {
-          rolesSet.add(1);
-          rolesSet.add(2);
-          rolesSet.add(3);
-          rolesSet.add(4);
+        // Admin authority check:
+        // 1. If currently role 1
+        // 2. Or bio has base_role: 1 or isAdmin: true
+        // 3. Or email is a recognized organization admin email
+        let isPermanentAdmin = false;
+        if (activeRoleId === 1) isPermanentAdmin = true;
+
+        if (profileBio) {
+          try {
+            const parsed = typeof profileBio === 'string' ? JSON.parse(profileBio) : profileBio;
+            if (parsed.base_role === 1 || parsed.isAdmin === true) {
+              isPermanentAdmin = true;
+            }
+          } catch (e) {}
+        }
+
+        const ROOT_ADMIN_EMAILS = [
+          'info@wazireducationsociety.com',
+          'info@wazireducationsocity.com',
+        ];
+        if (email && ROOT_ADMIN_EMAILS.includes(email)) {
+          isPermanentAdmin = true;
+        }
+
+        // Admin has permanent authority to switch between all staff roles (Admin, Supervisor, Coordinator, Facilitator) and back
+        if (isPermanentAdmin) {
+          rolesSet.add(1); // Admin
+          rolesSet.add(2); // Supervisor
+          rolesSet.add(3); // Coordinator
+          rolesSet.add(4); // Facilitator
         }
 
         const rolesArray = Array.from(rolesSet);
@@ -151,17 +177,39 @@ export function useUserRole() {
     }
 
     try {
-      // 1. Update in user_profiles
+      // 1. Prepare update object for user_profiles
+      const updateData: any = { role_id: newRoleId, updated_at: new Date().toISOString() };
+      
+      // If user has admin authority (role 1 in availableRoles), preserve base_role metadata in bio
+      if (availableRoles.includes(1)) {
+        try {
+          const { data: currentP } = await supabase
+            .from('user_profiles')
+            .select('bio')
+            .eq('id', user.id)
+            .maybeSingle();
+
+          let bioObj: any = {};
+          if (currentP?.bio) {
+            bioObj = typeof currentP.bio === 'string' ? JSON.parse(currentP.bio) : currentP.bio;
+          }
+          bioObj.base_role = 1;
+          bioObj.isAdmin = true;
+          updateData.bio = JSON.stringify(bioObj);
+        } catch (e) {}
+      }
+
+      // Update in user_profiles
       const { error } = await supabase
         .from('user_profiles')
-        .update({ role_id: newRoleId, updated_at: new Date().toISOString() })
+        .update(updateData)
         .eq('id', user.id);
 
       if (error && user.email) {
         // Fallback by email
         await supabase
           .from('user_profiles')
-          .update({ role_id: newRoleId, updated_at: new Date().toISOString() })
+          .update(updateData)
           .ilike('email', user.email);
       }
 

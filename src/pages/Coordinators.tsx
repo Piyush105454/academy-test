@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { syncUserEmailUpdate } from '@/utils/userEmailSync';
 import { Plus, MoreVertical, Trash2, BookOpen, KeyRound, Edit, Link } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -172,6 +173,8 @@ export function Coordinators() {
 
       // Dual role check (allowed across coordinator and facilitator)
 
+      const oldEmail = editingCoordinator.email?.trim().toLowerCase();
+
       const { error } = await supabase
         .from('coordinators')
         .update({
@@ -185,6 +188,17 @@ export function Coordinators() {
         .eq('id', editingCoordinator.id);
 
       if (error) throw error;
+
+      // Synchronize email across user_profiles, facilitators and auth if email was changed
+      if (oldEmail && oldEmail !== normalizedEmail) {
+        const syncRes = await syncUserEmailUpdate({
+          oldEmail,
+          newEmail: normalizedEmail,
+        });
+        if (!syncRes.success && syncRes.error) {
+          toast({ title: 'Warning', description: syncRes.error, variant: 'destructive' });
+        }
+      }
 
       toast({ title: 'Success', description: 'Coordinator updated successfully' });
       setIsEditOpen(false);

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { syncUserEmailUpdate } from '@/utils/userEmailSync';
 import { Plus, Trash2, MoreVertical, BookOpen, Link, KeyRound, Edit, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -218,6 +219,9 @@ export default function Facilitators() {
       }
 
       if (editingId) {
+        const currentFac = facilitators.find(f => f.id === editingId);
+        const oldEmail = currentFac?.email?.trim().toLowerCase();
+
         const { error } = await supabase
           .from('facilitators')
           .update({
@@ -226,13 +230,22 @@ export default function Facilitators() {
           })
           .eq('id', editingId);
 
-        
         if (error) throw error;
         
-        // Update user_profiles login status
-        try {
-          await supabase.from('user_profiles').update({ is_active: formData.status === 'active' }).ilike('email', normalizedEmail);
-        } catch(e) {}
+        // Synchronize email across user_profiles, coordinators and auth if email was changed
+        if (oldEmail && oldEmail !== normalizedEmail) {
+          const syncRes = await syncUserEmailUpdate({
+            oldEmail,
+            newEmail: normalizedEmail,
+          });
+          if (!syncRes.success && syncRes.error) {
+            toast.error(syncRes.error);
+          }
+        } else {
+          try {
+            await supabase.from('user_profiles').update({ is_active: formData.status === 'active' }).ilike('email', normalizedEmail);
+          } catch(e) {}
+        }
         
         toast.success('Facilitator updated successfully');
 

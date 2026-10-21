@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { syncUserEmailUpdate } from '@/utils/userEmailSync';
 import { Plus, Edit2, Trash2, Mail, Shield, KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -241,9 +242,12 @@ export default function AdminPanel() {
 
       if (editingUser) {
         // Update existing user
+        const oldEmail = editingUser.email?.trim().toLowerCase();
+        const newEmail = formData.email.trim().toLowerCase();
+
         // Update user_profiles (gracefully handle assigned_roles)
         const updatePayload: any = {
-          email: formData.email,
+          email: newEmail,
           full_name: formData.full_name,
           role_id: parseInt(formData.role_id),
           updated_at: new Date().toISOString(),
@@ -255,6 +259,18 @@ export default function AdminPanel() {
           .eq('id', editingUser.id);
 
         if (error) throw error;
+
+        // Synchronize email in place across coordinators, facilitators, students and auth
+        if (oldEmail && newEmail && oldEmail !== newEmail) {
+          const syncRes = await syncUserEmailUpdate({
+            oldEmail,
+            newEmail,
+            userId: editingUser.id,
+          });
+          if (!syncRes.success && syncRes.error) {
+            toast.error(syncRes.error);
+          }
+        }
 
         // If a new password is provided, reset it using RPC
         if (formData.new_password) {
