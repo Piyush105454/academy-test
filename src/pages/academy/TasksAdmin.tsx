@@ -59,30 +59,80 @@ export default function TasksAdmin() {
 
   useEffect(() => {
     const fetchFacilitators = async () => {
-      // 1. Fetch emails of currently active facilitators from the facilitators table
-      const { data: activeFacs } = await supabase
-        .from('facilitators')
-        .select('email')
-        .eq('status', 'active');
-        
-      const activeEmails = activeFacs?.map(f => f.email?.toLowerCase()).filter(Boolean) || [];
+      try {
+        // 1. Fetch active and inactive facilitators from facilitators directory
+        const { data: facsData } = await supabase
+          .from('facilitators')
+          .select('name, email, status');
 
-      // 2. Fetch user_profiles
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('id, full_name, email')
-        .eq('role_id', 4)
-        .eq('is_active', true)
-        .order('full_name');
-        
-      if (data) {
-        // Filter out profiles that are not in the active facilitators table list
-        const filteredData = data.filter(p => p.email && activeEmails.includes(p.email.toLowerCase()));
-        
-        // Remove duplicates by Email to fix ghost/duplicate entries
-        const uniqueData = Array.from(new Map(filteredData.map(item => [item.email?.toLowerCase(), item])).values());
-        
-        setFacilitators(uniqueData as Facilitator[]);
+        const norm = (str?: string | null) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        const inactiveEmails = new Set(
+          facsData?.filter(f => f.status === 'inactive').map(f => f.email?.toLowerCase().trim()).filter(Boolean) || []
+        );
+        const inactiveNames = new Set(
+          facsData?.filter(f => f.status === 'inactive').map(f => norm(f.name)).filter(Boolean) || []
+        );
+
+        const activeEmails = new Set(
+          facsData?.filter(f => f.status === 'active').map(f => f.email?.toLowerCase().trim()).filter(Boolean) || []
+        );
+        const activeNames = new Set(
+          facsData?.filter(f => f.status === 'active').map(f => norm(f.name)).filter(Boolean) || []
+        );
+
+        // 2. Fetch user_profiles (role_id 4 = Facilitator)
+        const { data: profiles, error } = await supabase
+          .from('user_profiles')
+          .select('id, full_name, email')
+          .eq('role_id', 4)
+          .eq('is_active', true)
+          .order('full_name');
+
+        if (error) {
+          console.error("Error fetching profiles:", error);
+          return;
+        }
+
+        if (profiles) {
+          // Filter matching active facilitators by either email OR name
+          const filteredData = profiles.filter(p => {
+            const pEmail = (p.email || '').toLowerCase().trim();
+            const pName = norm(p.full_name);
+
+            // Exclude test/deleted accounts
+            if (pName.includes('delete') || pName.includes('test')) return false;
+
+            // Exclude inactive facilitators
+            if (inactiveEmails.has(pEmail) || inactiveNames.has(pName)) return false;
+
+            // Match if active by email or active by name
+            return activeEmails.has(pEmail) || activeNames.has(pName);
+          });
+
+          // Deduplicate by normalized name (prefer official domain email if multiple accounts exist)
+          const byName = new Map<string, Facilitator>();
+          for (const p of filteredData) {
+            const key = norm(p.full_name);
+            const cleanedProfile = { ...p, full_name: p.full_name?.trim() || '' };
+            if (!byName.has(key)) {
+              byName.set(key, cleanedProfile);
+            } else {
+              const existing = byName.get(key)!;
+              if (p.email?.includes('wazireducationsociety.org') && !existing.email?.includes('wazireducationsociety.org')) {
+                byName.set(key, cleanedProfile);
+              }
+            }
+          }
+
+          const uniqueData = Array.from(byName.values()).sort((a, b) => 
+            a.full_name.localeCompare(b.full_name)
+          );
+
+          setFacilitators(uniqueData);
+        }
+      } catch (err) {
+        console.error("Error loading facilitators:", err);
       }
     };
     fetchFacilitators();

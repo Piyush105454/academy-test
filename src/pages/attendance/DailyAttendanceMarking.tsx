@@ -9,6 +9,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface StudentData {
   id: string;
@@ -17,6 +24,7 @@ interface StudentData {
   student_id?: string;
   roll_no?: string;
   email?: string;
+  designation?: string | null;
 }
 
 interface AttendanceRecord {
@@ -37,6 +45,7 @@ export default function DailyAttendanceMarking() {
   const [saving, setSaving] = useState(false);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [lateThreshold, setLateThreshold] = useState('09:00:00');
+  const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
 
   useEffect(() => {
     fetchClassData();
@@ -68,7 +77,7 @@ export default function DailyAttendanceMarking() {
 
       const { data: studs } = await supabase
         .from('students')
-        .select('id, name, roll_number, student_id, email')
+        .select('id, name, roll_number, student_id, email, designation')
         .eq('class_id', classId)
         .eq('academic_year', selectedYear)
         .order('name');
@@ -133,13 +142,70 @@ export default function DailyAttendanceMarking() {
     }
   };
 
+  const availableDesignations = useMemo(() => {
+    const set = new Set<string>();
+    students.forEach(s => {
+      if (s.designation && s.designation.trim()) {
+        set.add(s.designation.trim());
+      }
+    });
+
+    const standard = ['1. CCC', '2. Junior Fellow', '3. Senior Fellow'];
+    const result: string[] = [];
+
+    standard.forEach(std => {
+      const hasMatch = Array.from(set).some(d => 
+        d === std || 
+        (std === '1. CCC' && (d.toLowerCase().includes('ccc') || d.startsWith('1'))) ||
+        (std === '2. Junior Fellow' && (d.toLowerCase().includes('junior') || d.startsWith('2'))) ||
+        (std === '3. Senior Fellow' && (d.toLowerCase().includes('senior') || d.startsWith('3')))
+      );
+      if (hasMatch) {
+        result.push(std);
+      }
+    });
+
+    set.forEach(d => {
+      const isAlreadyInResult = result.some(r => 
+        r === d || 
+        (r === '1. CCC' && (d.toLowerCase().includes('ccc') || d.startsWith('1'))) ||
+        (r === '2. Junior Fellow' && (d.toLowerCase().includes('junior') || d.startsWith('2'))) ||
+        (r === '3. Senior Fellow' && (d.toLowerCase().includes('senior') || d.startsWith('3')))
+      );
+      if (!isAlreadyInResult) {
+        result.push(d);
+      }
+    });
+
+    if (result.length === 0) {
+      return ['1. CCC', '2. Junior Fellow'];
+    }
+    return result;
+  }, [students]);
+
+  const filteredStudents = useMemo(() => {
+    if (selectedDesignation === 'all' || !selectedDesignation) {
+      return students;
+    }
+    const target = selectedDesignation.toLowerCase().trim();
+    return students.filter(s => {
+      if (!s.designation) return false;
+      const des = s.designation.toLowerCase().trim();
+      if (des === target) return true;
+      if (target === '1. ccc' && (des.includes('ccc') || des.includes('certified') || des.startsWith('1'))) return true;
+      if (target === '2. junior fellow' && (des.includes('junior') || des.includes('intern') || des.startsWith('2'))) return true;
+      if (target === '3. senior fellow' && (des.includes('senior') || des.startsWith('3'))) return true;
+      return des.includes(target);
+    });
+  }, [students, selectedDesignation]);
+
   const handleMark = (studentId: string, status: 'P' | 'LT' | 'A' | 'L' | 'H') => {
     setAttendance(prev => ({ ...prev, [studentId]: status }));
   };
 
   const handleBulkMark = (status: 'P' | 'A' | 'H') => {
     const newAtt = { ...attendance };
-    students.forEach(s => {
+    filteredStudents.forEach(s => {
       newAtt[s.id] = status;
     });
     setAttendance(newAtt);
@@ -194,7 +260,7 @@ export default function DailyAttendanceMarking() {
     let h = 0;
     let unmarked = 0;
 
-    students.forEach((student) => {
+    filteredStudents.forEach((student) => {
       const status = attendance[student.id];
       if (status === 'P') p++;
       else if (status === 'LT') lt++;
@@ -211,9 +277,9 @@ export default function DailyAttendanceMarking() {
       l,
       h,
       unmarked,
-      total: students.length,
+      total: filteredStudents.length,
     };
-  }, [students, attendance]);
+  }, [filteredStudents, attendance]);
 
   return (
     <DashboardLayout>
@@ -238,15 +304,33 @@ export default function DailyAttendanceMarking() {
               <p className="text-sm text-muted-foreground">Daily Attendance Register</p>
             </div>
             
-            <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              {/* Designation Filter */}
+              <div className="flex flex-col bg-card border border-border px-3 py-1 rounded-lg justify-center h-10 min-w-[170px] shadow-xs">
+                <label className="text-[10px] text-muted-foreground font-semibold leading-none mb-0.5">DESIGNATION</label>
+                <Select value={selectedDesignation} onValueChange={setSelectedDesignation}>
+                  <SelectTrigger className="h-5 border-none bg-transparent focus:ring-0 text-xs font-semibold p-0 shadow-none hover:bg-transparent">
+                    <SelectValue placeholder="All Designations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Designations</SelectItem>
+                    {availableDesignations.map((des) => (
+                      <SelectItem key={des} value={des}>
+                        {des}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <input 
                 type="date" 
-                className="border rounded-md px-3 py-2 text-sm w-full sm:w-auto"
+                className="border rounded-md px-3 py-2 text-sm h-10 w-full sm:w-auto"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 max={format(new Date(), 'yyyy-MM-dd')}
               />
-              <Button onClick={handleSave} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 whitespace-nowrap">
+              <Button onClick={handleSave} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 whitespace-nowrap h-10">
                 <Save className="w-4 h-4 mr-2" />
                 {saving ? 'Saving...' : 'SAVE'}
               </Button>
@@ -332,11 +416,11 @@ export default function DailyAttendanceMarking() {
 
                 {loading ? (
                   <div className="py-12 text-center text-muted-foreground">Loading students...</div>
-                ) : students.length === 0 ? (
-                  <div className="py-12 text-center text-muted-foreground">No students in this class.</div>
+                ) : filteredStudents.length === 0 ? (
+                  <div className="py-12 text-center text-muted-foreground">No students match the selected designation.</div>
                 ) : (
                   <div className="divide-y">
-                    {students.map((student) => (
+                    {filteredStudents.map((student) => (
                       <div key={student.id} className="flex justify-between items-center py-3 border-b last:border-0 hover:bg-slate-50/50 transition-colors">
                           <div className="flex items-center w-1/2">
                             <div className="w-20 sm:w-24 shrink-0 font-mono text-xs font-semibold text-slate-500">
@@ -346,7 +430,12 @@ export default function DailyAttendanceMarking() {
                               <div className="w-8 h-8 rounded bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 uppercase">
                                 {student.name.charAt(0)}
                               </div>
-                              <span className="font-medium text-sm text-slate-800">{student.name}</span>
+                              <div className="flex flex-col">
+                                <span className="font-medium text-sm text-slate-800">{student.name}</span>
+                                {student.designation && (
+                                  <span className="text-[11px] text-muted-foreground font-medium">{student.designation}</span>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="flex justify-end gap-1 sm:gap-2 pr-1">
