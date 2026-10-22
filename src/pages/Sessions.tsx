@@ -1745,7 +1745,7 @@ export default function Sessions() {
                         <Button 
                           size="sm" 
                           variant="outline"
-                          onClick={() => navigate(`/sessions/${session.id}/recording`)}
+                          onClick={() => window.open(`/sessions/${session.id}/recording`, '_blank')}
                           className="flex-1"
                         >
                           <FileText className="h-4 w-4 mr-1" />

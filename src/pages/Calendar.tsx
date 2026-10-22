@@ -1515,7 +1515,7 @@ ${session.meeting_link}
                 
                 <div className="flex gap-2 flex-wrap">
                   <button
-                    onClick={() => navigate(`/sessions/${selectedSession.id}/recording`)}
+                    onClick={() => window.open(`/sessions/${selectedSession.id}/recording`, '_blank')}
                     className="flex-1 min-w-[120px] px-4 py-2 bg-green-600 border border-green-700 text-white rounded hover:bg-green-700 transition-colors text-sm font-medium"
                   >
                     Record Feedback

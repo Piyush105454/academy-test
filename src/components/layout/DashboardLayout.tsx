@@ -13,10 +13,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { User, Settings, LogOut, Edit, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { 
+  User, 
+  Settings, 
+  LogOut, 
+  Edit, 
+  PanelLeftClose, 
+  PanelLeftOpen, 
+  Calendar as CalendarIcon, 
+  ChevronDown,
+  Shield,
+  ShieldCheck,
+  UserCheck,
+  GraduationCap,
+  BookOpen
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
-import { Calendar as CalendarIcon, ChevronDown } from 'lucide-react';
 import { 
   Select, 
   SelectContent, 
@@ -24,6 +37,14 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
+
+const ROLE_BADGE_CONFIG: Record<number, { label: string; icon: any; className: string }> = {
+  1: { label: 'Admin', icon: Shield, className: 'bg-red-50 text-red-700 border-red-200/80 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800' },
+  2: { label: 'Supervisor', icon: ShieldCheck, className: 'bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800' },
+  3: { label: 'Coordinator', icon: UserCheck, className: 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800' },
+  4: { label: 'Facilitator', icon: GraduationCap, className: 'bg-indigo-50 text-indigo-700 border-indigo-200/80 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800' },
+  5: { label: 'Student', icon: BookOpen, className: 'bg-blue-50 text-blue-700 border-blue-200/80 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800' },
+};
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -33,6 +54,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const [userEmail, setUserEmail] = useState<string>('');
+  const [userName, setUserName] = useState<string>('');
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<number | null>(null);
   const [roleLoaded, setRoleLoaded] = useState(false);
@@ -60,35 +82,67 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const loadUserRole = async () => {
     try {
-      // Try to get role_id using auth user ID (normal case)
+      let role: number | null = null;
+      let name: string = '';
+
+      // 1. Try to get role_id and full_name using auth user ID
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('role_id')
+        .select('role_id, full_name, email')
         .eq('id', user?.id)
         .maybeSingle();
 
-      if (!data) {
-        // If data is null, try querying by email instead
-        // This handles the case where profile ID doesn't match auth user ID
-        const { data: emailData, error: emailError } = await supabase
+      if (data) {
+        if (data.role_id) role = data.role_id;
+        if (data.full_name) name = data.full_name;
+      } else {
+        // Query by email
+        const { data: emailData } = await supabase
           .from('user_profiles')
-          .select('role_id')
-          .ilike('email', user?.email)
+          .select('role_id, full_name, email')
+          .ilike('email', user?.email || '')
           .limit(1)
           .maybeSingle();
 
-        if (emailError) {
-          console.error('Error loading user role by email:', emailError);
-          setUserRole(null);
-        } else if (emailData?.role_id) {
-          setUserRole(emailData.role_id);
+        if (emailData) {
+          if (emailData.role_id) role = emailData.role_id;
+          if (emailData.full_name) name = emailData.full_name;
         }
-      } else if (error) {
-        console.error('Error loading user role:', error);
-        setUserRole(null);
-      } else if (data?.role_id) {
-        setUserRole(data.role_id);
       }
+
+      // Check coordinators and facilitators tables if name or role is missing
+      if (user?.email) {
+        const email = user.email.trim().toLowerCase();
+        if (!name || !role) {
+          const { data: coord } = await supabase
+            .from('coordinators')
+            .select('name, status')
+            .ilike('email', email)
+            .maybeSingle();
+          if (coord) {
+            if (!name && coord.name) name = coord.name;
+            if (!role && coord.status !== 'inactive') role = 3;
+          }
+        }
+        if (!name || !role) {
+          const { data: fac } = await supabase
+            .from('facilitators')
+            .select('name, status')
+            .ilike('email', email)
+            .maybeSingle();
+          if (fac) {
+            if (!name && fac.name) name = fac.name;
+            if (!role && fac.status !== 'inactive') role = 4;
+          }
+        }
+      }
+
+      if (!name) {
+        name = user?.user_metadata?.full_name || user?.user_metadata?.name || '';
+      }
+
+      setUserName(name);
+      setUserRole(role);
       setRoleLoaded(true);
     } catch (error) {
       console.error('Error loading user role:', error);
@@ -272,58 +326,88 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </div>
 
-          {/* Profile Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full h-10 w-10 bg-primary/10 hover:bg-primary/20 p-0 overflow-hidden"
-              >
-                {profileImage ? (
-                  <img
-                    src={profileImage}
-                    alt="Profile"
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <User className="h-5 w-5 text-primary" />
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              {/* User Info */}
-              <div className="px-2 py-1.5">
-                <p className="text-sm font-semibold text-foreground">Logged In</p>
-                <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
-              </div>
+          {/* Right Section: User Role Badge & Profile Dropdown */}
+          <div className="flex items-center gap-3">
+            {/* User Type / Role Badge shown near the icon */}
+            {userRole && ROLE_BADGE_CONFIG[userRole] && (() => {
+              const config = ROLE_BADGE_CONFIG[userRole];
+              const Icon = config.icon;
+              return (
+                <div 
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border shadow-xs transition-colors ${config.className}`}
+                  title={`User Type: ${config.label}`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="font-bold tracking-wide uppercase text-[11px]">{config.label}</span>
+                </div>
+              );
+            })()}
 
-              <DropdownMenuSeparator />
+            {/* Profile Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full h-10 w-10 bg-primary/10 hover:bg-primary/20 p-0 overflow-hidden ring-1 ring-border focus-visible:ring-2 focus-visible:ring-primary"
+                  title={userName ? `${userName} (${userEmail})` : userEmail}
+                >
+                  {profileImage ? (
+                    <img
+                      src={profileImage}
+                      alt="Profile"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center font-bold text-sm text-primary uppercase">
+                      {userName ? userName.trim().charAt(0) : (userEmail ? userEmail.charAt(0) : <User className="h-5 w-5 text-primary" />)}
+                    </div>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60 p-1.5">
+                {/* User Info Header: Name + Email + Role */}
+                <div className="px-3 py-2.5 bg-muted/40 rounded-md border border-border/50 mb-1">
+                  <p className="text-sm font-bold text-foreground leading-tight truncate">
+                    {userName || 'User'}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5" title={userEmail}>
+                    {userEmail}
+                  </p>
+                  {userRole && ROLE_BADGE_CONFIG[userRole] && (
+                    <div className="mt-2">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${ROLE_BADGE_CONFIG[userRole].className}`}>
+                        {ROLE_BADGE_CONFIG[userRole].label}
+                      </span>
+                    </div>
+                  )}
+                </div>
 
-              {/* Edit Profile Option */}
-              <DropdownMenuItem onClick={handleEditProfile} className="cursor-pointer">
-                <Edit className="h-4 w-4 mr-2" />
-                <span>Edit Profile</span>
-              </DropdownMenuItem>
+                {/* Edit Profile Option */}
+                <DropdownMenuItem onClick={handleEditProfile} className="cursor-pointer">
+                  <Edit className="h-4 w-4 mr-2 text-muted-foreground" />
+                  <span>Edit Profile</span>
+                </DropdownMenuItem>
 
-              {/* Settings Option */}
-              <DropdownMenuItem onClick={handleSettings} className="cursor-pointer">
-                <Settings className="h-4 w-4 mr-2" />
-                <span>Settings</span>
-              </DropdownMenuItem>
+                {/* Settings Option */}
+                <DropdownMenuItem onClick={handleSettings} className="cursor-pointer">
+                  <Settings className="h-4 w-4 mr-2 text-muted-foreground" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
 
-              {/* Role Switcher in Profile Menu */}
-              <RoleSwitcher variant="profile-menu" />
+                {/* Role Switcher in Profile Menu */}
+                <RoleSwitcher variant="profile-menu" />
 
-              <DropdownMenuSeparator />
+                <DropdownMenuSeparator className="my-1" />
 
-              {/* Sign Out Option */}
-              <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive">
-                <LogOut className="h-4 w-4 mr-2" />
-                <span>Sign Out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {/* Sign Out Option */}
+                <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive focus:text-destructive">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  <span>Sign Out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         {/* Main Content */}

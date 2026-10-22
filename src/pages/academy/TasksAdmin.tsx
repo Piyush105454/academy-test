@@ -20,8 +20,36 @@ interface Facilitator {
   email?: string;
 }
 
+interface TaskAssignment {
+  id?: string;
+  facilitator_id: string;
+  custom_reward_amount?: number | null;
+  user_profiles?: { full_name: string } | null;
+  academy_tasks?: { status: string; task_date: string }[];
+}
+
+interface TaskTemplate {
+  id: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  recurrence: string;
+  recurrence_rule?: string | null;
+  base_reward_amount: number;
+  leaderboard_points: number;
+  requires_note?: boolean;
+  requires_photo?: boolean;
+  manager_approval_required?: boolean;
+  auto_approve_minutes?: number;
+  due_time?: string | null;
+  end_date?: string | null;
+  created_at?: string;
+  academy_task_assignments?: TaskAssignment[];
+}
+
 export default function TasksAdmin() {
   const [isCreating, setIsCreating] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [recurrence, setRecurrence] = useState("daily");
   
   // Form state
@@ -153,11 +181,94 @@ export default function TasksAdmin() {
     setSelectedFacilitators(selectedFacilitators.filter(f => f.id !== id));
   };
 
+  const resetForm = () => {
+    setName("");
+    setCategory("attendance");
+    setDescription("");
+    setRecurrence("daily");
+    setDueTime("16:00");
+    setEndDate("");
+    setBaseRewardAmount(20);
+    setLeaderboardPoints(5);
+    setIncludeLeaderboard(true);
+    setRequiresNote(true);
+    setRequiresPhoto(true);
+    setRequiresManagerApproval(true);
+    setAutoApprovePreset("1440");
+    setAutoApproveHours(24);
+    setAutoApproveMins(0);
+    setSelectedFacilitators([]);
+    setSelectedDays([1, 2, 3, 4, 5]);
+    setEditingTemplateId(null);
+  };
+
+  const handleOpenCreate = () => {
+    resetForm();
+    setIsCreating(true);
+  };
+
+  const handleEditTemplate = (task: TaskTemplate) => {
+    setEditingTemplateId(task.id);
+    setName(task.name || "");
+    setCategory(task.category || "attendance");
+
+    const cleanDesc = (task.description || "").replace(/__AUTOAPPROVE\[.*?\]__/g, "").trim();
+    setDescription(cleanDesc);
+
+    setRecurrence(task.recurrence || "daily");
+    if (task.recurrence_rule) {
+      const days = task.recurrence_rule.split(',').map((d: string) => parseInt(d, 10)).filter(Boolean);
+      setSelectedDays(days.length > 0 ? days : [1, 2, 3, 4, 5]);
+    } else {
+      setSelectedDays([1, 2, 3, 4, 5]);
+    }
+
+    setDueTime(task.due_time || "16:00");
+    setEndDate(task.end_date || "");
+    setBaseRewardAmount(Number(task.base_reward_amount) || 0);
+    setLeaderboardPoints(Number(task.leaderboard_points) || 0);
+    setIncludeLeaderboard(Number(task.leaderboard_points) > 0);
+    setRequiresNote(task.requires_note ?? true);
+    setRequiresPhoto(task.requires_photo ?? true);
+
+    const approvalReq = task.manager_approval_required ?? true;
+    setRequiresManagerApproval(approvalReq);
+    const autoMins = Number(task.auto_approve_minutes) || 0;
+    if (!approvalReq && autoMins > 0) {
+      setAutoApproveHours(Math.floor(autoMins / 60));
+      setAutoApproveMins(autoMins % 60);
+      if ([0, 360, 720, 1440, 2880, 4320].includes(autoMins)) {
+        setAutoApprovePreset(String(autoMins));
+      } else {
+        setAutoApprovePreset("custom");
+      }
+    } else if (!approvalReq && autoMins === 0) {
+      setAutoApprovePreset("0");
+      setAutoApproveHours(0);
+      setAutoApproveMins(0);
+    } else {
+      setAutoApprovePreset("1440");
+      setAutoApproveHours(24);
+      setAutoApproveMins(0);
+    }
+
+    const assignments = task.academy_task_assignments || [];
+    const assignedFacIds = assignments.map((a: TaskAssignment) => a.facilitator_id).filter(Boolean);
+    if (assignedFacIds.length > 0 && assignedFacIds.length < facilitators.length) {
+      const matched = facilitators.filter(f => assignedFacIds.includes(f.id));
+      setSelectedFacilitators(matched);
+    } else {
+      setSelectedFacilitators([]);
+    }
+
+    setIsCreating(true);
+  };
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return toast.error("Task Name is required");
+    if (!name.trim()) return toast.error("Work Name is required");
     
     setIsSubmitting(true);
     try {
@@ -168,73 +279,141 @@ export default function TasksAdmin() {
       const autoApproveTag = `__AUTOAPPROVE[${requiresManagerApproval ? 'manual' : totalAutoApproveMinutes}]__`;
       const finalDescription = `${description || ''} ${autoApproveTag}`.trim();
 
-      // 1. Insert Template
-      const { data: template, error: templateError } = await supabase
-        .from('academy_task_templates')
-        .insert({
-          name,
-          category,
-          description: finalDescription,
-          recurrence,
-          recurrence_rule: recurrence !== 'onetime' ? selectedDays.join(',') : null,
-          base_reward_amount: baseRewardAmount,
-          leaderboard_points: includeLeaderboard ? leaderboardPoints : 0,
-          requires_note: requiresNote,
-          requires_photo: requiresPhoto,
-          manager_approval_required: requiresManagerApproval,
-          auto_approve_minutes: totalAutoApproveMinutes,
-          due_time: dueTime,
-          end_date: endDate || null,
-          created_by: user.id
-        } as any)
-        .select()
-        .single();
+      const templatePayload = {
+        name: name.trim(),
+        category,
+        description: finalDescription,
+        recurrence,
+        recurrence_rule: recurrence !== 'onetime' ? selectedDays.join(',') : null,
+        base_reward_amount: baseRewardAmount,
+        leaderboard_points: includeLeaderboard ? leaderboardPoints : 0,
+        requires_note: requiresNote,
+        requires_photo: requiresPhoto,
+        manager_approval_required: requiresManagerApproval,
+        auto_approve_minutes: totalAutoApproveMinutes,
+        due_time: dueTime,
+        end_date: endDate || null,
+      };
 
-      if (templateError) throw templateError;
+      if (editingTemplateId) {
+        // UPDATE existing template
+        const { error: updateError } = await supabase
+          .from('academy_task_templates')
+          .update(templatePayload)
+          .eq('id', editingTemplateId);
 
-      // 2. Insert Assignments
-      // If no specific facilitator is selected, assign to ALL facilitators
-      const facilitatorsToAssign = selectedFacilitators.length > 0 
-        ? selectedFacilitators 
-        : facilitators;
+        if (updateError) throw updateError;
 
-      if (facilitatorsToAssign.length > 0) {
-        const assignments = facilitatorsToAssign.map(fac => ({
-          template_id: template.id,
-          facilitator_id: fac.id,
-          custom_reward_amount: null // fallback to base
-        }));
+        // Sync Assignments
+        const facilitatorsToAssign = selectedFacilitators.length > 0 
+          ? selectedFacilitators 
+          : facilitators;
+        const targetFacIds = facilitatorsToAssign.map(f => f.id);
 
-        const { error: assignError } = await supabase
+        const { data: existingAssignments } = await supabase
           .from('academy_task_assignments')
-          .insert(assignments);
-          
-        if (assignError) throw assignError;
+          .select('id, facilitator_id')
+          .eq('template_id', editingTemplateId);
 
-        // 3. Immediately generate tasks for today so they show up in My Work
-        const { error: rpcError } = await supabase.rpc('generate_academy_tasks');
-        if (rpcError) console.error("Error generating initial tasks:", rpcError);
+        const existingMap = new Map((existingAssignments || []).map(a => [a.facilitator_id, a.id]));
+
+        // Add new assignments
+        const toAdd = targetFacIds.filter(id => !existingMap.has(id));
+        if (toAdd.length > 0) {
+          const newAssignments = toAdd.map(facId => ({
+            template_id: editingTemplateId,
+            facilitator_id: facId,
+            custom_reward_amount: null
+          }));
+          const { error: insErr } = await supabase
+            .from('academy_task_assignments')
+            .insert(newAssignments);
+          if (insErr) console.error("Error inserting new assignments:", insErr);
+        }
+
+        // Remove unselected assignments
+        const toRemove = (existingAssignments || [])
+          .filter(a => !targetFacIds.includes(a.facilitator_id))
+          .map(a => a.id);
+        if (toRemove.length > 0) {
+          const { error: delErr } = await supabase
+            .from('academy_task_assignments')
+            .delete()
+            .in('id', toRemove);
+          if (delErr) console.error("Error removing old assignments:", delErr);
+        }
+
+        // Regenerate/refresh tasks for today
+        try {
+          await supabase.rpc('generate_academy_tasks');
+        } catch (rpcErr) {
+          console.error("Error regenerating tasks:", rpcErr);
+        }
+
+        toast.success("Work template updated successfully!");
+      } else {
+        // CREATE new template
+        const { data: template, error: templateError } = await supabase
+          .from('academy_task_templates')
+          .insert({
+            ...templatePayload,
+            created_by: user.id
+          })
+          .select()
+          .single();
+
+        if (templateError) throw templateError;
+
+        const facilitatorsToAssign = selectedFacilitators.length > 0 
+          ? selectedFacilitators 
+          : facilitators;
+
+        if (facilitatorsToAssign.length > 0) {
+          const assignments = facilitatorsToAssign.map(fac => ({
+            template_id: template.id,
+            facilitator_id: fac.id,
+            custom_reward_amount: null
+          }));
+
+          const { error: assignError } = await supabase
+            .from('academy_task_assignments')
+            .insert(assignments);
+            
+          if (assignError) throw assignError;
+
+          const { error: rpcError } = await supabase.rpc('generate_academy_tasks');
+          if (rpcError) console.error("Error generating initial tasks:", rpcError);
+        }
+
+        toast.success("Work template created successfully!");
       }
 
-      toast.success("Task template created successfully!");
+      resetForm();
       setIsCreating(false);
       
       // Refresh templates
       const { data: newTemplates } = await supabase
         .from('academy_task_templates')
-        .select(`*, academy_task_assignments(facilitator_id, user_profiles(full_name))`)
+        .select(`
+          *,
+          academy_task_assignments (
+            facilitator_id,
+            user_profiles (full_name),
+            academy_tasks (status, task_date)
+          )
+        `)
         .order('created_at', { ascending: false });
-      if (newTemplates) setTemplates(newTemplates);
+      if (newTemplates) setTemplates(newTemplates as TaskTemplate[]);
       
-    } catch (err: any) {
-      toast.error("Error creating task: " + err.message);
+    } catch (err: unknown) {
+      toast.error("Error saving work: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   // State for fetched templates
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -254,9 +433,9 @@ export default function TasksAdmin() {
           .order('created_at', { ascending: false });
 
         if (error) throw error;
-        setTemplates(data || []);
-      } catch (err: any) {
-        toast.error("Failed to load templates: " + err.message);
+        setTemplates((data as TaskTemplate[]) || []);
+      } catch (err: unknown) {
+        toast.error("Failed to load templates: " + (err instanceof Error ? err.message : String(err)));
       } finally {
         setLoading(false);
       }
@@ -268,7 +447,7 @@ export default function TasksAdmin() {
   }, [isCreating]);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [templateToDelete, setTemplateToDelete] = useState<any>(null);
+  const [templateToDelete, setTemplateToDelete] = useState<TaskTemplate | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -284,13 +463,13 @@ export default function TasksAdmin() {
         
       if (error) throw error;
       
-      toast.success("Task template deleted successfully");
+      toast.success("Work template deleted successfully");
       setTemplates(templates.filter(t => t.id !== templateToDelete.id));
       setDeleteDialogOpen(false);
       setTemplateToDelete(null);
       setDeleteConfirmText("");
-    } catch (err: any) {
-      toast.error("Error deleting template: " + err.message);
+    } catch (err: unknown) {
+      toast.error("Error deleting template: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsDeleting(false);
     }
@@ -302,12 +481,12 @@ export default function TasksAdmin() {
         <div className="p-6 max-w-6xl mx-auto space-y-6">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Tasks & Templates</h1>
-              <p className="text-sm text-slate-500 mt-1">Manage recurring task templates and assignments.</p>
+              <h1 className="text-2xl font-bold text-slate-900">Work & Templates</h1>
+              <p className="text-sm text-slate-500 mt-1">Manage recurring work templates and assignments.</p>
             </div>
-            <Button onClick={() => setIsCreating(true)} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+            <Button onClick={handleOpenCreate} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
               <Plus className="h-4 w-4" />
-              Create Task
+              Create Work
             </Button>
           </div>
 
@@ -316,7 +495,7 @@ export default function TasksAdmin() {
               <table className="w-full text-sm text-left">
                 <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-medium">
                   <tr>
-                    <th className="px-6 py-4">Task Name & Details</th>
+                    <th className="px-6 py-4">Work Name & Details</th>
                     <th className="px-6 py-4">Creation Date</th>
                     <th className="px-6 py-4">Occurrence & Deadline</th>
                     <th className="px-6 py-4">Template Status</th>
@@ -332,7 +511,7 @@ export default function TasksAdmin() {
                     </tr>
                   ) : templates.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-slate-500">No templates found. Click 'Create Task' to add one.</td>
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-500">No work templates found. Click 'Create Work' to add one.</td>
                     </tr>
                   ) : (
                     templates.map((task) => {
@@ -340,13 +519,13 @@ export default function TasksAdmin() {
                       
                       let assignedText = "All Facilitators";
                       if (assignments.length > 0) {
-                        assignedText = assignments.map((a: any) => a.user_profiles?.full_name).join(', ');
+                        assignedText = assignments.map((a: TaskAssignment) => a.user_profiles?.full_name).filter(Boolean).join(', ');
                       }
 
                       // Occurrence logic
                       let occurrenceText = task.recurrence;
                       if (task.recurrence !== 'onetime' && task.recurrence_rule) {
-                        const daysMap: any = { '1': 'M', '2': 'T', '3': 'W', '4': 'Th', '5': 'F', '6': 'Sa', '7': 'Su' };
+                        const daysMap: Record<string, string> = { '1': 'M', '2': 'T', '3': 'W', '4': 'Th', '5': 'F', '6': 'Sa', '7': 'Su' };
                         const daysArr = task.recurrence_rule.split(',').map((d: string) => daysMap[d]);
                         occurrenceText += ` (${daysArr.join(', ')})`;
                       }
@@ -359,9 +538,9 @@ export default function TasksAdmin() {
                       let todayPending = 0;
                       let todaySubmitted = 0;
                       
-                      assignments.forEach((a: any) => {
-                        const todayTasks = (a.academy_tasks || []).filter((t: any) => t.task_date === todayStr);
-                        todayTasks.forEach((t: any) => {
+                      assignments.forEach((a: TaskAssignment) => {
+                        const todayTasks = (a.academy_tasks || []).filter((t: { status: string; task_date: string }) => t.task_date === todayStr);
+                        todayTasks.forEach((t: { status: string }) => {
                           if (t.status === 'pending') todayPending++;
                           if (t.status === 'submitted' || t.status === 'approved') todaySubmitted++;
                         });
@@ -412,12 +591,9 @@ export default function TasksAdmin() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => {
-                                  // Edit functionality placeholder - would load data into form and set isCreating=true
-                                  toast.info("Edit functionality coming soon!");
-                                }}>
+                                <DropdownMenuItem onClick={() => handleEditTemplate(task)}>
                                   <Edit className="h-4 w-4 mr-2" />
-                                  Edit Task
+                                  Edit Work
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
                                   className="text-red-600 focus:text-red-600 focus:bg-red-50"
@@ -447,9 +623,9 @@ export default function TasksAdmin() {
         <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle className="text-red-600">Delete Task Template</DialogTitle>
+              <DialogTitle className="text-red-600">Delete Work Template</DialogTitle>
               <DialogDescription>
-                This will permanently delete the template <strong>{templateToDelete?.name}</strong> and all its associated assignments and tasks. 
+                This will permanently delete the work template <strong>{templateToDelete?.name}</strong> and all its associated assignments and tasks. 
                 This action cannot be undone.
               </DialogDescription>
             </DialogHeader>
@@ -485,20 +661,20 @@ export default function TasksAdmin() {
     <DashboardLayout>
       <div className="p-6 max-w-5xl mx-auto space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Create Task</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{editingTemplateId ? 'Edit Work' : 'Create Work'}</h1>
           <p className="text-sm text-slate-500 mt-1">Assign responsibility, reward and leaderboard rules.</p>
         </div>
         <form onSubmit={handleCreateTask} className="space-y-6 max-w-4xl bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
           <Card className="border-t-4 border-t-primary">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" /> Task Details
+                <FileText className="h-5 w-5 text-primary" /> Work Details
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Task Name</Label>
+                  <Label>Work Name</Label>
                   <Input 
                     placeholder="e.g. Daily Attendance Record" 
                     required 
@@ -850,9 +1026,19 @@ export default function TasksAdmin() {
           </Card>
 
           <div className="flex justify-end gap-4 pt-4 border-t">
-            <Button type="button" variant="outline" className="px-8" onClick={() => setIsCreating(false)} disabled={isSubmitting}>Cancel</Button>
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="px-8" 
+              onClick={() => { resetForm(); setIsCreating(false); }} 
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
             <Button type="submit" className="px-8 bg-blue-600 hover:bg-blue-700 text-white rounded-lg" disabled={isSubmitting}>
-              {isSubmitting ? 'Creating...' : 'Create & Assign Task'}
+              {isSubmitting 
+                ? (editingTemplateId ? 'Updating...' : 'Creating...') 
+                : (editingTemplateId ? 'Update Work Template' : 'Create & Assign Work')}
             </Button>
           </div>
         </form>

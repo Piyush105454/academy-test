@@ -1,4 +1,4 @@
-import { Home, Users, LogOut, CalendarDays, BookOpen, Menu, X, Users2, MapPin, FileText, GraduationCap, Shield, ClipboardList, ChevronDown, MessageCircle, Clock, Wrench, Wallet } from 'lucide-react';
+import { Home, Users, LogOut, CalendarDays, BookOpen, Menu, X, Users2, MapPin, FileText, GraduationCap, Shield, ClipboardList, ChevronDown, MessageCircle, Clock, Wrench, Wallet, LucideIcon } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDeveloperMode } from '@/contexts/DeveloperModeContext';
@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch';
 interface NavItem {
   title: string;
   url: string;
-  icon: any;
+  icon: LucideIcon;
   requiredRole: number | null;
   studentVisible: boolean;
   hiddenRoles?: number[];
@@ -93,17 +93,17 @@ const navGroups: NavGroup[] = [
     ]
   },
   {
-    label: 'Schedule Facilitator Task Management',
+    label: 'Schedule Facilitator Work Management',
     studentVisible: false,
     items: [
       // Teacher / Employee Views (Only Role 4)
       { title: 'My Work', url: '/academy/my-work', icon: ClipboardList, requiredRole: 4, studentVisible: false },
-      { title: 'My Task Earnings', url: '/academy/my-earnings', icon: FileText, requiredRole: 4, studentVisible: false },
+      { title: 'My Work Earnings', url: '/academy/my-earnings', icon: FileText, requiredRole: 4, studentVisible: false },
       { title: 'My Goals', url: '/academy/my-goals', icon: FileText, requiredRole: 4, studentVisible: false },
       { title: 'Leaderboard', url: '/academy/leaderboard', icon: Users2, requiredRole: 4, studentVisible: false },
       
       // Admin / Manager Views (Hidden from Role 4)
-      { title: 'Tasks & Templates', url: '/academy/tasks', icon: ClipboardList, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
+      { title: 'Work & Templates', url: '/academy/tasks', icon: ClipboardList, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
       { title: 'Approvals', url: '/academy/approvals', icon: Shield, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
       { title: 'Goals Admin', url: '/academy/manage-goals', icon: FileText, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
       { title: 'Leaderboard', url: '/academy/leaderboard', icon: Users, requiredRole: null, studentVisible: false, hiddenRoles: [4] },

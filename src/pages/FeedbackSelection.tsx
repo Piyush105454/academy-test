@@ -442,11 +442,11 @@ export default function FeedbackSelection() {
   };
 
   const handleViewDetails = (sessionId: string) => {
-    navigate(`/sessions/${sessionId}/feedback-details`);
+    window.open(`/sessions/${sessionId}/feedback-details`, '_blank');
   };
 
   const handleAddFeedback = (sessionId: string) => {
-    navigate(`/sessions/${sessionId}/recording`);
+    window.open(`/sessions/${sessionId}/recording`, '_blank');
   };
 
   const handleOpenAddFeedbackDialog = async () => {

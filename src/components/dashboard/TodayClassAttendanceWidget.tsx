@@ -55,14 +55,24 @@ export function TodayClassAttendanceWidget({
           const status = record.status as 'P' | 'LT' | 'A' | 'L' | 'H';
           
           if (classStats[record.class_id]) {
-            classStats[record.class_id][status]++;
+            if (status === 'LT') {
+              classStats[record.class_id].P++;
+              classStats[record.class_id].LT++;
+            } else if (classStats[record.class_id][status] !== undefined) {
+              classStats[record.class_id][status]++;
+            }
           }
           
           const cls = enabledClasses.find(c => c.id === record.class_id);
           if (cls && cls.name === 'CCC EMP Fellow' && record.students?.designation) {
              const desig = record.students.designation;
              if (designationStats[desig]) {
-               designationStats[desig][status]++;
+               if (status === 'LT') {
+                 designationStats[desig].P++;
+                 designationStats[desig].LT++;
+               } else if (designationStats[desig][status] !== undefined) {
+                 designationStats[desig][status]++;
+               }
              }
           }
         });
@@ -147,8 +157,8 @@ export function TodayClassAttendanceWidget({
     };
   }, { P: 0, LT: 0, A: 0, L: 0, H: 0 });
 
-  const totalExpected = allTotal.P + allTotal.LT + allTotal.A + allTotal.L + allTotal.H;
-  const presentPercent = totalExpected > 0 ? ((allTotal.P + allTotal.LT) / totalExpected * 100).toFixed(1) : '0.0';
+  const totalExpected = allTotal.P + allTotal.A + allTotal.L + allTotal.H;
+  const presentPercent = totalExpected > 0 ? (allTotal.P / totalExpected * 100).toFixed(1) : '0.0';
 
   return (
     <Card className="col-span-1 border-slate-200 shadow-sm flex flex-col h-full bg-slate-50 overflow-hidden font-sans">
@@ -168,7 +178,7 @@ export function TodayClassAttendanceWidget({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="font-bold text-emerald-600 text-lg">{allTotal.P + allTotal.LT}</span>
+            <span className="font-bold text-emerald-600 text-lg">{allTotal.P}</span>
             <span className="font-bold text-indigo-600 text-lg">{presentPercent}%</span>
           </div>
         </div>

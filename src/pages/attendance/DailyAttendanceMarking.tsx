@@ -46,6 +46,7 @@ export default function DailyAttendanceMarking() {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [lateThreshold, setLateThreshold] = useState('09:00:00');
   const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
+  const [selectedAttendanceStatus, setSelectedAttendanceStatus] = useState<string>('all');
 
   useEffect(() => {
     fetchClassData();
@@ -183,7 +184,7 @@ export default function DailyAttendanceMarking() {
     return result;
   }, [students]);
 
-  const filteredStudents = useMemo(() => {
+  const studentsByDesignation = useMemo(() => {
     if (selectedDesignation === 'all' || !selectedDesignation) {
       return students;
     }
@@ -198,6 +199,45 @@ export default function DailyAttendanceMarking() {
       return des.includes(target);
     });
   }, [students, selectedDesignation]);
+
+  const counts = useMemo(() => {
+    let p = 0;
+    let lt = 0;
+    let a = 0;
+    let l = 0;
+    let h = 0;
+    let unmarked = 0;
+
+    studentsByDesignation.forEach((student) => {
+      const status = attendance[student.id];
+      if (status === 'P') p++;
+      else if (status === 'LT') lt++;
+      else if (status === 'A') a++;
+      else if (status === 'L') l++;
+      else if (status === 'H') h++;
+      else unmarked++;
+    });
+
+    return {
+      p,
+      lt,
+      a,
+      l,
+      h,
+      unmarked,
+      total: studentsByDesignation.length,
+    };
+  }, [studentsByDesignation, attendance]);
+
+  const filteredStudents = useMemo(() => {
+    if (selectedAttendanceStatus === 'all' || !selectedAttendanceStatus) {
+      return studentsByDesignation;
+    }
+    if (selectedAttendanceStatus === 'unmarked') {
+      return studentsByDesignation.filter(s => !attendance[s.id]);
+    }
+    return studentsByDesignation.filter(s => attendance[s.id] === selectedAttendanceStatus);
+  }, [studentsByDesignation, selectedAttendanceStatus, attendance]);
 
   const handleMark = (studentId: string, status: 'P' | 'LT' | 'A' | 'L' | 'H') => {
     setAttendance(prev => ({ ...prev, [studentId]: status }));
@@ -252,35 +292,6 @@ export default function DailyAttendanceMarking() {
     return d.getDay() === 0; // 0 is Sunday
   };
 
-  const counts = useMemo(() => {
-    let p = 0;
-    let lt = 0;
-    let a = 0;
-    let l = 0;
-    let h = 0;
-    let unmarked = 0;
-
-    filteredStudents.forEach((student) => {
-      const status = attendance[student.id];
-      if (status === 'P') p++;
-      else if (status === 'LT') lt++;
-      else if (status === 'A') a++;
-      else if (status === 'L') l++;
-      else if (status === 'H') h++;
-      else unmarked++;
-    });
-
-    return {
-      p,
-      lt,
-      a,
-      l,
-      h,
-      unmarked,
-      total: filteredStudents.length,
-    };
-  }, [filteredStudents, attendance]);
-
   return (
     <DashboardLayout>
       <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-6">
@@ -323,6 +334,25 @@ export default function DailyAttendanceMarking() {
                 </Select>
               </div>
 
+              {/* Attendance Status Filter */}
+              <div className="flex flex-col bg-card border border-border px-3 py-1 rounded-lg justify-center h-10 min-w-[160px] shadow-xs">
+                <label className="text-[10px] text-muted-foreground font-semibold leading-none mb-0.5">ATTENDANCE</label>
+                <Select value={selectedAttendanceStatus} onValueChange={setSelectedAttendanceStatus}>
+                  <SelectTrigger className="h-5 border-none bg-transparent focus:ring-0 text-xs font-semibold p-0 shadow-none hover:bg-transparent">
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="P">Present (P)</SelectItem>
+                    <SelectItem value="A">Absent (A)</SelectItem>
+                    <SelectItem value="LT">Late (LT)</SelectItem>
+                    <SelectItem value="L">Leave (L)</SelectItem>
+                    <SelectItem value="H">Holiday (H)</SelectItem>
+                    <SelectItem value="unmarked">Unmarked</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <input 
                 type="date" 
                 className="border rounded-md px-3 py-2 text-sm h-10 w-full sm:w-auto"
@@ -339,27 +369,57 @@ export default function DailyAttendanceMarking() {
 
           {/* Real-time Attendance Count Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+            <div 
+              onClick={() => setSelectedAttendanceStatus('all')}
+              className={`bg-slate-50 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-slate-100 ${
+                selectedAttendanceStatus === 'all' ? 'ring-2 ring-slate-400 border-slate-400' : 'border-slate-200/80'
+              }`}
+            >
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total</span>
               <span className="text-2xl font-bold text-slate-800 mt-0.5">{counts.total}</span>
             </div>
-            <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+            <div 
+              onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'P' ? 'all' : 'P')}
+              className={`bg-emerald-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-emerald-100/80 ${
+                selectedAttendanceStatus === 'P' ? 'ring-2 ring-emerald-500 border-emerald-500' : 'border-emerald-200'
+              }`}
+            >
               <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider">Present (P)</span>
               <span className="text-2xl font-bold text-emerald-700 mt-0.5">{counts.p}</span>
             </div>
-            <div className="bg-rose-50/80 border border-rose-200 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+            <div 
+              onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'A' ? 'all' : 'A')}
+              className={`bg-rose-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-rose-100/80 ${
+                selectedAttendanceStatus === 'A' ? 'ring-2 ring-rose-500 border-rose-500' : 'border-rose-200'
+              }`}
+            >
               <span className="text-[11px] font-semibold text-rose-700 uppercase tracking-wider">Absent (A)</span>
               <span className="text-2xl font-bold text-rose-700 mt-0.5">{counts.a}</span>
             </div>
-            <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+            <div 
+              onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'LT' ? 'all' : 'LT')}
+              className={`bg-amber-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-amber-100/80 ${
+                selectedAttendanceStatus === 'LT' ? 'ring-2 ring-amber-500 border-amber-500' : 'border-amber-200'
+              }`}
+            >
               <span className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider">Late (LT)</span>
               <span className="text-2xl font-bold text-amber-700 mt-0.5">{counts.lt}</span>
             </div>
-            <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+            <div 
+              onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'L' ? 'all' : 'L')}
+              className={`bg-blue-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-blue-100/80 ${
+                selectedAttendanceStatus === 'L' ? 'ring-2 ring-blue-500 border-blue-500' : 'border-blue-200'
+              }`}
+            >
               <span className="text-[11px] font-semibold text-blue-700 uppercase tracking-wider">Leave (L)</span>
               <span className="text-2xl font-bold text-blue-700 mt-0.5">{counts.l}</span>
             </div>
-            <div className="bg-purple-50/80 border border-purple-200 rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs">
+            <div 
+              onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'H' ? 'all' : 'H')}
+              className={`bg-purple-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-purple-100/80 ${
+                selectedAttendanceStatus === 'H' ? 'ring-2 ring-purple-500 border-purple-500' : 'border-purple-200'
+              }`}
+            >
               <span className="text-[11px] font-semibold text-purple-700 uppercase tracking-wider">Holiday (H)</span>
               <span className="text-2xl font-bold text-purple-700 mt-0.5">{counts.h}</span>
             </div>
@@ -383,26 +443,28 @@ export default function DailyAttendanceMarking() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">
-                  <span className="w-2 h-2 rounded-full bg-green-600"></span>
-                  Present: {counts.p}
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200">
-                  <span className="w-2 h-2 rounded-full bg-red-600"></span>
-                  Absent: {counts.a}
-                </span>
-                {counts.lt > 0 && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
-                    Late: {counts.lt}
+              {selectedAttendanceStatus !== 'all' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    Filtered by: <span className="font-semibold text-slate-700">
+                      {selectedAttendanceStatus === 'unmarked' ? 'Unmarked' : 
+                       selectedAttendanceStatus === 'P' ? 'Present (P)' :
+                       selectedAttendanceStatus === 'A' ? 'Absent (A)' :
+                       selectedAttendanceStatus === 'LT' ? 'Late (LT)' :
+                       selectedAttendanceStatus === 'L' ? 'Leave (L)' :
+                       selectedAttendanceStatus === 'H' ? 'Holiday (H)' : selectedAttendanceStatus}
+                    </span> ({filteredStudents.length})
                   </span>
-                )}
-                {counts.unmarked > 0 && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                    Unmarked: {counts.unmarked}
-                  </span>
-                )}
-              </div>
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    className="h-7 text-xs text-blue-600 hover:text-blue-800 px-2"
+                    onClick={() => setSelectedAttendanceStatus('all')}
+                  >
+                    Clear Filter
+                  </Button>
+                </div>
+              )}
             </div>
 
               <div className="mt-4">
@@ -417,7 +479,7 @@ export default function DailyAttendanceMarking() {
                 {loading ? (
                   <div className="py-12 text-center text-muted-foreground">Loading students...</div>
                 ) : filteredStudents.length === 0 ? (
-                  <div className="py-12 text-center text-muted-foreground">No students match the selected designation.</div>
+                  <div className="py-12 text-center text-muted-foreground">No students match the selected filters.</div>
                 ) : (
                   <div className="divide-y">
                     {filteredStudents.map((student) => (

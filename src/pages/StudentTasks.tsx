@@ -387,7 +387,7 @@ export default function StudentTasks() {
               <Card
                 key={task.id}
                 className="hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group border-border/50"
-                onClick={() => navigate(`/student-tasks/${task.id}`)}
+                onClick={() => window.open(`/student-tasks/${task.id}`, '_blank')}
               >
                 <CardHeader className="pb-3">
                   <div className="flex justify-between items-start">
@@ -445,7 +445,7 @@ export default function StudentTasks() {
                       className="h-8 text-primary gap-1 group-hover:gap-2 transition-all"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/student-tasks/${task.id}`);
+                        window.open(`/student-tasks/${task.id}`, '_blank');
                       }}
                     >
                       View Details
@@ -489,7 +489,7 @@ export default function StudentTasks() {
                     const isPending = task.status === 'pending';
 
                     return (
-                      <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/student-tasks/${task.id}`)}>
+                      <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => window.open(`/student-tasks/${task.id}`, '_blank')}>
                         <TableCell className="font-medium">
                           <div className="line-clamp-2" title={task.task_name}>{task.task_name}</div>
                           {(task as any).task_id && (

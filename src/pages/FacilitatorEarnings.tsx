@@ -249,7 +249,7 @@ export default function FacilitatorEarnings() {
     }
   };
 
-  // Distinct months available for filtering
+  // Distinct months available for filtering (sorted descending)
   const availableMonths = useMemo(() => {
     const monthSet = new Map<string, string>();
     sessions.forEach(s => {
@@ -264,12 +264,27 @@ export default function FacilitatorEarnings() {
         }
       }
     });
-    return Array.from(monthSet.entries()).map(([key, label]) => ({ key, label }));
+    return Array.from(monthSet.entries())
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => b.key.localeCompare(a.key));
   }, [sessions]);
 
-  // Filtered sessions
-  const filteredSessions = useMemo(() => {
+  // Month-filtered sessions (used for metric cards and base for search/status filter)
+  const monthFilteredSessions = useMemo(() => {
+    if (selectedMonth === 'all') return sessions;
     return sessions.filter(s => {
+      if (!s.session_date) return false;
+      const d = new Date(s.session_date);
+      if (isNaN(d.getTime())) {
+        return s.session_date.startsWith(selectedMonth);
+      }
+      return format(d, 'yyyy-MM') === selectedMonth;
+    });
+  }, [sessions, selectedMonth]);
+
+  // Filtered sessions for table (month + search + status)
+  const filteredSessions = useMemo(() => {
+    return monthFilteredSessions.filter(s => {
       // Search
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch = !q ||
@@ -277,47 +292,41 @@ export default function FacilitatorEarnings() {
         s.class_batch.toLowerCase().includes(q) ||
         s.module_topic.toLowerCase().includes(q);
 
-      // Month
-      let matchesMonth = true;
-      if (selectedMonth !== 'all' && s.session_date) {
-        matchesMonth = s.session_date.startsWith(selectedMonth);
-      }
-
       // Status
       let matchesStatus = true;
       if (selectedStatusFilter !== 'all') {
         matchesStatus = s.status === selectedStatusFilter;
       }
 
-      return matchesSearch && matchesMonth && matchesStatus;
+      return matchesSearch && matchesStatus;
     });
-  }, [sessions, searchQuery, selectedMonth, selectedStatusFilter]);
+  }, [monthFilteredSessions, searchQuery, selectedStatusFilter]);
 
   // Eligible sessions in current filtered view
   const eligibleFilteredSessions = useMemo(() => {
     return filteredSessions.filter(s => s.status === 'eligible');
   }, [filteredSessions]);
 
-  // Metric Cards
+  // Metric Cards (Filtered based on selected month!)
   const availableToEncash = useMemo(() => {
-    return sessions
+    return monthFilteredSessions
       .filter(s => s.status === 'eligible')
       .reduce((sum, s) => sum + s.amount, 0);
-  }, [sessions]);
+  }, [monthFilteredSessions]);
 
   const underReview = useMemo(() => {
-    return sessions
+    return monthFilteredSessions
       .filter(s => s.status === 'under_review')
       .reduce((sum, s) => sum + s.amount, 0);
-  }, [sessions]);
+  }, [monthFilteredSessions]);
 
   const paidToDate = useMemo(() => {
-    return sessions
+    return monthFilteredSessions
       .filter(s => s.status === 'paid')
       .reduce((sum, s) => sum + s.amount, 0);
-  }, [sessions]);
+  }, [monthFilteredSessions]);
 
-  const totalCompletedSessions = sessions.length;
+  const totalCompletedSessions = monthFilteredSessions.length;
 
   // Selected Amount
   const selectedTotalAmount = useMemo(() => {
@@ -436,19 +445,38 @@ export default function FacilitatorEarnings() {
             )}
           </div>
 
-          <Button
-            onClick={() => setIsSubmitDialogOpen(true)}
-            disabled={selectedSessionIds.length === 0}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm px-6 py-2.5 h-auto rounded-lg flex items-center gap-2 transition-all disabled:opacity-50"
-          >
-            <span className="font-bold text-base">₹</span>
-            Submit for Encashment
-            {selectedSessionIds.length > 0 && (
-              <span className="ml-1 bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-bold">
-                {selectedSessionIds.length}
-              </span>
-            )}
-          </Button>
+          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+            {/* Header Month Filter */}
+            <div className="w-full sm:w-44">
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="h-10 text-xs bg-white border-slate-200 font-medium shadow-xs">
+                  <SelectValue placeholder="All Months" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">All Months</SelectItem>
+                  {availableMonths.map(m => (
+                    <SelectItem key={m.key} value={m.key} className="text-xs">
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Button
+              onClick={() => setIsSubmitDialogOpen(true)}
+              disabled={selectedSessionIds.length === 0}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm px-6 py-2.5 h-10 rounded-lg flex items-center gap-2 transition-all disabled:opacity-50"
+            >
+              <span className="font-bold text-base">₹</span>
+              Submit for Encashment
+              {selectedSessionIds.length > 0 && (
+                <span className="ml-1 bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+                  {selectedSessionIds.length}
+                </span>
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* 4 Summary Metric Cards */}
@@ -457,7 +485,14 @@ export default function FacilitatorEarnings() {
           {/* Card 1: Available to Encash */}
           <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden relative border-l-4 border-l-emerald-500">
             <CardContent className="p-5">
-              <p className="text-xs font-medium text-slate-500 mb-2">Available to Encash</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-slate-500">Available to Encash</p>
+                {selectedMonth !== 'all' && (
+                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/50">
+                    {availableMonths.find(m => m.key === selectedMonth)?.label || selectedMonth}
+                  </span>
+                )}
+              </div>
               <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                 ₹{availableToEncash.toLocaleString('en-IN')}
               </h3>
@@ -467,7 +502,14 @@ export default function FacilitatorEarnings() {
           {/* Card 2: Under Review */}
           <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden relative border-l-4 border-l-amber-500">
             <CardContent className="p-5">
-              <p className="text-xs font-medium text-slate-500 mb-2">Under Review</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-slate-500">Under Review</p>
+                {selectedMonth !== 'all' && (
+                  <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/50">
+                    {availableMonths.find(m => m.key === selectedMonth)?.label || selectedMonth}
+                  </span>
+                )}
+              </div>
               <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                 ₹{underReview.toLocaleString('en-IN')}
               </h3>
@@ -477,7 +519,14 @@ export default function FacilitatorEarnings() {
           {/* Card 3: Paid to Date */}
           <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden relative border-l-4 border-l-purple-500">
             <CardContent className="p-5">
-              <p className="text-xs font-medium text-slate-500 mb-2">Paid to Date</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-slate-500">Paid to Date</p>
+                {selectedMonth !== 'all' && (
+                  <span className="text-[10px] font-semibold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/50">
+                    {availableMonths.find(m => m.key === selectedMonth)?.label || selectedMonth}
+                  </span>
+                )}
+              </div>
               <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                 ₹{paidToDate.toLocaleString('en-IN')}
               </h3>
@@ -487,7 +536,14 @@ export default function FacilitatorEarnings() {
           {/* Card 4: Total Completed Sessions */}
           <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden relative border-l-4 border-l-blue-500">
             <CardContent className="p-5">
-              <p className="text-xs font-medium text-slate-500 mb-2">Total Completed Sessions</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-slate-500">Total Completed Sessions</p>
+                {selectedMonth !== 'all' && (
+                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/50">
+                    {availableMonths.find(m => m.key === selectedMonth)?.label || selectedMonth}
+                  </span>
+                )}
+              </div>
               <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                 {totalCompletedSessions}
               </h3>

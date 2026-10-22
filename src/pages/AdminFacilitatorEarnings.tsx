@@ -1704,7 +1704,7 @@ export default function AdminFacilitatorEarnings() {
                             <Button 
                               size="sm" 
                               variant="outline"
-                              onClick={() => navigate(`/admin-facilitator-earnings/${f.id}`)}
+                              onClick={() => window.open(`/admin-facilitator-earnings/${f.id}`, '_blank')}
                               className="text-xs"
                             >
                               View Details

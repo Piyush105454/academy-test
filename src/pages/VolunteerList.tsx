@@ -937,7 +937,7 @@ export default function VolunteerList() {
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={() => navigate(`/volunteers/edit/${volunteer.id}`)}
+                                  onClick={() => window.open(`/volunteers/edit/${volunteer.id}`, '_blank')}
                                 >
                                   <Pencil className="h-4 w-4 mr-2" />
                                   Edit
@@ -949,7 +949,7 @@ export default function VolunteerList() {
                                   Edit Preferences
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  onClick={() => navigate(`/calendar?assign=${volunteer.id}`)}
+                                  onClick={() => window.open(`/calendar?assign=${volunteer.id}`, '_blank')}
                                 >
                                   <Calendar className="h-4 w-4 mr-2" />
                                   Assign Session
@@ -1114,7 +1114,7 @@ export default function VolunteerList() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => navigate(`/volunteers/edit/${volunteer.id}`)}
+                          onClick={() => window.open(`/volunteers/edit/${volunteer.id}`, '_blank')}
                           className="flex-1"
                         >
                           <Pencil className="h-4 w-4 mr-1" />
@@ -1123,7 +1123,7 @@ export default function VolunteerList() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => navigate(`/calendar?assign=${volunteer.id}`)}
+                          onClick={() => window.open(`/calendar?assign=${volunteer.id}`, '_blank')}
                           className="flex-1"
                         >
                           <Calendar className="h-4 w-4 mr-1" />
