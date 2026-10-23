@@ -2,6 +2,7 @@ import os
 import tempfile
 import asyncio
 import io
+import concurrent.futures
 import gdown
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -17,6 +18,48 @@ from grading_agent.rubric import Rubric
 
 app = Flask(__name__)
 CORS(app)
+
+
+def run_async_safe(coro):
+    """
+    Run an async coroutine safely in a Gunicorn/Flask worker.
+
+    run_async_safe() shuts down its executor at the end, which causes
+    'cannot schedule new futures after shutdown' when the agents SDK
+    has background callbacks still running. We fix this by:
+    1. Creating a fresh event loop per request (isolates state)
+    2. Cancelling all pending tasks before closing (drains callbacks cleanly)
+    3. Running in a dedicated thread so the loop is truly isolated
+    """
+    def _run_in_thread():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        loop.set_default_executor(executor)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            try:
+                pending = asyncio.all_tasks(loop)
+                if pending:
+                    for task in pending:
+                        task.cancel()
+                    loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
+            except Exception:
+                pass
+            try:
+                executor.shutdown(wait=False)
+            except Exception:
+                pass
+            loop.close()
+            asyncio.set_event_loop(None)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(_run_in_thread)
+        return future.result()
+
 
 # Initialize Supabase
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
@@ -231,7 +274,7 @@ def grade_submission():
             rubric = Rubric.load()
 
             # Run the AI grading agent
-            graded = asyncio.run(
+            graded = run_async_safe(
                 evaluate(
                     submission,
                     module,
