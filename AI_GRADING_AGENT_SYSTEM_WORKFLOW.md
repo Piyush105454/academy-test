@@ -1,22 +1,29 @@
 # AI Grading Agent — End-to-End Architecture & Workflow Specification
 
 > **Organization:** Wazir Education Society (WES)  
-> **System:** Automated Homework & Handwritten Note Evaluation Agent  
+> **System:** Automated Dual-Artifact (Video + Handwritten Note) Evaluation Agent  
 > **Status:** Production Ready  
 > **Backend Host:** Coolify Cloud Container  
 > **Database & Auth:** Supabase Cloud (PostgreSQL + RLS)  
-> **Inference Engine:** Azure AI Foundry (`gpt-4.1-mini`) + OpenAI Agents SDK  
+> **Vision & Reasoning:** Azure AI Foundry (`gpt-4.1-mini`) + OpenAI Agents SDK  
+> **Speech-to-Text Transcriber:** Groq Cloud (`whisper-large-v3-turbo`)  
 > **Frontend:** React + Vite + Tailwind CSS  
 
 ---
 
 ## 1. Executive Summary
 
-The **AI Grading Agent** automates the evaluation of student homework assignments (specifically handwritten note images and PDF submissions). It delivers consistent, objective, and pedagogically safe grading with bilingual feedback (English & Hindi) without penalizing students for camera angles, handwriting legibility, dialect accents, or technical parsing failures.
+The **AI Grading Agent** automates the comprehensive evaluation of student homework assignments. It supports **dual-artifact submissions**:
+1. **Video Reading Submissions:** Pronunciation, reading speed (words-per-minute), confidence, filler-word rate, posture, and hand gestures.
+2. **Handwritten Notes (PDF / Image):** Vocabulary accuracy, Hindi translations, comprehension, and presentation layout.
+
+It delivers consistent, objective, and pedagogically safe grading with **bilingual feedback (English & Hindi)** without penalizing students for camera angles, handwriting legibility, regional accents, or technical parsing failures.
 
 ### Core Design Philosophy: "Model Decides, Code Guarantees"
-* **The LLM (Azure `gpt-4.1-mini`)** inspects the student's work using multi-modal vision tools, evaluates understanding against curriculum criteria, and drafts constructive feedback.
-* **Deterministic Code (`referee.py` + Guardrails)** enforces non-negotiable guarantees: scores must cite evidence, unreadable work must be abstained rather than penalized with zero, coverage is reported rather than deducted, and psychological/demographic profiling of children is strictly forbidden and rejected.
+* **The Multimodal Models:**
+  * **Groq Whisper (`whisper-large-v3-turbo`):** Transcribes spoken video audio in ~1 second with exact word timings.
+  * **Azure OpenAI (`gpt-4.1-mini`):** Inspects video frames and student handwriting via vision OCR tools, evaluates understanding against curriculum criteria, and drafts constructive bilingual feedback.
+* **Deterministic Code (`referee.py` + Guardrails):** Enforces non-negotiable guarantees: scores must cite observable evidence, unreadable work must be abstained rather than penalized with zero, coverage is reported rather than deducted, and psychological/demographic profiling of children is strictly forbidden and rejected.
 
 ---
 
@@ -38,13 +45,21 @@ flowchart TD
     subgraph CoolifyContainer ["3. Processing Backend (Coolify Docker Container)"]
         FlaskAPI["Flask API Server (app.py)\nPOST /api/grade"]
         DriveDownloader["Google Drive Multi-Strategy Ingestion\n1. requests (Browser Session Spoof)\n2. Google Service Account API\n3. gdown fallback"]
-        Rasterizer["PyMuPDF (fitz) Engine\nPDF Pages → High-Res 2x Zoom JPEGs"]
+        ArtifactRouter["Artifact Link Router\nSeparates Video (.mp4) & Handnote (.pdf/.jpg)"]
+        
+        subgraph Preprocessors ["Media Preprocessing (ffmpeg + fitz)"]
+            PyMuPDF["PyMuPDF (fitz)\nPDF → 2x Zoom JPEGs"]
+            AudioExtractor["ffmpeg Audio Extraction\nMono 16kHz MP3"]
+            FrameExtractor["ffmpeg Frame Extraction\nKeyframes at timestamps"]
+        end
+
         AgentCore["Grading Agent Engine\n(OpenAI Agents SDK + Isolated ThreadPool)"]
         SafetyReferee["Deterministic Referee & Guardrails\n- Evidence Verification\n- No-Child-Judgement Guardrail\n- Score Arithmetic"]
     end
 
-    subgraph LLMCloud ["4. AI & Vision Cloud (Azure AI Foundry)"]
-        AzureModel["gpt-4.1-mini\n(Multi-Modal Vision & Reasoning)"]
+    subgraph CloudAI ["4. External AI Engines"]
+        GroqWhisper["Groq Cloud Whisper\n(whisper-large-v3-turbo)\nSpeech-to-Text Transcription"]
+        AzureModel["Azure AI Foundry (gpt-4.1-mini)\nMulti-Modal Vision & Reasoning"]
     end
 
     TeacherUI --> TriggerBtn
@@ -52,8 +67,17 @@ flowchart TD
     DB --> TriggerEvent
     TriggerEvent -->|"POST /api/grade {id, student_id, task_id, submission_link}"| FlaskAPI
     FlaskAPI --> DriveDownloader
-    DriveDownloader -->|"Saves local file in /tmp"| Rasterizer
-    Rasterizer -->|"Clean Image Stream"| AgentCore
+    DriveDownloader --> ArtifactRouter
+    
+    ArtifactRouter -->|"Handnote Path"| PyMuPDF
+    ArtifactRouter -->|"Video Path"| AudioExtractor
+    ArtifactRouter -->|"Video Path"| FrameExtractor
+    
+    AudioExtractor -->|"Audio Stream"| GroqWhisper
+    PyMuPDF -->|"Page Image Stream"| AgentCore
+    FrameExtractor -->|"Video Keyframes"| AgentCore
+    GroqWhisper -->|"Word Timings & Transcript"| AgentCore
+    
     AgentCore <-->|"Vision OCR & Curriculum Reasoning"| AzureModel
     AgentCore -->|"Draft Evaluation"| SafetyReferee
     SafetyReferee -->|"Validated Safe Scores & Feedback"| FlaskAPI
@@ -73,68 +97,91 @@ sequenceDiagram
     participant SB as Supabase DB (PostgreSQL)
     participant Server as Coolify Flask API (app.py)
     participant Drive as Google Drive Cloud
-    participant PDF as PyMuPDF (fitz)
+    participant FFmpeg as ffmpeg & PyMuPDF Preprocessors
+    participant Groq as Groq Cloud (Whisper Turbo)
     participant Agent as Grading Agent (OpenAI Agents SDK)
     participant Azure as Azure AI Foundry (gpt-4.1-mini)
     participant Referee as Referee Safety Engine
 
     Teacher->>UI: Clicks "🤖 Generate AI Feedback" for student
     UI->>SB: Updates student_task_feedback row
-    SB->>Server: HTTP POST /api/grade with submission metadata
-    Server->>Drive: Download submission_link using browser bypass cascade
-    Drive-->>Server: File saved to isolated temporary directory
-    alt File is PDF
-        Server->>PDF: Convert pages to high-resolution JPEG buffers
-        PDF-->>Server: Extracted image list
-    else File is Image (JPG/PNG)
-        Server->>Server: Direct image load
+    SB->>Server: HTTP POST /api/grade with submission metadata & link map
+    Server->>Drive: Download Video & Handnote using browser-bypass cascade
+    Drive-->>Server: Media files saved to isolated temporary directory
+    
+    alt Video Submitted
+        Server->>FFmpeg: Extract mono 16kHz MP3 audio & video snapshots
+        FFmpeg-->>Server: Audio file & video frame images
+        Server->>Groq: Transcribe speech with whisper-large-v3-turbo
+        Groq-->>Server: Full speech transcript & timing data
     end
+
+    alt Handnote Submitted (PDF/Image)
+        Server->>FFmpeg: Rasterize PDF pages into 2x zoom JPEGs
+        FFmpeg-->>Server: High-resolution page images
+    end
+
     Server->>Agent: Run evaluate(submission, module, rubric)
-    Agent->>Azure: Tool get_module (retrieve assignment criteria)
-    Azure-->>Agent: Title, instruction, target vocabulary
-    Agent->>Azure: Tool read_note (Vision OCR on converted images)
-    Azure-->>Agent: Transcribed student handwriting and solutions
-    Agent->>Azure: Tool check_coverage (compare work against module)
-    Azure-->>Agent: Mechanical concept coverage report
+    Agent->>Azure: Tool get_module (retrieve assignment criteria & word list)
+    Azure-->>Agent: Title, instruction, target vocabulary, expected answers
+
+    alt Video Evaluation
+        Agent->>Azure: Tool look_at_video_frames (analyze posture, eye contact, gestures)
+        Azure-->>Agent: Physical presentation observations
+        Agent->>Agent: Compute speed (WPM), tone, filler rate from Groq transcript
+    end
+
+    alt Handnote Evaluation
+        Agent->>Azure: Tool read_note (Vision OCR on handwriting)
+        Azure-->>Agent: Transcribed English words & Hindi meanings
+        Agent->>Agent: Tool check_hindi_answer (Devanagari matching with Nukta tolerance)
+    end
+
     Agent->>Azure: Generate draft scores, evidence, and bilingual feedback
     Azure-->>Agent: Draft SubmissionEvaluation object
     Agent->>Referee: Submit draft for safety & score validation
     Referee->>Referee: Scan for forbidden child judgements
     Referee->>Referee: Verify every score has observable evidence
-    Referee->>Referee: Calculate overall weighted rating
+    Referee->>Referee: Calculate balanced 50/50 overall rating
     Referee-->>Server: Approved GradedSubmission
     Server->>SB: UPDATE student_task_feedback SET status='ai_evaluated', ai_overall_rating=..., ai_feedback_en=..., ai_feedback_hi=...
     SB-->>UI: Real-time UI update
-    UI-->>Teacher: Displays AI Feedback Card & Score Breakdown
+    UI-->>Teacher: Displays Teacher Note + AI Bilingual Feedback Card
 ```
 
 ---
 
 ## 4. Component Deep Dive
 
-### 4.1 Frontend Layer (`src/pages/TaskDetail.tsx`)
+### 4.1 Frontend Layer (`src/pages/TaskDetail.tsx` & `StudentTaskDetail.tsx`)
 * **Role:** Displays student submission cards, allows file previewing in lightboxes, and provides one-click manual or bulk trigger for AI assessment.
-* **Mechanism:** 
-  * Checks if `task.submission_link` is present.
-  * Dispatches trigger request or updates `student_task_feedback` row.
-  * Listens to Supabase real-time updates and automatically transitions the button into a verified feedback card once `ai_feedback_en` is populated.
+* **Dual Feedback UI:** Renders **both** the Teacher / Facilitator Note and the AI Bilingual Evaluation Card side-by-side:
+  * 👨‍🏫 **Teacher Note:** Green card highlighting human instructor feedback.
+  * 🤖 **AI Feedback:** Blue card with overall rating (⭐ X.X / 5.0), English feedback, and 🇮🇳 Hindi translation.
 
 ### 4.2 Data Plane (`Supabase PostgreSQL`)
 * **Table:** `public.student_task_feedback`
-* **Row-Level Security (RLS):** Configured with 5 explicit policies allowing authenticated users to select, insert, and update their respective task feedbacks.
+* **Row-Level Security (RLS):** Configured with explicit policies allowing authenticated users to select, insert, and update their respective task feedbacks.
 * **Auto-Signup Trigger:** An `AFTER INSERT ON auth.users` trigger guarantees that whenever any user registers, a matching `user_profiles` row is automatically provisioned, preventing 406 Not Acceptable errors.
 
 ### 4.3 Backend Server (`agent/app.py` on Coolify)
 * **Framework:** Flask + Gunicorn wrapped in Docker.
-* **Concurrency Architecture:** Utilizes a persistent `_WORKER_EXECUTOR` (`ThreadPoolExecutor`) that remains alive across requests while detaching per-request asyncio event loops. This permanently eliminates the Python `RuntimeError: cannot schedule new futures after shutdown` common to asynchronous background agents.
+* **Concurrency Architecture:** Utilizes a persistent `_WORKER_EXECUTOR` (`ThreadPoolExecutor`) that remains alive across requests while detaching per-request asyncio event loops. This permanently eliminates the Python `RuntimeError: cannot schedule new futures after shutdown`.
 * **Multi-Strategy Drive Downloader:**
   1. **Tier 1 (Browser Spoof):** Requests using Google user-content CDN headers (`drive.usercontent.google.com/download?id=...&confirm=t`) with realistic browser User-Agents. Bypasses data-center IP bans.
   2. **Tier 2 (Google Service Account):** Uses Google Cloud Service Account credentials (`googleapiclient.discovery`) for restricted files explicitly shared with WES.
   3. **Tier 3 (`gdown`):** Fallback public downloader.
 
-### 4.4 Ingestion & Vision Layer (`PyMuPDF`)
-* Handwritten notes uploaded as multi-page PDFs are rasterized using `fitz.open(stream=...).load_page(i).get_pixmap(dpi=150)` into clean JPEG buffers.
+### 4.4 Speech-to-Text Pipeline (`Groq Whisper`)
+* **Model:** `whisper-large-v3-turbo` via Groq Cloud API.
+* **Latency:** ~1.2 seconds for full audio transcription.
+* **Audio Extraction:** `ffmpeg -vn -ac 1 -ar 16000 -b:a 64k` extracts a tiny mono MP3 file (under 3 MB for a 5-minute video), staying far below Groq's 25 MB payload limit.
+* **Metrics Derived:** Words-per-minute (Speed), filler word frequency (`uh`, `um`), target vocabulary words spoken, and pronunciation alignment against module text.
+
+### 4.5 Vision & Handwriting OCR Layer (`PyMuPDF` + Azure `gpt-4.1-mini`)
+* Multi-page student PDF submissions are converted to high-resolution JPEG images using `fitz.open(pdf_path).load_page(i).get_pixmap(dpi=150)`.
 * Multi-page images are dispatched in a single multi-modal payload to Azure OpenAI's vision endpoint.
+* Supports **English**, **Devanagari Hindi** (`प्रोत्साहन`), and **Phonetic Roman Hindi / Hinglish** (`Himmat`, `Madad`).
 
 ---
 
@@ -207,23 +254,28 @@ is unclear or corrected, say so rather than guessing.
 ### 5.3 Output Safety Guardrail (`no_judgement_of_the_child`)
 Before the LLM output is accepted, an automated guardrail parses `feedback_en`, `feedback_hi`, `for_the_teacher`, and all evidence strings against a forbidden-inference dictionary. 
 
-Any evaluation containing comments on:
-* Student motivation (e.g., *"not trying"*, *"careless"*, *"lazy"*)
-* Student intelligence/capacity (e.g., *"struggles intellectually"*, *"slow learner"*)
-* Home/social background (e.g., *"poor environment"*, *"lacks support"*)
-
-...is **immediately rejected by the system**, raising an exception and preventing unverified judgements from ever reaching a student.
+Any evaluation containing comments on student motivation, intelligence, or home circumstances is **immediately rejected by the system**, raising an exception and preventing unverified judgements from reaching a student.
 
 ---
 
-## 6. Scoring Rubric & Criteria
+## 6. Scoring Rubric & Evaluation Parameters
 
-| Parameter | Focus | What is Evaluated | What is NOT Penalized |
-|---|---|---|---|
-| **Completion** | Quantity & Thoroughness | All required exercises and questions attempted | Missing items due to unreadable photo |
-| **Accuracy** | Correctness of Content | Correct word meanings, grammatical form, logic | Minor spelling slips that preserve meaning |
-| **Comprehension** | Understanding | Clear conceptual grasping of the module's prompt | Formatting style or untidy layout |
-| **Presentation** | Legibility & Neatness | Clean layout, readable letters, structured lines | General handwriting style (cursive vs print) |
+### 6.1 Video Parameters (Spoken & Visual Reading)
+| Parameter | Evaluated Signal | Measurement Method |
+|---|---|---|
+| **Confidence** | Filler-word frequency (`uh`, `um`) & poise | Transcript filler rate + Video keyframes |
+| **Vocabulary** | Pronunciation & target word usage | Transcript matching against module word list |
+| **Tone** | Audio energy & engagement | Vocal modulation against assignment instructions |
+| **Hand Gesture** | Physical expression while speaking | Sampled video frames via Azure Vision |
+| **Speed** | Reading pace | Computed words-per-minute (WPM) from transcript timings |
+
+### 6.2 Note Parameters (Written Homework)
+| Parameter | Evaluated Signal | Measurement Method |
+|---|---|---|
+| **Completion** | Did student attempt all tasks? | Count of attempted exercises / vocabulary rows |
+| **Accuracy** | Correctness of Hindi translations | Answer key match with Devanagari script tolerance |
+| **Comprehension** | Conceptual understanding | Action points in student's own words vs copying |
+| **Presentation** | Cleanliness and readability | Visual layout, margins, and letter structuring |
 
 * **Rating Scale:**  
   * `1.0` — Needs Support  
@@ -242,9 +294,13 @@ Any evaluation containing comments on:
   "id": "c47f7d3e-9bf8-4687-8df2-9b2f6ef3f94a",
   "student_id": "451d2516-2033-4fd0-860b-e6d381208563",
   "task_id": "f51b9201-44e2-4cb6-a97e-cc72da105bb9",
-  "submission_link": "https://drive.google.com/file/d/1V6SG4qVIiRbOX85MoPTGo5vXl08qgDMs/view",
-  "task_name": "Day 12 Task 2 - Practical Notes",
-  "task_description": "Create an array containing marks of five students and write explanations."
+  "submission_link": "{\"req-video\":\"https://drive.google.com/file/d/VIDEO_ID/view\",\"req-pdf\":\"https://drive.google.com/file/d/NOTE_ID/view\"}",
+  "submission_types": [
+    "{\"id\":\"req-video\",\"title\":\"Video\",\"type\":\"link\"}",
+    "{\"id\":\"req-pdf\",\"title\":\"Handnote\",\"type\":\"pdf\"}"
+  ],
+  "task_name": "Day 12 Task 2 - Reading & Notes",
+  "task_description": "Read the assigned article aloud on camera and summarize key vocabulary in handwriting."
 }
 ```
 
@@ -252,15 +308,18 @@ Any evaluation containing comments on:
 ```json
 {
   "status": "ai_evaluated",
-  "ai_overall_rating": 4.0,
-  "ai_note_rating": 4.0,
-  "ai_feedback_en": "You have clearly listed all the required vocabulary words and their Hindi translations with great accuracy. To improve further, ensure the action points on the left margin follow sequential numbering.",
-  "ai_feedback_hi": "आपने सभी आवश्यक शब्दावली और उनके हिंदी अर्थ बहुत सटीक रूप से लिखे हैं। और सुधार के लिए, सुनिश्चित करें कि बाईं ओर लिखे गए बिंदु क्रमबद्ध तरीके से गिने गए हों।",
+  "ai_overall_rating": 4.1,
+  "ai_note_rating": 4.2,
+  "ai_video_rating": 4.0,
+  "ai_feedback_en": "You spoke clearly with great confidence and read at a steady pace of 115 words per minute. Your handwritten note captures all target vocabulary words accurately. To improve further, practice looking directly into the camera between sentences and ensure your Hindi translations follow consistent margin spacing.",
+  "ai_feedback_hi": "आपने बहुत आत्मविश्वास के साथ स्पष्ट रूप से बात की और 115 शब्द प्रति मिनट की स्थिर गति से पढ़ा। आपके हस्तलिखित नोट में सभी लक्षित शब्दावली शब्द सटीक रूप से दर्ज हैं। और सुधार के लिए, वाक्यों के बीच सीधे कैमरे की ओर देखने का अभ्यास करें और सुनिश्चित करें कि आपके हिंदी अनुवाद एक समान मार्जिन में हों।",
   "ai_scores": [
-    {"parameter": "completion", "score": 4.5, "note": "All 5 student marks questions answered completely."},
-    {"parameter": "accuracy", "score": 4.0, "note": "Devanagari meanings match module key with standard variants."},
-    {"parameter": "comprehension", "score": 4.0, "note": "Concepts explained accurately according to the prompt."},
-    {"parameter": "presentation", "score": 3.5, "note": "Clear handwriting with minor margins overlapping."}
+    {"artifact": "video", "parameter": "speed", "score": 4.5, "note": "Measured at 115 WPM; steady cadence throughout."},
+    {"artifact": "video", "parameter": "confidence", "score": 4.0, "note": "Low filler rate (only 2 filler words observed); looked up regularly."},
+    {"artifact": "video", "parameter": "vocabulary", "score": 4.0, "note": "Accurately pronounced 4 out of 5 target vocabulary words."},
+    {"artifact": "note", "parameter": "completion", "score": 4.5, "note": "All assigned vocabulary entries attempted."},
+    {"artifact": "note", "parameter": "accuracy", "score": 4.0, "note": "Hindi meanings match module key with standard variants."},
+    {"artifact": "note", "parameter": "presentation", "score": 4.0, "note": "Clean line layout with clear handwriting."}
   ]
 }
 ```
@@ -269,16 +328,22 @@ Any evaluation containing comments on:
 
 ## 8. Deployment & Environment Configuration
 
-### Coolify Environment Variables
+### Coolify Environment Variables (Template)
 ```ini
+# Azure AI Foundry (Multi-Modal Vision & Reasoning)
 LLM_API_KEY=<your_azure_openai_api_key>
-LLM_BASE_URL=https://wesai-resource.services.ai.azure.com/openai/v1/
+LLM_BASE_URL=https://<your_resource_name>.services.ai.azure.com/openai/v1/
 GRADING_MODEL=gpt-4.1-mini
 
-SUPABASE_URL=https://egxmvxkxsncpoxsbbmmh.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<service_role_secret>
+# Groq Cloud (Ultra-Fast Whisper Audio Transcription)
+GROQ_API_KEY=<your_groq_api_key>
 
-GOOGLE_SERVICE_ACCOUNT_EMAIL=wes-gdrive@inbound-lexicon-499018-r2.iam.gserviceaccount.com
+# Supabase PostgreSQL & API
+SUPABASE_URL=https://<your_supabase_project_id>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<your_supabase_service_role_secret>
+
+# Google Cloud Service Account (Google Drive Ingestion)
+GOOGLE_SERVICE_ACCOUNT_EMAIL=<your_service_account>@<your_project_id>.iam.gserviceaccount.com
 GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 ```
 
@@ -286,7 +351,7 @@ GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\
 
 ## 9. Verification & Health Monitoring
 
-The service exposes a `/health` endpoint to verify connectivity to Supabase, Google Cloud, and Azure AI:
+The service exposes a `/health` endpoint to verify connectivity to all infrastructure:
 
 ```bash
 curl https://<coolify-agent-domain>/health
@@ -298,6 +363,7 @@ curl https://<coolify-agent-domain>/health
   "status": "ok",
   "supabase_configured": true,
   "drive_service_account_configured": true,
-  "llm": "Azure OpenAI (gpt-4.1-mini @ https://wesai-resource.services.ai.azure.com/openai/v1/)"
+  "groq_whisper_configured": true,
+  "llm": "Azure OpenAI (gpt-4.1-mini @ https://...)"
 }
 ```
