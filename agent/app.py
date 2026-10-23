@@ -19,46 +19,55 @@ from grading_agent.rubric import Rubric
 app = Flask(__name__)
 CORS(app)
 
+# -- Persistent thread-pool executor ------------------------------------------
+# anyio (used by httpcore2 / openai SDK) calls loop.run_in_executor(None, ...)
+# for every DNS lookup (getaddrinfo). If we create a per-request executor
+# and shut it down in the finally block, those in-flight DNS calls crash with
+# "cannot schedule new futures after shutdown".
+#
+# Fix: one executor that lives for the entire worker-process lifetime.
+# We never call .shutdown() on it. Since Gunicorn uses --max-requests 1,
+# the whole worker process exits after one request anyway, so no leak.
+_WORKER_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=8, thread_name_prefix="grading"
+)
+
 
 def run_async_safe(coro):
     """
-    Run an async coroutine safely in a Gunicorn/Flask worker.
+    Run an async coroutine in a fresh event loop backed by _WORKER_EXECUTOR.
 
-    run_async_safe() shuts down its executor at the end, which causes
-    'cannot schedule new futures after shutdown' when the agents SDK
-    has background callbacks still running. We fix this by:
-    1. Creating a fresh event loop per request (isolates state)
-    2. Cancelling all pending tasks before closing (drains callbacks cleanly)
-    3. Running in a dedicated thread so the loop is truly isolated
+    Key rules:
+    - Set the persistent executor as the loop default BEFORE any I/O starts
+      so anyio DNS helpers always find a live executor.
+    - Clear loop._default_executor = None BEFORE loop.close() so that
+      close() does NOT call executor.shutdown() - keeping it alive.
+    - Cancel stray tasks politely before closing.
     """
-    def _run_in_thread():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-        loop.set_default_executor(executor)
+    loop = asyncio.new_event_loop()
+    loop.set_default_executor(_WORKER_EXECUTOR)
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        # Cancel any lingering tasks (SDK background work)
         try:
-            return loop.run_until_complete(coro)
-        finally:
-            try:
-                pending = asyncio.all_tasks(loop)
-                if pending:
-                    for task in pending:
-                        task.cancel()
-                    loop.run_until_complete(
-                        asyncio.gather(*pending, return_exceptions=True)
-                    )
-            except Exception:
-                pass
-            try:
-                executor.shutdown(wait=False)
-            except Exception:
-                pass
+            pending = asyncio.all_tasks(loop)
+            if pending:
+                for t in pending:
+                    t.cancel()
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+        except Exception:
+            pass
+        # Detach executor so loop.close() does NOT shut it down
+        loop._default_executor = None
+        try:
             loop.close()
-            asyncio.set_event_loop(None)
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(_run_in_thread)
-        return future.result()
+        except Exception:
+            pass
+        asyncio.set_event_loop(None)
 
 
 # Initialize Supabase
