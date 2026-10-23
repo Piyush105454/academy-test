@@ -40,6 +40,9 @@ interface StudentTask {
   academic_year?: string;
   rejection_comment?: string | null;
   submission_types?: string[];
+  ai_feedback_en?: string | null;
+  ai_feedback_hi?: string | null;
+  ai_overall_rating?: number | null;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
@@ -436,11 +439,47 @@ export default function StudentTaskDetail() {
 
         {/* Feedback Notes from Teacher */}
         {task.feedback_notes && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm space-y-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-amber-700 flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" /> Teacher's Note
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-6 shadow-sm space-y-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Teacher / Facilitator Note
             </h2>
-            <p className="text-sm text-amber-800 leading-relaxed">{task.feedback_notes}</p>
+            <p className="text-sm text-emerald-900 leading-relaxed font-medium">{task.feedback_notes}</p>
+          </div>
+        )}
+
+        {/* AI Evaluation & Bilingual Feedback */}
+        {task.ai_feedback_en && (
+          <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-blue-800 flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-blue-600" /> 🤖 AI Homework Evaluation
+              </h2>
+              {task.ai_overall_rating && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                  ⭐ Score: {task.ai_overall_rating} / 5.0
+                </span>
+              )}
+            </div>
+            
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-blue-700 mb-1">Feedback (English):</p>
+                <p className="text-sm text-blue-900 leading-relaxed font-medium whitespace-pre-line bg-white/60 p-3 rounded-xl border border-blue-100">
+                  {task.ai_feedback_en}
+                </p>
+              </div>
+
+              {task.ai_feedback_hi && (
+                <div>
+                  <p className="text-xs font-semibold text-blue-700 mb-1 flex items-center gap-1">
+                    <span>🇮🇳 हिंदी अनुवाद (Hindi Translation):</span>
+                  </p>
+                  <p className="text-sm text-blue-950 leading-relaxed font-sans bg-white/80 p-3 rounded-xl border border-blue-100">
+                    {task.ai_feedback_hi}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

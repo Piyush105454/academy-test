@@ -64,6 +64,7 @@ interface TaskItem {
   facilitator_name?: string;
   submission_types?: string[];
   ai_feedback_en?: string | null;
+  ai_feedback_hi?: string | null;
   ai_overall_rating?: number | null;
 }
 
@@ -190,6 +191,7 @@ export default function TaskDetail() {
           rejection_comment,
           feedback_notes,
           ai_feedback_en,
+          ai_feedback_hi,
           ai_overall_rating,
           created_at,
           students:student_id(name, classes(name)),
@@ -255,6 +257,7 @@ export default function TaskDetail() {
           volunteer_name: task.sessions?.volunteer_name || undefined,
           facilitator_name: task.sessions?.facilitator_name || '-',
           ai_feedback_en: task.ai_feedback_en,
+          ai_feedback_hi: task.ai_feedback_hi,
           ai_overall_rating: task.ai_overall_rating,
         }));
       }
@@ -803,11 +806,30 @@ export default function TaskDetail() {
                     {task.status === 'rejected' && task.rejection_comment && (
                       <p className="text-red-600"><strong>Rejected:</strong> {task.rejection_comment}</p>
                     )}
-                    {task.status === 'completed' && task.feedback_notes && (
-                      <p className="text-green-700"><strong>Verified Note:</strong> {task.feedback_notes}</p>
+                    {task.feedback_notes && (
+                      <div className="p-1.5 rounded bg-green-50 border border-green-200 text-green-800 mb-1">
+                        <p className="font-semibold text-[11px] text-green-700">👨‍🏫 Teacher's Note:</p>
+                        <p className="text-xs">{task.feedback_notes}</p>
+                      </div>
                     )}
                     {task.ai_feedback_en && (
-                      <p className="text-blue-700 mt-1"><strong>🤖 AI Feedback:</strong> {task.ai_feedback_en}</p>
+                      <div className="p-1.5 rounded bg-blue-50 border border-blue-200 text-blue-900 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-[11px] text-blue-700">🤖 AI Feedback:</p>
+                          {task.ai_overall_rating && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded">
+                              ⭐ {task.ai_overall_rating}/5
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs leading-relaxed">{task.ai_feedback_en}</p>
+                        {task.ai_feedback_hi && (
+                          <div className="pt-1 border-t border-blue-200/60 text-[11px] text-blue-800">
+                            <span className="font-semibold text-blue-900">🇮🇳 हिंदी: </span>
+                            <span>{task.ai_feedback_hi}</span>
+                          </div>
+                        )}
+                      </div>
                     )}
                     {!task.rejection_comment && !task.feedback_notes && !task.ai_feedback_en && (
                       <span className="text-gray-400">-</span>
@@ -1156,25 +1178,48 @@ export default function TaskDetail() {
                       </div>
                     </div>
                   )}
-                  {/* Verified comment display */}
-                  {task.status === 'completed' && task.feedback_notes && (
-                    <div className="flex items-start gap-2 mt-1 px-3 py-2 rounded-lg bg-green-50 border border-green-200">
-                      <MessageSquare className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-xs font-semibold text-green-600 mb-0.5">Verified Note:</p>
-                        <p className="text-sm text-green-700">{task.feedback_notes}</p>
+                  {/* Teacher / Verified Note display — always visible if exists */}
+                  {task.feedback_notes && (
+                    <div className="flex items-start gap-2.5 mt-2 px-3.5 py-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 shadow-2xs">
+                      <MessageSquare className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                      <div className="w-full">
+                        <p className="text-xs font-bold text-emerald-800 mb-0.5 flex items-center gap-1.5">
+                          <span>👨‍🏫 Teacher / Facilitator Note:</span>
+                        </p>
+                        <p className="text-sm text-emerald-900 leading-relaxed font-medium">{task.feedback_notes}</p>
                       </div>
                     </div>
                   )}
-                  {/* AI Feedback display */}
+                  {/* AI Feedback display — English & Hindi */}
                   {task.ai_feedback_en ? (
-                    <div className="flex items-start gap-2 mt-1 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
+                    <div className="flex items-start gap-2.5 mt-2 px-3.5 py-3 rounded-xl bg-blue-50/80 border border-blue-200 shadow-2xs">
                       <MessageSquare className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-xs font-semibold text-blue-600 mb-0.5">
-                          🤖 AI Feedback {task.ai_overall_rating ? `(Score: ${task.ai_overall_rating}/5)` : ''}:
-                        </p>
-                        <p className="text-sm text-blue-700 whitespace-pre-line">{task.ai_feedback_en}</p>
+                      <div className="w-full space-y-2">
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs font-bold text-blue-800 flex items-center gap-1.5">
+                              <span>🤖 AI Evaluation & Feedback</span>
+                            </p>
+                            {task.ai_overall_rating && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                                ⭐ {task.ai_overall_rating} / 5.0
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-blue-900 leading-relaxed whitespace-pre-line font-medium">
+                            {task.ai_feedback_en}
+                          </p>
+                        </div>
+                        {task.ai_feedback_hi && (
+                          <div className="pt-2 border-t border-blue-200/70">
+                            <p className="text-[11px] font-semibold text-blue-700 mb-1 flex items-center gap-1">
+                              <span>🇮🇳 हिंदी अनुवाद (Hindi Feedback):</span>
+                            </p>
+                            <p className="text-sm text-blue-950 leading-relaxed font-sans bg-white/70 p-2.5 rounded-lg border border-blue-100">
+                              {task.ai_feedback_hi}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
