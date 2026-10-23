@@ -63,6 +63,8 @@ interface TaskItem {
   volunteer_name?: string;
   facilitator_name?: string;
   submission_types?: string[];
+  ai_feedback_en?: string | null;
+  ai_overall_rating?: number | null;
 }
 
 interface TaskGroup {
@@ -187,6 +189,8 @@ export default function TaskDetail() {
           feedback_type,
           rejection_comment,
           feedback_notes,
+          ai_feedback_en,
+          ai_overall_rating,
           created_at,
           students:student_id(name, classes(name)),
           sessions:session_id(title, class_batch, volunteer_name, facilitator_name)
@@ -250,6 +254,8 @@ export default function TaskDetail() {
           submission_types: task.submission_types || [],
           volunteer_name: task.sessions?.volunteer_name || undefined,
           facilitator_name: task.sessions?.facilitator_name || '-',
+          ai_feedback_en: task.ai_feedback_en,
+          ai_overall_rating: task.ai_overall_rating,
         }));
       }
 
@@ -392,6 +398,38 @@ export default function TaskDetail() {
     } catch (error: any) {
       console.error('Error updating task:', error);
       toast.error('Failed to update task: ' + (error.message || 'Unknown error'));
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleGenerateAIFeedback = async (taskId: string) => {
+    try {
+      setUpdatingId(taskId);
+      const task = taskGroup?.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      if (!task.submission_link) {
+        toast.error("No submission link found. Cannot generate AI feedback.");
+        return;
+      }
+
+      toast.info("Triggering AI via Supabase...");
+      
+      const { error } = await supabase
+        .from('student_task_feedback')
+        .update({ 
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', task.id);
+
+      if (!error) {
+        toast.success("AI triggered! It will update in the background.");
+      } else {
+        toast.error("Error triggering AI: " + error.message);
+      }
+    } catch (error: any) {
+      console.error("Failed to generate AI feedback:", error);
+      toast.error("Failed to trigger AI feedback");
     } finally {
       setUpdatingId(null);
     }
@@ -768,7 +806,10 @@ export default function TaskDetail() {
                     {task.status === 'completed' && task.feedback_notes && (
                       <p className="text-green-700"><strong>Verified Note:</strong> {task.feedback_notes}</p>
                     )}
-                    {!task.rejection_comment && !task.feedback_notes && (
+                    {task.ai_feedback_en && (
+                      <p className="text-blue-700 mt-1"><strong>🤖 AI Feedback:</strong> {task.ai_feedback_en}</p>
+                    )}
+                    {!task.rejection_comment && !task.feedback_notes && !task.ai_feedback_en && (
                       <span className="text-gray-400">-</span>
                     )}
                   </td>
@@ -1124,6 +1165,32 @@ export default function TaskDetail() {
                         <p className="text-sm text-green-700">{task.feedback_notes}</p>
                       </div>
                     </div>
+                  )}
+                  {/* AI Feedback display */}
+                  {task.ai_feedback_en ? (
+                    <div className="flex items-start gap-2 mt-1 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
+                      <MessageSquare className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold text-blue-600 mb-0.5">
+                          🤖 AI Feedback {task.ai_overall_rating ? `(Score: ${task.ai_overall_rating}/5)` : ''}:
+                        </p>
+                        <p className="text-sm text-blue-700 whitespace-pre-line">{task.ai_feedback_en}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    task.submission_link && (
+                      <div className="mt-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleGenerateAIFeedback(task.id)}
+                          disabled={updatingId === task.id}
+                          className="text-xs text-blue-600 border-blue-200 hover:bg-blue-50 h-7 px-3"
+                        >
+                          🤖 {updatingId === task.id ? 'Generating...' : 'Generate AI Feedback'}
+                        </Button>
+                      </div>
+                    )
                   )}
                   {task.status === 'rejected' && !task.rejection_comment && (
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-50 border border-red-200">
