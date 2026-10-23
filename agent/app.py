@@ -114,6 +114,62 @@ def _build_service_account_creds():
     }, scopes=['https://www.googleapis.com/auth/drive.readonly'])
 
 
+
+def parse_submission_artifacts(raw_link: str, raw_types=None):
+    """
+    Parses submission_link and submission_types to extract (video_url, note_url).
+    Supports JSON maps, comma-separated lists, and single URLs.
+    """
+    import json
+    if not raw_link or not isinstance(raw_link, str):
+        return None, None
+        
+    raw_str = raw_link.strip()
+    video_url = None
+    note_url = None
+
+    # Case 1: JSON dictionary of { requirement_id: url }
+    if raw_str.startswith("{") and raw_str.endswith("}"):
+        try:
+            link_map = json.loads(raw_str)
+            type_map = {}
+            if raw_types:
+                types_list = raw_types if isinstance(raw_types, list) else json.loads(raw_types)
+                for item in types_list:
+                    parsed = json.loads(item) if isinstance(item, str) and item.strip().startswith("{") else item
+                    if isinstance(parsed, dict) and "id" in parsed:
+                        type_map[parsed["id"]] = (str(parsed.get("type", "")) + " " + str(parsed.get("title", ""))).lower()
+
+            for req_id, url in link_map.items():
+                if not url or not isinstance(url, str):
+                    continue
+                req_desc = type_map.get(req_id, "")
+                if "video" in req_desc or any(ext in url.lower() for ext in [".mp4", ".mov", ".mkv", ".webm"]):
+                    video_url = url
+                elif any(k in req_desc for k in ["note", "pdf", "handnote"]) or any(ext in url.lower() for ext in [".pdf", ".jpg", ".png", ".jpeg"]):
+                    note_url = url
+                elif not note_url:
+                    note_url = url
+                elif not video_url:
+                    video_url = url
+            return video_url, note_url
+        except Exception as e:
+            print(f"JSON submission_link parse error: {e}")
+
+    # Case 2: Comma-separated URLs
+    links = [l.strip() for l in raw_str.split(",") if l.strip()]
+    if len(links) == 1:
+        if any(k in links[0].lower() for k in ["video", ".mp4", ".mov", ".mkv", ".webm"]):
+            video_url = links[0]
+        else:
+            note_url = links[0]
+    elif len(links) >= 2:
+        video_url = links[0]
+        note_url = links[1]
+
+    return video_url, note_url
+
+
 def download_from_drive(file_id: str, dest: str):
     """Download a file from Google Drive.
     
@@ -207,6 +263,7 @@ def health():
         "drive_service_account_configured": bool(
             os.environ.get("GOOGLE_SERVICE_ACCOUNT_EMAIL") and
             os.environ.get("GOOGLE_PRIVATE_KEY")),
+        "groq_whisper_configured": bool(os.environ.get("GROQ_API_KEY")),
         "llm": describe(),
     })
 
@@ -234,32 +291,55 @@ def grade_submission():
     submission_id = row_data.get('id')
     student_id = row_data.get('student_id')
     module_id = row_data.get('task_id')
-    note_drive_url = row_data.get('submission_link')
+    raw_submission_link = row_data.get('submission_link')
+    raw_submission_types = row_data.get('submission_types')
 
-    if not all([submission_id, student_id, module_id, note_drive_url]):
+    if not all([submission_id, student_id, module_id, raw_submission_link]):
         return jsonify({"error": "Missing required fields: id, student_id, task_id, submission_link"}), 400
 
-    # Validate it is a Google Drive link
-    file_id = extract_file_id(note_drive_url)
-    if not file_id:
+    video_url, note_url = parse_submission_artifacts(raw_submission_link, raw_submission_types)
+
+    video_file_id = extract_file_id(video_url) if video_url else None
+    note_file_id = extract_file_id(note_url) if note_url else None
+
+    if not video_file_id and not note_file_id:
         return jsonify({
-            "error": f"submission_link is not a valid Google Drive URL: {note_drive_url}"
+            "error": f"No valid Google Drive URL found in submission_link: {raw_submission_link}"
         }), 400
 
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
-            note_path = os.path.join(temp_dir, "note_upload")
+            note_path = None
+            video_path = None
 
-            # Download from Google Drive
-            try:
-                download_from_drive(file_id, note_path)
-            except RuntimeError as e:
-                print(f"Drive download failed for {file_id}: {e}")
-                return jsonify({"error": str(e)}), 500
+            # 1. Download Note if present
+            if note_file_id:
+                note_dest = os.path.join(temp_dir, "note_upload")
+                try:
+                    print(f"Downloading student note (ID: {note_file_id})...")
+                    download_from_drive(note_file_id, note_dest)
+                    note_path = note_dest
+                except Exception as e:
+                    print(f"Warning: Failed to download note {note_file_id}: {e}")
+
+            # 2. Download Video if present
+            if video_file_id:
+                video_dest = os.path.join(temp_dir, "video_upload.mp4")
+                try:
+                    print(f"Downloading student video (ID: {video_file_id})...")
+                    download_from_drive(video_file_id, video_dest)
+                    video_path = video_dest
+                except Exception as e:
+                    print(f"Warning: Failed to download video {video_file_id}: {e}")
+
+            if not note_path and not video_path:
+                return jsonify({"error": "Failed to download both video and note from Google Drive"}), 500
 
             # Build the Module from the webhook/request payload
             task_name = row_data.get('task_name', 'Student Assignment')
             task_desc = row_data.get('task_description', 'No instructions provided.')
+
+            skill_type = "both" if (video_path and note_path) else ("presentation" if video_path else "note_taking")
 
             module = Module(
                 module_id=module_id or "default_module",
@@ -267,20 +347,22 @@ def grade_submission():
                 instruction=task_desc,
                 reference_content="",
                 word_list=(),
-                skill_type="note_taking",
-                expects_handwritten_note=True,
-                eye_contact_expected=False
+                skill_type=skill_type,
+                expects_handwritten_note=bool(note_path),
+                eye_contact_expected=bool(video_path)
             )
 
             submission = Submission(
                 submission_id=submission_id,
                 student_id=student_id,
                 module_id=module_id,
-                video_path=None,
+                video_path=video_path,
                 note_path=note_path
             )
 
             rubric = Rubric.load()
+
+            print(f"Running AI Evaluation: video={bool(video_path)}, note={bool(note_path)}")
 
             # Run the AI grading agent
             graded = run_async_safe(
@@ -288,23 +370,32 @@ def grade_submission():
                     submission,
                     module,
                     rubric,
-                    video_path=None,
+                    video_path=video_path,
                     note_path=note_path,
                     module_lookup=lambda _: module,
                     model=None,  # uses LLM_BASE_URL + GRADING_MODEL from llm_config
                 )
             )
 
+            ai_scores_list = []
+            if graded.note and graded.note.scores:
+                ai_scores_list += [
+                    {"parameter": score.parameter, "score": score.value, "note": score.note, "artifact": "note"}
+                    for score in graded.note.scores if score.is_assessed
+                ]
+            if graded.video and graded.video.scores:
+                ai_scores_list += [
+                    {"parameter": score.parameter, "score": score.value, "note": score.note, "artifact": "video"}
+                    for score in graded.video.scores if score.is_assessed
+                ]
+
             results = {
                 "status": "ai_evaluated",
                 "ai_overall_rating": graded.overall_rating,
-                "ai_note_rating": graded.note.rating,
+                "ai_note_rating": graded.note.rating if graded.note else None,
                 "ai_feedback_en": graded.feedback.en if graded.feedback else "No feedback generated.",
                 "ai_feedback_hi": graded.feedback.hi if graded.feedback else "",
-                "ai_scores": [
-                    {"parameter": score.parameter, "score": score.value, "note": score.note}
-                    for score in graded.note.scores if score.is_assessed
-                ]
+                "ai_scores": ai_scores_list
             }
 
             if supabase:

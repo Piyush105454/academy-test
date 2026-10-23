@@ -299,12 +299,30 @@ def build_tools(
             return "No video was uploaded."
         try:
             audio = _extract_audio(video_path)
+            groq_key = os.environ.get("GROQ_API_KEY")
+            openai_key = os.environ.get("OPENAI_API_KEY")
+
             from openai import OpenAI
+            if groq_key:
+                client = OpenAI(
+                    api_key=groq_key,
+                    base_url="https://api.groq.com/openai/v1"
+                )
+                model_name = "whisper-large-v3-turbo"
+            elif openai_key:
+                client = OpenAI(api_key=openai_key)
+                model_name = "whisper-1"
+            else:
+                return "TRANSCRIPTION UNAVAILABLE (GROQ_API_KEY not configured)."
+
             with open(audio, "rb") as fh:
-                text = OpenAI().audio.transcriptions.create(
-                    model="whisper-1", file=fh).text
+                transcript_resp = client.audio.transcriptions.create(
+                    model=model_name, file=fh)
+            text = getattr(transcript_resp, "text", str(transcript_resp))
+            print(f"Speech transcribed successfully via {model_name}: {len(text)} characters")
             return text
         except Exception as exc:                       # noqa: BLE001
+            print(f"Audio transcription error: {exc}")
             return (f"TRANSCRIPTION UNAVAILABLE ({exc}). Treat speech-dependent "
                     f"parameters as not assessable. Do NOT report the video as silent.")
 
