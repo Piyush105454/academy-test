@@ -47,6 +47,7 @@ import { AssignMonitorDialog } from '@/components/classes/AssignMonitorDialog';
 import { StudentAuthDialog } from '@/components/classes/StudentAuthDialog';
 import { Badge } from '@/components/ui/badge';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
+import { isPlaceholderEmail, getUniqueStudentEmail, getStudentActiveStatus } from '@/utils/studentActiveHelper';
 
 interface Class {
   id: string;
@@ -253,13 +254,16 @@ export default function ClassStudents() {
       
       const emails = (studentsData || []).map((s: any) => s.email).filter(Boolean);
       const studentIds = (studentsData || []).map((s: any) => s.id).filter(Boolean);
+      // Only include non-placeholder emails in remote query to avoid colliding on dummy emails
+      const nonPlaceholderEmails = emails.filter((em: string) => !isPlaceholderEmail(em));
+
       let profileMapByEmail = new Map<string, boolean>();
       let profileMapById = new Map<string, boolean>();
 
       try {
         const queryOr: string[] = [];
         if (studentIds.length > 0) queryOr.push(`id.in.(${studentIds.join(',')})`);
-        if (emails.length > 0) queryOr.push(`email.in.(${emails.join(',')})`);
+        if (nonPlaceholderEmails.length > 0) queryOr.push(`email.in.(${nonPlaceholderEmails.join(',')})`);
 
         if (queryOr.length > 0) {
           const { data: profiles } = await supabase
@@ -270,7 +274,10 @@ export default function ClassStudents() {
           if (profiles) {
             profiles.forEach((p: any) => {
               if (p.id) profileMapById.set(p.id, p.is_active);
-              if (p.email) profileMapByEmail.set(p.email.toLowerCase().trim(), p.is_active);
+              // CRITICAL: NEVER map placeholder emails (e.g. bob@example.com) to prevent mass deactivation
+              if (p.email && !isPlaceholderEmail(p.email)) {
+                profileMapByEmail.set(p.email.toLowerCase().trim(), p.is_active);
+              }
             });
           }
         }
@@ -279,12 +286,7 @@ export default function ClassStudents() {
       }
 
       const enrichedStudents = (studentsData || []).map((student) => {
-        let isActive = true;
-        if (profileMapById.has(student.id)) {
-          isActive = profileMapById.get(student.id) !== false;
-        } else if (student.email && profileMapByEmail.has(student.email.toLowerCase().trim())) {
-          isActive = profileMapByEmail.get(student.email.toLowerCase().trim()) !== false;
-        }
+        const isActive = getStudentActiveStatus(student, profileMapById, profileMapByEmail);
 
         if (student.monitor_id) {
           const monitor = studentsData.find(s => s.id === student.monitor_id);
@@ -330,37 +332,75 @@ export default function ClassStudents() {
   const handleToggleActive = async (student: Student) => {
     try {
       const newStatus = student.is_active === false;
-      const studentEmail = student.email || `${student.student_id ? student.student_id.toLowerCase().replace(/[^a-z0-9]/g, '') : student.id}@student.wes`;
+      
+      // 1. Ensure student has a unique email. If placeholder or missing, assign unique student email
+      let studentEmail = student.email?.trim().toLowerCase();
+      const needsUniqueEmail = isPlaceholderEmail(studentEmail);
 
-      // 1. If student didn't have email in students table, save it so it's consistent
-      if (!student.email) {
+      if (needsUniqueEmail) {
+        studentEmail = getUniqueStudentEmail(student);
         await supabase
           .from('students')
           .update({ email: studentEmail })
           .eq('id', student.id);
       }
 
-      // 2. Upsert user_profiles record for this student
-      const { error: upsertErr } = await supabase
+      // 2. Look for existing profile matching student.id OR matching valid email
+      let existingProfileId: string | null = null;
+      
+      const { data: profileById } = await supabase
         .from('user_profiles')
-        .upsert({
-          id: student.id,
-          email: studentEmail,
-          full_name: student.name,
-          class_id: student.class_id || classId,
-          role_id: 5,
-          is_active: newStatus
-        }, { onConflict: 'id' });
+        .select('id, email')
+        .eq('id', student.id)
+        .maybeSingle();
 
-      if (upsertErr) {
-        // Fallback: also try updating by email
-        await supabase
+      if (profileById) {
+        existingProfileId = profileById.id;
+      } else if (studentEmail && !isPlaceholderEmail(studentEmail)) {
+        const { data: profileByEmail } = await supabase
           .from('user_profiles')
-          .update({ is_active: newStatus })
-          .eq('email', studentEmail);
+          .select('id, email')
+          .ilike('email', studentEmail)
+          .maybeSingle();
+        if (profileByEmail) {
+          existingProfileId = profileByEmail.id;
+        }
       }
 
-      setStudents(students.map(s => s.id === student.id ? { ...s, is_active: newStatus, email: student.email || studentEmail } : s));
+      // 3. Update existing profile OR insert new profile specifically for this student
+      if (existingProfileId) {
+        const { error: upErr } = await supabase
+          .from('user_profiles')
+          .update({
+            is_active: newStatus,
+            email: studentEmail,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingProfileId);
+        if (upErr) throw upErr;
+      } else {
+        const { error: inErr } = await supabase
+          .from('user_profiles')
+          .insert({
+            id: student.id,
+            email: studentEmail,
+            full_name: student.name,
+            class_id: student.class_id || classId,
+            role_id: 5,
+            is_active: newStatus
+          });
+        
+        if (inErr) {
+          console.warn('Direct insert into user_profiles failed, fallback updating by email:', inErr);
+          const { error: fallbackErr } = await supabase
+            .from('user_profiles')
+            .update({ is_active: newStatus })
+            .ilike('email', studentEmail);
+          if (fallbackErr) throw fallbackErr;
+        }
+      }
+
+      setStudents(prev => prev.map(s => s.id === student.id ? { ...s, is_active: newStatus, email: studentEmail } : s));
       toast.success(newStatus ? 'Student activated' : 'Student deactivated');
     } catch (e: any) {
       console.error('Failed to toggle status:', e);

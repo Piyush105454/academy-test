@@ -31,6 +31,7 @@ import {
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
+import { filterActiveStudents, isPlaceholderEmail } from '@/utils/studentActiveHelper';
 
 interface StudentAttendanceSummary {
   student_id: string;
@@ -172,9 +173,10 @@ export default function AdminStudentAttendance() {
       try {
         const emails = students.map(s => s.email).filter(Boolean);
         const ids = students.map(s => s.id).filter(Boolean);
+        const validEmails = emails.filter((em: string) => !isPlaceholderEmail(em));
         const queryOr: string[] = [];
         if (ids.length > 0) queryOr.push(`id.in.(${ids.join(',')})`);
-        if (emails.length > 0) queryOr.push(`email.in.(${emails.join(',')})`);
+        if (validEmails.length > 0) queryOr.push(`email.in.(${validEmails.join(',')})`);
 
         if (queryOr.length > 0) {
           const { data: profiles } = await supabase
@@ -183,14 +185,7 @@ export default function AdminStudentAttendance() {
             .or(queryOr.join(','));
 
           if (profiles) {
-            const profileMapById = new Map(profiles.map(p => [p.id, p.is_active]));
-            const profileMapByEmail = new Map(profiles.filter(p => p.email).map(p => [p.email!.toLowerCase().trim(), p.is_active]));
-
-            activeStudents = students.filter(s => {
-              if (profileMapById.has(s.id) && profileMapById.get(s.id) === false) return false;
-              if (s.email && profileMapByEmail.get(s.email.toLowerCase().trim()) === false) return false;
-              return true;
-            });
+            activeStudents = filterActiveStudents(students, profiles);
           }
         }
       } catch (e) {

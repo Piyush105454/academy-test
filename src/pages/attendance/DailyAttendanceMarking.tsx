@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
+import { filterActiveStudents, isPlaceholderEmail } from '@/utils/studentActiveHelper';
 import {
   Select,
   SelectContent,
@@ -85,12 +86,13 @@ export default function DailyAttendanceMarking() {
       if (studs) {
         const emails = studs.map(s => s.email).filter(Boolean);
         const ids = studs.map(s => s.id).filter(Boolean);
+        const validEmails = emails.filter((em: string) => !isPlaceholderEmail(em));
         let activeData = studs;
 
         try {
           const queryOr: string[] = [];
           if (ids.length > 0) queryOr.push(`id.in.(${ids.join(',')})`);
-          if (emails.length > 0) queryOr.push(`email.in.(${emails.join(',')})`);
+          if (validEmails.length > 0) queryOr.push(`email.in.(${validEmails.join(',')})`);
 
           if (queryOr.length > 0) {
             const { data: profiles } = await supabase
@@ -99,14 +101,7 @@ export default function DailyAttendanceMarking() {
               .or(queryOr.join(','));
 
             if (profiles) {
-              const profileMapById = new Map(profiles.map(p => [p.id, p.is_active]));
-              const profileMapByEmail = new Map(profiles.filter(p => p.email).map(p => [p.email!.toLowerCase().trim(), p.is_active]));
-
-              activeData = studs.filter(s => {
-                if (profileMapById.has(s.id) && profileMapById.get(s.id) === false) return false;
-                if (s.email && profileMapByEmail.get(s.email.toLowerCase().trim()) === false) return false;
-                return true;
-              });
+              activeData = filterActiveStudents(studs, profiles);
             }
           }
         } catch (err) {

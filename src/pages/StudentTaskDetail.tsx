@@ -2,15 +2,16 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, CheckCircle2, Clock, CalendarDays,
-  BookOpen, Link2, Trophy, AlertCircle, ExternalLink, Loader2, X, Upload
+  BookOpen, Link2, Trophy, AlertCircle, ExternalLink, Loader2, X, Upload, Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { parseSubmissionRequirements, parseSubmissionLinks, serializeSubmissionLinks, type SubmissionRequirement } from "../utils/submissionUtils";
+import { parseSubmissionRequirements, parseSubmissionLinks, serializeSubmissionLinks, parseStudentReflection, type SubmissionRequirement } from "../utils/submissionUtils";
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { GoogleDriveResumableUploader } from '@/utils/GoogleDriveResumableUploader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -80,6 +81,9 @@ export default function StudentTaskDetail() {
   const [loading, setLoading] = useState(true);
   const [requirements, setRequirements] = useState<SubmissionRequirement[]>([]);
   const [submissionLinks, setSubmissionLinks] = useState<Record<string, string>>({});
+  const [reflectionLearned, setReflectionLearned] = useState('');
+  const [reflectionChallenges, setReflectionChallenges] = useState('');
+  const [reflectionDoubts, setReflectionDoubts] = useState('');
   const [saving, setSaving] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [uploadingReqId, setUploadingReqId] = useState<string | null>(null);
@@ -114,6 +118,17 @@ export default function StudentTaskDetail() {
       const reqs = parseSubmissionRequirements((data as StudentTask).submission_types);
       setRequirements(reqs);
       setSubmissionLinks(parseSubmissionLinks((data as StudentTask).submission_link, reqs));
+
+      const refData = parseStudentReflection((data as StudentTask).submission_link);
+      if (refData) {
+        setReflectionLearned(refData.learned || '');
+        setReflectionChallenges(refData.challenges || '');
+        setReflectionDoubts(refData.doubts || '');
+      } else {
+        setReflectionLearned('');
+        setReflectionChallenges('');
+        setReflectionDoubts('');
+      }
     } catch (err) {
       console.error(err);
       toast.error('Failed to load task details');
@@ -129,6 +144,22 @@ export default function StudentTaskDetail() {
     const hasAnySubmission = Object.values(submissionLinks).some(link => link.trim() !== '');
     if (!hasAnySubmission && requirements.length > 0) {
       toast.error('Please submit your work for at least one requirement.');
+      return;
+    }
+
+    // 3 Mandatory reflection fields
+    if (!reflectionLearned.trim()) {
+      toast.error('Please fill in: What you learned (Mandatory)');
+      return;
+    }
+
+    if (!reflectionChallenges.trim()) {
+      toast.error('Please fill in: What challenges you faced (Mandatory)');
+      return;
+    }
+
+    if (!reflectionDoubts.trim()) {
+      toast.error('Please fill in: What doubts you still have (Mandatory)');
       return;
     }
 
@@ -150,7 +181,7 @@ export default function StudentTaskDetail() {
 
     const processedLinks = { ...submissionLinks };
     for (const reqId of Object.keys(processedLinks)) {
-      let l = processedLinks[reqId].trim();
+      const l = processedLinks[reqId].trim();
       if (l && !l.startsWith('http://') && !l.startsWith('https://')) {
         processedLinks[reqId] = `https://${l}`;
       }
@@ -158,10 +189,16 @@ export default function StudentTaskDetail() {
 
     try {
       setSaving(true);
+      const submissionPayload = serializeSubmissionLinks(processedLinks, {
+        learned: reflectionLearned.trim(),
+        challenges: reflectionChallenges.trim(),
+        doubts: reflectionDoubts.trim(),
+      });
+
       const { error } = await supabase
         .from('student_task_feedback')
         .update({
-          submission_link: serializeSubmissionLinks(processedLinks),
+          submission_link: submissionPayload,
           status: 'submitted',
           updated_at: new Date().toISOString(),
         })
@@ -495,6 +532,35 @@ export default function StudentTaskDetail() {
                   })}
                 </div>
               )}
+
+              {(reflectionLearned || reflectionChallenges || reflectionDoubts) && (
+                <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 text-left space-y-3">
+                  <div className="flex items-center gap-2 font-semibold text-sm text-indigo-950">
+                    <Sparkles className="h-4 w-4 text-indigo-600" />
+                    Student Reflection & Doubts
+                  </div>
+                  <div className="space-y-2.5 text-xs">
+                    {reflectionLearned && (
+                      <div className="bg-white p-3 rounded-lg border border-indigo-100 shadow-xs">
+                        <p className="font-semibold text-indigo-900 mb-1">1. What you learned:</p>
+                        <p className="text-gray-700 whitespace-pre-wrap">{reflectionLearned}</p>
+                      </div>
+                    )}
+                    {reflectionChallenges && (
+                      <div className="bg-white p-3 rounded-lg border border-amber-100 shadow-xs">
+                        <p className="font-semibold text-amber-900 mb-1">2. What challenges you faced:</p>
+                        <p className="text-gray-700 whitespace-pre-wrap">{reflectionChallenges}</p>
+                      </div>
+                    )}
+                    {reflectionDoubts && (
+                      <div className="bg-white p-3 rounded-lg border border-purple-100 shadow-xs">
+                        <p className="font-semibold text-purple-900 mb-1">3. What doubts you still have:</p>
+                        <p className="text-gray-700 whitespace-pre-wrap">{reflectionDoubts}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -620,6 +686,86 @@ export default function StudentTaskDetail() {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* 3 Mandatory Reflection Text Boxes */}
+              <div className="space-y-4 pt-4 border-t">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-indigo-600" />
+                    <h3 className="text-base font-semibold text-foreground">
+                      Self-Assessment & Reflection
+                    </h3>
+                  </div>
+                  <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700 text-xs font-semibold">
+                    3 Mandatory Questions
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Please answer all 3 questions before submitting your task.
+                </p>
+
+                <div className="space-y-4">
+                  {/* 1. What you learned */}
+                  <div className="space-y-1.5 p-4 rounded-xl border bg-card shadow-xs">
+                    <Label htmlFor="reflection-learned" className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
+                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold">1</span>
+                      <span>What you learned</span>
+                      <span className="text-red-500 font-bold">*</span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground">What key concepts, skills, or insights did you gain from this assignment?</p>
+                    <Textarea
+                      id="reflection-learned"
+                      value={reflectionLearned}
+                      onChange={(e) => setReflectionLearned(e.target.value)}
+                      placeholder="Write what you learned from doing this homework..."
+                      rows={3}
+                      disabled={saving || isSubmissionClosed || (!canSubmit && !isRejected)}
+                      className="resize-y min-h-[75px] bg-background"
+                      required
+                    />
+                  </div>
+
+                  {/* 2. What challenges you faced */}
+                  <div className="space-y-1.5 p-4 rounded-xl border bg-card shadow-xs">
+                    <Label htmlFor="reflection-challenges" className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
+                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">2</span>
+                      <span>What challenges you faced</span>
+                      <span className="text-red-500 font-bold">*</span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground">Did you encounter any difficulties, doubts, or roadblocks while completing the task?</p>
+                    <Textarea
+                      id="reflection-challenges"
+                      value={reflectionChallenges}
+                      onChange={(e) => setReflectionChallenges(e.target.value)}
+                      placeholder="Describe the challenges or difficulties you encountered..."
+                      rows={3}
+                      disabled={saving || isSubmissionClosed || (!canSubmit && !isRejected)}
+                      className="resize-y min-h-[75px] bg-background"
+                      required
+                    />
+                  </div>
+
+                  {/* 3. What doubts you still have */}
+                  <div className="space-y-1.5 p-4 rounded-xl border bg-card shadow-xs">
+                    <Label htmlFor="reflection-doubts" className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
+                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-xs font-bold">3</span>
+                      <span>What doubts you still have</span>
+                      <span className="text-red-500 font-bold">*</span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground">What queries or doubts do you still have for your teacher or facilitator?</p>
+                    <Textarea
+                      id="reflection-doubts"
+                      value={reflectionDoubts}
+                      onChange={(e) => setReflectionDoubts(e.target.value)}
+                      placeholder="Mention any doubts you still have, or write 'None' if all concepts are clear..."
+                      rows={3}
+                      disabled={saving || isSubmissionClosed || (!canSubmit && !isRejected)}
+                      className="resize-y min-h-[75px] bg-background"
+                      required
+                    />
+                  </div>
+                </div>
               </div>
 
               {(canSubmit || isRejected) && (

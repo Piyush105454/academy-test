@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Edit2, Trash2, XCircle, MessageSquare, Pencil, Calendar, Download, Clock } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Edit2, Trash2, XCircle, MessageSquare, Pencil, Calendar, Download, Clock, Sparkles } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { parseSubmissionRequirements, parseSubmissionLinks, serializeSubmissionLinks } from "../utils/submissionUtils";
+import { parseSubmissionRequirements, parseSubmissionLinks, serializeSubmissionLinks, parseStudentReflection } from "../utils/submissionUtils";
 import { getCleanTaskId, getScheduledTasks } from '@/utils/scheduledTasksStore';
 import {
   Select,
@@ -486,12 +486,11 @@ export default function TaskDetail() {
     const linkToDelete = newLinks[reqId];
     delete newLinks[reqId];
     
-    const linkStr = serializeSubmissionLinks(newLinks);
-    const comment = `[${reqTitle}]: ${requirementRejectComment.trim()}`;
-    
     try {
       setUpdatingId(taskId);
-      const { data: currentTask } = await supabase.from('student_task_feedback').select('rejection_comment').eq('id', taskId).single();
+      const { data: currentTask } = await supabase.from('student_task_feedback').select('rejection_comment, submission_link').eq('id', taskId).single();
+      const currentReflection = parseStudentReflection(currentTask?.submission_link);
+      const linkStr = serializeSubmissionLinks(newLinks, currentReflection);
       
       let newComment = comment;
       if (currentTask?.rejection_comment) {
@@ -523,7 +522,7 @@ export default function TaskDetail() {
       const { error } = await supabase
         .from('student_task_feedback')
         .update({
-          submission_link: Object.keys(newLinks).length > 0 ? linkStr : null,
+          submission_link: (Object.keys(newLinks).length > 0 || currentReflection) ? linkStr : null,
           status: 'rejected',
           rejection_comment: newComment,
           updated_at: new Date().toISOString()
@@ -716,9 +715,11 @@ export default function TaskDetail() {
                     {task.submission_link ? (() => {
                       const reqs = parseSubmissionRequirements(task.submission_types);
                       const links = parseSubmissionLinks(task.submission_link, reqs);
-                      const hasAny = Object.values(links).some(l => l.trim() !== '');
+                      const reflection = parseStudentReflection(task.submission_link);
+                      const hasAnyLinks = Object.values(links).some(l => l.trim() !== '');
+                      const hasReflection = !!(reflection && (reflection.learned || reflection.challenges || reflection.doubts));
                       
-                      if (!hasAny) return <span className="text-gray-400 italic">No submission</span>;
+                      if (!hasAnyLinks && !hasReflection) return <span className="text-gray-400 italic">No submission</span>;
                       
                       return (
                         <div className="space-y-2">
@@ -755,6 +756,32 @@ export default function TaskDetail() {
                               </div>
                             );
                           })}
+
+                          {hasReflection && reflection && (
+                            <div className="mt-2.5 p-2 bg-indigo-50/70 border border-indigo-100 rounded text-[11px] space-y-1.5 text-left">
+                              <div className="font-semibold text-indigo-950 flex items-center gap-1">
+                                <Sparkles className="h-3 w-3 text-indigo-600" /> Student Reflection:
+                              </div>
+                              {reflection.learned && (
+                                <div>
+                                  <span className="font-semibold text-slate-700">1. Learned: </span>
+                                  <span className="text-slate-800 whitespace-pre-wrap">{reflection.learned}</span>
+                                </div>
+                              )}
+                              {reflection.challenges && (
+                                <div>
+                                  <span className="font-semibold text-amber-900">2. Challenges: </span>
+                                  <span className="text-slate-800 whitespace-pre-wrap">{reflection.challenges}</span>
+                                </div>
+                              )}
+                              {reflection.doubts && (
+                                <div>
+                                  <span className="font-semibold text-purple-900">3. Doubts: </span>
+                                  <span className="text-slate-800 whitespace-pre-wrap">{reflection.doubts}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })() : (
@@ -1000,6 +1027,9 @@ export default function TaskDetail() {
                       {task.submission_link && (() => {
                         const reqs = parseSubmissionRequirements(task.submission_types);
                         const links = parseSubmissionLinks(task.submission_link, reqs);
+                        const reflection = parseStudentReflection(task.submission_link);
+                        const hasReflection = !!(reflection && (reflection.learned || reflection.challenges || reflection.doubts));
+
                         return (
                           <div className="space-y-2">
                             {reqs.map((req) => {
@@ -1038,6 +1068,32 @@ export default function TaskDetail() {
                                 </div>
                               );
                             })}
+
+                            {hasReflection && reflection && (
+                              <div className="mt-2.5 p-2.5 bg-indigo-50/70 border border-indigo-100 rounded-lg text-xs space-y-1.5 text-left">
+                                <div className="font-semibold text-indigo-950 flex items-center gap-1 text-[11px]">
+                                  <Sparkles className="h-3 w-3 text-indigo-600" /> Student Reflection:
+                                </div>
+                                {reflection.learned && (
+                                  <div>
+                                    <span className="font-semibold text-slate-700">1. Learned: </span>
+                                    <span className="text-slate-800 whitespace-pre-wrap">{reflection.learned}</span>
+                                  </div>
+                                )}
+                                {reflection.challenges && (
+                                  <div>
+                                    <span className="font-semibold text-amber-900">2. Challenges: </span>
+                                    <span className="text-slate-800 whitespace-pre-wrap">{reflection.challenges}</span>
+                                  </div>
+                                )}
+                                {reflection.doubts && (
+                                  <div>
+                                    <span className="font-semibold text-purple-900">3. Doubts: </span>
+                                    <span className="text-slate-800 whitespace-pre-wrap">{reflection.doubts}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         );
                       })()}

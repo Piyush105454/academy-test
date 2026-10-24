@@ -4,6 +4,12 @@ export interface SubmissionRequirement {
   type: string;
 }
 
+export interface StudentReflection {
+  learned: string;
+  challenges: string;
+  doubts: string;
+}
+
 /**
  * Parses the raw `submission_types` array from the database into structured requirements.
  * Handles backwards compatibility for old tasks that just had strings like ["pdf", "ppt"].
@@ -52,6 +58,37 @@ export function serializeSubmissionRequirements(requirements: SubmissionRequirem
 }
 
 /**
+ * Parses the student's submission reflections (learned, challenges, doubts) from the submission_link payload.
+ */
+export function parseStudentReflection(rawLink: string | null | undefined): StudentReflection | null {
+  if (!rawLink) return null;
+
+  if (rawLink.startsWith('{') && rawLink.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(rawLink);
+      if (parsed._reflection && typeof parsed._reflection === 'object') {
+        return {
+          learned: parsed._reflection.learned || '',
+          challenges: parsed._reflection.challenges || '',
+          doubts: parsed._reflection.doubts || '',
+        };
+      }
+      if (parsed.reflection_learned || parsed.reflection_challenges || parsed.reflection_doubts) {
+        return {
+          learned: parsed.reflection_learned || '',
+          challenges: parsed.reflection_challenges || '',
+          doubts: parsed.reflection_doubts || '',
+        };
+      }
+    } catch (e) {
+      // Fallback
+    }
+  }
+
+  return null;
+}
+
+/**
  * Parses the student's submission links from the database into a map of requirementId -> url.
  * Handles backwards compatibility for old tasks that just had comma-separated URLs.
  */
@@ -60,7 +97,14 @@ export function parseSubmissionLinks(rawLink: string | null | undefined, require
 
   if (rawLink.startsWith('{') && rawLink.endsWith('}')) {
     try {
-      return JSON.parse(rawLink) as Record<string, string>;
+      const parsed = JSON.parse(rawLink) as Record<string, unknown>;
+      const result: Record<string, string> = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === 'string' && !key.startsWith('_') && !key.startsWith('reflection_')) {
+          result[key] = value;
+        }
+      }
+      return result;
     } catch (e) {
       // Fallback
     }
@@ -81,9 +125,36 @@ export function parseSubmissionLinks(rawLink: string | null | undefined, require
 }
 
 /**
- * Serializes the student's submission links map back into a string for saving.
+ * Serializes the student's submission links map and optional reflection answers back into a string for saving.
  */
-export function serializeSubmissionLinks(links: Record<string, string>): string {
-  if (Object.keys(links).length === 0) return '';
-  return JSON.stringify(links);
+export function serializeSubmissionLinks(
+  links: Record<string, string>,
+  reflection?: StudentReflection | null
+): string {
+  const payload: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(links)) {
+    if (typeof value === 'string' && !key.startsWith('_') && !key.startsWith('reflection_')) {
+      if (value.trim()) {
+        payload[key] = value.trim();
+      }
+    }
+  }
+
+  if (reflection) {
+    const r: StudentReflection = {
+      learned: reflection.learned?.trim() || '',
+      challenges: reflection.challenges?.trim() || '',
+      doubts: reflection.doubts?.trim() || ''
+    };
+    if (r.learned || r.challenges || r.doubts) {
+      payload._reflection = r;
+      payload.reflection_learned = r.learned;
+      payload.reflection_challenges = r.challenges;
+      payload.reflection_doubts = r.doubts;
+    }
+  }
+
+  if (Object.keys(payload).length === 0) return '';
+  return JSON.stringify(payload);
 }

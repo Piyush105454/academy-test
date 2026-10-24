@@ -33,6 +33,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
+import { filterActiveStudents, isPlaceholderEmail } from '@/utils/studentActiveHelper';
 import { Badge } from '@/components/ui/badge';
 import { formatSingleSessionCode } from '@/utils/sessionIdGenerator';
 import { getDirectImageUrl, handleImageError } from '@/utils/imageUtils';
@@ -913,9 +914,10 @@ export default function SessionRecording() {
       try {
         const ids = finalStudents.map((st: any) => st.id).filter(Boolean);
         const emails = finalStudents.map((st: any) => st.email).filter(Boolean);
+        const validEmails = emails.filter((em: string) => !isPlaceholderEmail(em));
         const queryOr: string[] = [];
         if (ids.length > 0) queryOr.push(`id.in.(${ids.join(',')})`);
-        if (emails.length > 0) queryOr.push(`email.in.(${emails.join(',')})`);
+        if (validEmails.length > 0) queryOr.push(`email.in.(${validEmails.join(',')})`);
 
         if (queryOr.length > 0) {
           const { data: profiles, error: profileError } = await supabase
@@ -924,16 +926,7 @@ export default function SessionRecording() {
             .or(queryOr.join(','));
 
           if (!profileError && profiles) {
-            const profileMapById = new Map(profiles.map((p: any) => [p.id, p.is_active]));
-            const profileMapByEmail = new Map(
-              profiles.filter((p: any) => p.email).map((p: any) => [p.email.toLowerCase().trim(), p.is_active])
-            );
-            finalStudents = finalStudents.filter((st: any) => {
-              if ((st as any).is_active === false) return false;
-              if (profileMapById.has(st.id) && profileMapById.get(st.id) === false) return false;
-              if (st.email && profileMapByEmail.get(st.email.toLowerCase().trim()) === false) return false;
-              return true;
-            });
+            finalStudents = filterActiveStudents(finalStudents, profiles);
           }
         }
       } catch (profileErr) {

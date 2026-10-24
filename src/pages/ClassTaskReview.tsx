@@ -4,7 +4,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
-import { parseSubmissionRequirements, parseSubmissionLinks } from "../utils/submissionUtils";
+import { parseSubmissionRequirements, parseSubmissionLinks, parseStudentReflection } from "../utils/submissionUtils";
 import { cn } from '@/lib/utils';
 import { 
   Table, 
@@ -27,7 +27,8 @@ import {
   CheckCircle,
   Clock,
   ChevronDown,
-  History
+  History,
+  Sparkles
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -446,9 +447,11 @@ export default function ClassTaskReview() {
                                 {task.submission_link ? (() => {
                                   const reqs = parseSubmissionRequirements(task.submission_types);
                                   const links = parseSubmissionLinks(task.submission_link, reqs);
+                                  const reflection = parseStudentReflection(task.submission_link);
                                   const hasAny = Object.values(links).some(l => l.trim() !== '');
+                                  const hasReflection = !!(reflection && (reflection.learned || reflection.challenges || reflection.doubts));
                                   
-                                  if (!hasAny) return <span className="text-xs text-muted-foreground italic">No submission</span>;
+                                  if (!hasAny && !hasReflection) return <span className="text-xs text-muted-foreground italic">No submission</span>;
                                   
                                   return (
                                     <div className="flex flex-col gap-1.5">
@@ -478,6 +481,32 @@ export default function ClassTaskReview() {
                                           </div>
                                         );
                                       })}
+
+                                      {hasReflection && reflection && (
+                                        <div className="mt-1 p-2 bg-indigo-50/70 border border-indigo-100 rounded text-[10px] space-y-1 text-left">
+                                          <div className="font-semibold text-indigo-950 flex items-center gap-1">
+                                            <Sparkles className="h-2.5 w-2.5 text-indigo-600" /> Reflection:
+                                          </div>
+                                          {reflection.learned && (
+                                            <div>
+                                              <span className="font-semibold text-slate-700">Learned: </span>
+                                              <span className="text-slate-800">{reflection.learned}</span>
+                                            </div>
+                                          )}
+                                          {reflection.challenges && (
+                                            <div>
+                                              <span className="font-semibold text-amber-900">Challenges: </span>
+                                              <span className="text-slate-800">{reflection.challenges}</span>
+                                            </div>
+                                          )}
+                                          {reflection.doubts && (
+                                            <div>
+                                              <span className="font-semibold text-purple-900">Doubts: </span>
+                                              <span className="text-slate-800">{reflection.doubts}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })() : (
