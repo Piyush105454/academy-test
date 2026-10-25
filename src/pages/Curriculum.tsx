@@ -48,6 +48,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { UnifiedImportDialog } from '@/components/sessions/UnifiedImportDialog';
+import {
+  normalizeTopicKey,
+  extractCoreTopic,
+  isClassMatch,
+  isRevisionSession,
+} from '@/utils/curriculumTopicUtils';
 import { ExportCurriculumDialog } from '@/components/curriculum/ExportCurriculumDialog';
 import { AddTopicDialog } from '@/components/curriculum/AddTopicDialog';
 import { EditCurriculumDialog } from '@/components/curriculum/EditCurriculumDialog';
@@ -297,10 +303,26 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     if (sessionInfo[topicTitle]) return sessionInfo[topicTitle];
     const trimmed = topicTitle.trim();
     if (sessionInfo[trimmed]) return sessionInfo[trimmed];
-    const match = Object.keys(sessionInfo).find(
-      (k) => k.trim().toLowerCase() === trimmed.toLowerCase()
-    );
-    return match ? sessionInfo[match] : undefined;
+    const lower = trimmed.toLowerCase();
+    if (sessionInfo[lower]) return sessionInfo[lower];
+
+    // Normalized match (handles 01.04 vs 1.4, punctuation differences)
+    const normKey = normalizeTopicKey(topicTitle);
+    if (normKey && sessionInfo[normKey]) return sessionInfo[normKey];
+
+    // Scan all keys in sessionInfo using normalizeTopicKey
+    const normMatch = Object.keys(sessionInfo).find((k) => normalizeTopicKey(k) === normKey);
+    if (normMatch) return sessionInfo[normMatch];
+
+    // Fallback: Core topic match (stripping leading module/topic numbers)
+    const coreKey = extractCoreTopic(topicTitle);
+    if (coreKey && coreKey.length >= 4) {
+      if (sessionInfo[coreKey]) return sessionInfo[coreKey];
+      const coreMatch = Object.keys(sessionInfo).find((k) => extractCoreTopic(k) === coreKey);
+      if (coreMatch) return sessionInfo[coreMatch];
+    }
+
+    return undefined;
   };
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
@@ -718,25 +740,39 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
       }
 
       // Fetch sessions filtered by class_batch (class name) and academic year
-      const { startDate, endDate } = getDateRange();
-      const { data: sessions, error } = await supabase
+      const rawClassName = selectedClassObj.name.trim();
+      const compactClassName = rawClassName.replace(/\s+/g, '');
+      const filterConditions = [
+        `class_batch.eq."${rawClassName}"`,
+        `class_batch.ilike."%${rawClassName}%"`
+      ];
+      if (compactClassName && compactClassName !== rawClassName) {
+        filterConditions.push(`class_batch.ilike."%${compactClassName}%"`);
+      }
+
+      let sessionQuery = supabase
         .from('sessions')
         .select('id, topics_covered, session_type_option, session_type, status, session_date, volunteer_name, content_category, class_batch')
-        .eq('class_batch', selectedClassObj.name)
-        .gte('session_date', startDate.toISOString().split('T')[0])
-        .lte('session_date', endDate.toISOString().split('T')[0]);
+        .or(filterConditions.join(','));
+
+      const { startDate, endDate } = getDateRange();
+      if (startDate && endDate) {
+        const startStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
+        const endStr = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+        sessionQuery = sessionQuery
+          .gte('session_date', startStr)
+          .lte('session_date', endStr);
+      }
+
+      const { data: sessions, error } = await sessionQuery;
 
       if (error) throw error;
 
       const sessionMap: Record<string, SessionInfo> = {};
 
-      // Group sessions by topic
-      (sessions as any[])?.forEach((session: any) => {
-        const topic = session.topics_covered;
-        if (!topic) return;
-
-        if (!sessionMap[topic]) {
-          sessionMap[topic] = {
+      const getOrCreateSessionInfo = (key: string): SessionInfo => {
+        if (!sessionMap[key]) {
+          sessionMap[key] = {
             fresh_count: 0,
             revision_count: 0,
             fresh_sessions: [],
@@ -744,8 +780,22 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
             session_types: new Set<string>(),
           };
         }
+        return sessionMap[key];
+      };
 
-        const info = sessionMap[topic];
+      // Group sessions by topic
+      (sessions as any[])?.forEach((session: any) => {
+        if (!isClassMatch(session.class_batch, selectedClassObj.name)) return;
+        const topic = session.topics_covered;
+        if (!topic) return;
+
+        const normKey = normalizeTopicKey(topic);
+        const lowerKey = topic.toLowerCase().trim();
+        const coreKey = extractCoreTopic(topic);
+        const canonicalKey = normKey || lowerKey;
+
+        const info = getOrCreateSessionInfo(canonicalKey);
+
         if (session.session_type) {
           info.session_types.add(session.session_type);
         }
@@ -757,27 +807,48 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
           status: session.status || 'pending',
         };
 
-        if (session.session_type_option === 'fresh') {
-          sessionMap[topic].fresh_count += 1;
-          sessionMap[topic].fresh_status = session.status;
-          sessionMap[topic].fresh_sessions?.push(sessionDetail);
-          if (!sessionMap[topic].session_date) {
-            sessionMap[topic].session_date = session.session_date;
+        const isRev = isRevisionSession(session.session_type_option, session.session_type);
+
+        if (isRev) {
+          info.revision_count += 1;
+          if (session.status === 'completed' || !info.revision_status) {
+            info.revision_status = session.status;
           }
-          if (!sessionMap[topic].volunteer_name) {
-            sessionMap[topic].volunteer_name = session.volunteer_name;
+          info.revision_sessions?.push(sessionDetail);
+        } else {
+          // Default to fresh session
+          info.fresh_count += 1;
+          if (session.status === 'completed' || !info.fresh_status) {
+            info.fresh_status = session.status;
           }
-        } else if (session.session_type_option === 'revision') {
-          sessionMap[topic].revision_count += 1;
-          sessionMap[topic].revision_status = session.status;
-          sessionMap[topic].revision_sessions?.push(sessionDetail);
-          if (!sessionMap[topic].session_date) {
-            sessionMap[topic].session_date = session.session_date;
-          }
-          if (!sessionMap[topic].volunteer_name) {
-            sessionMap[topic].volunteer_name = session.volunteer_name;
-          }
+          info.fresh_sessions?.push(sessionDetail);
         }
+
+        if (!info.session_date && session.session_date) {
+          info.session_date = session.session_date;
+        }
+        if (!info.volunteer_name && session.volunteer_name) {
+          info.volunteer_name = session.volunteer_name;
+        }
+
+        // Map all variations to this canonical info object
+        sessionMap[topic] = info;
+        sessionMap[lowerKey] = info;
+        if (normKey) sessionMap[normKey] = info;
+        if (coreKey && coreKey.length >= 4 && !sessionMap[coreKey]) {
+          sessionMap[coreKey] = info;
+        }
+      });
+
+      // Sort sessions for each canonical group (completed first, then latest date)
+      Object.values(sessionMap).forEach((info) => {
+        const sortFn = (a: any, b: any) => {
+          if (a.status === 'completed' && b.status !== 'completed') return -1;
+          if (b.status === 'completed' && a.status !== 'completed') return 1;
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
+        };
+        info.fresh_sessions?.sort(sortFn);
+        info.revision_sessions?.sort(sortFn);
       });
 
       setSessionInfo(sessionMap);
@@ -817,14 +888,26 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
         return;
       }
 
-      // Update all sessions with matching topic and class
-      const { error } = await supabase
-        .from('sessions')
-        .update({ status: newStatus })
-        .eq('topics_covered', selectedItem.topic_title)
-        .eq('class_batch', selectedClassObj.name);
+      const info = getSessionInfo(selectedItem.topic_title);
+      const sessionIds = [
+        ...(info?.fresh_sessions?.map(s => s.id) || []),
+        ...(info?.revision_sessions?.map(s => s.id) || [])
+      ];
 
-      if (error) throw error;
+      if (sessionIds.length > 0) {
+        const { error } = await supabase
+          .from('sessions')
+          .update({ status: newStatus })
+          .in('id', sessionIds);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('sessions')
+          .update({ status: newStatus })
+          .eq('topics_covered', selectedItem.topic_title)
+          .eq('class_batch', selectedClassObj.name);
+        if (error) throw error;
+      }
 
       toast.success(`Updated status to "${newStatus}" for all sessions with this topic`);
       setStatusDialogOpen(false);

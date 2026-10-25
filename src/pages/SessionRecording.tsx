@@ -218,6 +218,12 @@ export default function SessionRecording() {
   const [isListening, setIsListening] = useState(false);
   const [isEditingHomework, setIsEditingHomework] = useState(false);
   const [selectedHomeworkTaskId, setSelectedHomeworkTaskId] = useState<string>('all');
+
+  // Draft Auto-Save & Browser Cache State
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
+  const isInitialFormMount = useRef(true);
+  const lastSavedDraftRef = useRef<string>('');
   const [activeTaskDetailId, setActiveTaskDetailId] = useState<string>('');
   const [homeworkSearch, setHomeworkSearch] = useState<string>('');
   const [homeworkStatusFilter, setHomeworkStatusFilter] = useState<string>('all');
@@ -570,28 +576,72 @@ export default function SessionRecording() {
         }
       }
       const bestPerformerVal = (sessionData as any).best_performer || '';
+      
+      let loadedData: any = {
+        session_objective: (sessionData as any).session_objective ?? '',
+        practical_activities: (sessionData as any).practical_activities ?? '',
+        session_highlights: (sessionData as any).session_highlights ?? '',
+        learning_outcomes: (sessionData as any).learning_outcomes ?? '',
+        facilitator_reflection: (sessionData as any).facilitator_reflection ?? '',
+        best_performer: bestPerformerVal || '',
+        guest_teacher_feedback: (sessionData as any).guest_teacher_feedback ?? '',
+        incharge_reviewer_feedback: (sessionData as any).incharge_reviewer_feedback ?? '',
+        recording_url: (sessionData as any).recording_url ?? '',
+        record_sheet_link: (sessionData as any).record_sheet_link ?? '',
+        session_pictures: (sessionData as any).session_pictures || [],
+        mic_sound_rating: (sessionData as any).mic_sound_rating ?? 5,
+        seating_view_rating: (sessionData as any).seating_view_rating ?? 5,
+        session_strength: (sessionData as any).session_strength ?? 5,
+        coordinator_mic_sound_rating: (sessionData as any).coordinator_mic_sound_rating ?? 5,
+        coordinator_seating_view_rating: (sessionData as any).coordinator_seating_view_rating ?? 5,
+        coordinator_session_strength: (sessionData as any).coordinator_session_strength ?? 5,
+        class_batch: (sessionData as any).class_batch ?? '',
+      };
+
+      // Check for cached draft in browser storage
+      const draftKey = `session_recording_draft_${sessionId}`;
+      const cachedDraftStr = localStorage.getItem(draftKey);
+      if (cachedDraftStr) {
+        try {
+          const parsedDraft = JSON.parse(cachedDraftStr);
+          const draftData = parsedDraft.data || parsedDraft;
+          if (draftData && typeof draftData === 'object') {
+            const hasNewDraftContent = Object.keys(draftData).some(k => {
+              const dVal = (draftData as any)[k];
+              const sVal = (loadedData as any)[k];
+              if (Array.isArray(dVal)) {
+                return dVal.length > (Array.isArray(sVal) ? sVal.length : 0);
+              }
+              return (dVal || '').toString().trim() !== '' && (dVal || '').toString().trim() !== (sVal || '').toString().trim();
+            });
+
+            if (hasNewDraftContent) {
+              loadedData = {
+                ...loadedData,
+                ...draftData
+              };
+              if (parsedDraft.savedAt) {
+                setLastDraftSavedAt(new Date(parsedDraft.savedAt));
+              }
+              toast.info('Restored your unsaved draft from browser cache', { duration: 4000 });
+            }
+          }
+        } catch (e) {
+          console.warn('Could not parse cached draft', e);
+        }
+      }
+
       setFormData(prev => ({
         ...prev,
-        session_objective: (sessionData as any).session_objective ?? prev.session_objective ?? '',
-        practical_activities: (sessionData as any).practical_activities ?? prev.practical_activities ?? '',
-        session_highlights: (sessionData as any).session_highlights ?? prev.session_highlights ?? '',
-        learning_outcomes: (sessionData as any).learning_outcomes ?? prev.learning_outcomes ?? '',
-        facilitator_reflection: (sessionData as any).facilitator_reflection ?? prev.facilitator_reflection ?? '',
-        best_performer: bestPerformerVal || prev.best_performer || '',
-        guest_teacher_feedback: (sessionData as any).guest_teacher_feedback ?? prev.guest_teacher_feedback ?? '',
-        incharge_reviewer_feedback: (sessionData as any).incharge_reviewer_feedback ?? prev.incharge_reviewer_feedback ?? '',
-        recording_url: (sessionData as any).recording_url ?? prev.recording_url ?? '',
-        record_sheet_link: (sessionData as any).record_sheet_link ?? prev.record_sheet_link ?? '',
-        session_pictures: (sessionData as any).session_pictures || prev.session_pictures || [],
-        mic_sound_rating: (sessionData as any).mic_sound_rating ?? prev.mic_sound_rating ?? 5,
-        seating_view_rating: (sessionData as any).seating_view_rating ?? prev.seating_view_rating ?? 5,
-        session_strength: (sessionData as any).session_strength ?? prev.session_strength ?? 5,
-        coordinator_mic_sound_rating: (sessionData as any).coordinator_mic_sound_rating ?? prev.coordinator_mic_sound_rating ?? 5,
-        coordinator_seating_view_rating: (sessionData as any).coordinator_seating_view_rating ?? prev.coordinator_seating_view_rating ?? 5,
-        coordinator_session_strength: (sessionData as any).coordinator_session_strength ?? prev.coordinator_session_strength ?? 5,
-        class_batch: (sessionData as any).class_batch ?? prev.class_batch ?? '',
+        ...loadedData
       } as any));
-      if (bestPerformerVal) {
+
+      lastSavedDraftRef.current = JSON.stringify(loadedData);
+      setTimeout(() => {
+        isInitialFormMount.current = false;
+      }, 500);
+
+      if (loadedData.best_performer) {
         setIsBestPerformerManual(true);
       } else {
         setIsBestPerformerManual(false);
@@ -1124,6 +1174,98 @@ export default function SessionRecording() {
     }
   };
 
+  // Save form draft to localStorage and sync partial fields to DB
+  const handleAutoSaveDraft = async (dataToSave = formData, isManual = false) => {
+    if (!sessionId || isFeedbackLocked) return;
+    try {
+      setDraftSaving(true);
+      const draftPayload = {
+        data: dataToSave,
+        savedAt: new Date().toISOString(),
+        sessionId
+      };
+      try {
+        localStorage.setItem(`session_recording_draft_${sessionId}`, JSON.stringify(draftPayload));
+      } catch (e) {
+        console.warn('localStorage draft cache failed:', e);
+      }
+
+      lastSavedDraftRef.current = JSON.stringify(dataToSave);
+      setLastDraftSavedAt(new Date());
+
+      // Quietly sync partial draft to database without marking feedback as done
+      const partialUpdate: any = {
+        session_objective: dataToSave.session_objective || null,
+        practical_activities: dataToSave.practical_activities || null,
+        session_highlights: dataToSave.session_highlights || null,
+        learning_outcomes: dataToSave.learning_outcomes || null,
+        facilitator_reflection: dataToSave.facilitator_reflection || null,
+        best_performer: dataToSave.best_performer || null,
+        recording_url: dataToSave.recording_url?.trim() || null,
+        record_sheet_link: (dataToSave as any).record_sheet_link?.trim() || null,
+        mic_sound_rating: Number(dataToSave.mic_sound_rating) || 5,
+        seating_view_rating: Number(dataToSave.seating_view_rating) || 5,
+        session_strength: Number(dataToSave.session_strength) || 5,
+        class_batch: dataToSave.class_batch || null,
+      };
+
+      if (currentPage === 3) {
+        partialUpdate.guest_teacher_feedback = dataToSave.guest_teacher_feedback || null;
+        partialUpdate.incharge_reviewer_feedback = dataToSave.incharge_reviewer_feedback || null;
+        partialUpdate.coordinator_mic_sound_rating = Number(dataToSave.coordinator_mic_sound_rating) || 5;
+        partialUpdate.coordinator_seating_view_rating = Number(dataToSave.coordinator_seating_view_rating) || 5;
+        partialUpdate.coordinator_session_strength = Number(dataToSave.coordinator_session_strength) || 5;
+      }
+
+      if (Array.isArray((dataToSave as any).session_pictures)) {
+        partialUpdate.session_pictures = (dataToSave as any).session_pictures;
+      }
+
+      let { error } = await supabase
+        .from('sessions')
+        .update(partialUpdate)
+        .eq('id', sessionId);
+
+      if (error && (error.message?.includes('session_pictures') || error.code === 'PGRST204')) {
+        delete partialUpdate.session_pictures;
+        await supabase.from('sessions').update(partialUpdate).eq('id', sessionId);
+      }
+
+      if (isManual) {
+        toast.success('Draft saved successfully! (Browser cache & Database updated)');
+      }
+    } catch (err) {
+      console.error('Error saving draft:', err);
+      if (isManual) {
+        toast.error('Draft cached in browser, but database sync had an issue');
+      }
+    } finally {
+      setDraftSaving(false);
+    }
+  };
+
+  // Auto-save form draft whenever typed data changes (2 seconds debounce, matching attendance marking)
+  useEffect(() => {
+    if (isInitialFormMount.current) {
+      return;
+    }
+    if (isFeedbackLocked || (!canEditFacilitatorSection && !canEditCoordinatorSection)) {
+      return;
+    }
+
+    const currentStr = JSON.stringify(formData);
+    if (!currentStr || currentStr === lastSavedDraftRef.current) {
+      return;
+    }
+
+    setDraftSaving(true);
+    const timer = setTimeout(() => {
+      handleAutoSaveDraft(formData, false);
+    }, 2000); // 2 seconds debounce matching student performance auto-save
+
+    return () => clearTimeout(timer);
+  }, [formData, isFeedbackLocked, canEditFacilitatorSection, canEditCoordinatorSection]);
+
   const handleSaveFeedback = async () => {
     if (isFeedbackLocked) { toast.error('Feedback is locked. Please contact an admin to unlock.'); return; }
     if (!sessionId) return;
@@ -1176,7 +1318,20 @@ export default function SessionRecording() {
         toast.error("Best Performer is required (select at least one student)");
         return;
       }
-      // Record sheet link and pictures are optional
+
+      // Mandatory Record PPT Link, Session Pictures, and Recording Link
+      if (!(formData as any).record_sheet_link || !(formData as any).record_sheet_link.trim()) {
+        toast.error("Record PPT Slide Link is required");
+        return;
+      }
+      if (!Array.isArray((formData as any).session_pictures) || (formData as any).session_pictures.length === 0) {
+        toast.error("At least one session picture is required (Please upload 1 to 3 pictures)");
+        return;
+      }
+      if (!formData.recording_url || !formData.recording_url.trim()) {
+        toast.error("Session Video Recording URL is required");
+        return;
+      }
     }
 
     // Validation for Coordinator feedback fields
@@ -1337,6 +1492,12 @@ export default function SessionRecording() {
       }
 
       await fetchSession(true);
+      // Clear cached draft upon successful submission
+      try {
+        localStorage.removeItem(`session_recording_draft_${sessionId}`);
+        setLastDraftSavedAt(null);
+        lastSavedDraftRef.current = '';
+      } catch (e) {}
       toast.success('Session feedback saved successfully');
     } catch (error) {
       console.error('Error saving session:', error);
@@ -2228,11 +2389,23 @@ export default function SessionRecording() {
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl font-bold text-foreground">Session Feedback</h1>
                 <Badge variant="outline" className="font-mono text-xs bg-primary/10 text-primary border-primary/20 font-bold px-2 py-0.5">
                   {(session as any)?.session_id_code || formatSingleSessionCode(session?.session_date || '', session?.class_batch, session?.session_type)}
                 </Badge>
+                {draftSaving && (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 px-2.5 py-0.5 rounded-full font-medium shadow-sm animate-pulse">
+                    <Loader2 className="h-3 w-3 text-amber-600 animate-spin" />
+                    Auto-saving draft...
+                  </span>
+                )}
+                {lastDraftSavedAt && !draftSaving && (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 px-2.5 py-0.5 rounded-full font-medium shadow-sm" title="Your typed draft is safely cached in browser & database">
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                    Draft saved {lastDraftSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
               </div>
               <p className="text-sm text-muted-foreground">
                 {(() => {
@@ -2843,16 +3016,18 @@ export default function SessionRecording() {
                 </Card>
 
                 {/* Record Sheet Link */}
-                <Card>
+                <Card className="border-l-4 border-l-blue-500 shadow-sm">
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
-                      <ExternalLink className="h-4 w-4" />
-                      Record PPT Slide Link and picture <span className="text-xs text-muted-foreground font-normal">(Optional)</span>
+                      <ExternalLink className="h-4 w-4 text-blue-600" />
+                      Record PPT Slide Link and Pictures <span className="text-xs text-red-500 font-bold">* (Required)</span>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div>
-                      <Label htmlFor="record_sheet_link" className="text-sm">Record PPT Slide Link <span className="text-xs text-muted-foreground font-normal">(Optional)</span></Label>
+                      <Label htmlFor="record_sheet_link" className="text-sm font-semibold flex items-center gap-1">
+                        Record PPT Slide Link <span className="text-xs text-red-500 font-bold">* (Required)</span>
+                      </Label>
                       <Input
                         id="record_sheet_link"
                         type="url"
@@ -2860,23 +3035,26 @@ export default function SessionRecording() {
                         onChange={(e) => setFormData(prev => ({ ...prev, record_sheet_link: e.target.value } as any))}
                         placeholder="please paste link the record sheet(physical) of sesssion(pdf)"
                         className="mt-1"
+                        required
                       />
-                                              <p className="text-xs text-muted-foreground mt-1">
-                          Paste the link to the session record sheet
-                        </p>
-                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Paste the link to the session record sheet / presentation slide (Mandatory)
+                      </p>
+                    </div>
                       
                       <div className="mt-5 pt-4 border-t space-y-3">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <div>
-                            <Label className="text-sm font-semibold text-foreground">Upload Session Pictures (Max 3)</Label>
+                            <Label className="text-sm font-semibold text-foreground flex items-center gap-1">
+                              Upload Session Pictures (1 to 3) <span className="text-xs text-red-500 font-bold">* (Required)</span>
+                            </Label>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              Add up to 3 pictures from the classroom session to verify attendance & engagement
+                              Add at least 1 picture (up to 3) from the classroom session to verify attendance & engagement (Mandatory)
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
-                              {((formData as any).session_pictures?.length || 0)} / 3 uploaded
+                            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${((formData as any).session_pictures?.length || 0) > 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-red-50 text-red-700 border-red-300'}`}>
+                              {((formData as any).session_pictures?.length || 0)} / 3 uploaded {((formData as any).session_pictures?.length || 0) === 0 ? '(Required)' : '✓'}
                             </span>
                             {((formData as any).session_pictures?.length || 0) < 3 && (
                               <Button 
@@ -3014,16 +3192,18 @@ export default function SessionRecording() {
                 </Card>
 
                 {/* Session Video Recording */}
-                <Card>
+                <Card className="border-l-4 border-l-purple-500 shadow-sm">
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
-                      <ExternalLink className="h-4 w-4" />
-                      Session Video Recording <span className="text-xs text-muted-foreground font-normal">(Optional)</span>
+                      <ExternalLink className="h-4 w-4 text-purple-600" />
+                      Session Video Recording <span className="text-xs text-red-500 font-bold">* (Required)</span>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      <Label htmlFor="recording_url" className="text-sm">Session Video Recording URL <span className="text-xs text-muted-foreground font-normal">(Optional)</span></Label>
+                      <Label htmlFor="recording_url" className="text-sm font-semibold flex items-center gap-1">
+                        Session Video Recording URL <span className="text-xs text-red-500 font-bold">* (Required)</span>
+                      </Label>
                       <Input
                         id="recording_url"
                         type="url"
@@ -3031,9 +3211,10 @@ export default function SessionRecording() {
                         onChange={(e) => setFormData(prev => ({ ...prev, recording_url: e.target.value }))}
                         placeholder="https://example.com/recording"
                         className="w-full"
+                        required
                       />
                       <p className="text-xs text-muted-foreground mt-1">
-                        Paste the link to the recorded session video (e.g. Google Drive, Zoom, YouTube)
+                        Paste the link to the recorded session video (e.g. Google Drive, Zoom, YouTube) (Mandatory)
                       </p>
                       {formData.recording_url && (
                         <a
@@ -4136,14 +4317,27 @@ export default function SessionRecording() {
 
             {/* Save Buttons - Only show for authorized role */}
             {currentPage === 1 && canEditFacilitatorSection && (
-              <Button
-                onClick={handleSaveFeedback}
-                disabled={saving || isFeedbackLocked}
-                className="gap-2"
-              >
-                <Save className="h-4 w-4" />
-                {saving ? 'Saving...' : 'Save'}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleAutoSaveDraft(formData, true)}
+                  disabled={draftSaving || saving || isFeedbackLocked}
+                  className="gap-2 border-slate-300 dark:border-slate-700 hover:bg-slate-100"
+                  title="Save partial work as draft in browser cache & database without mandatory checks"
+                >
+                  {draftSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 text-slate-600" />}
+                  <span>Save Draft</span>
+                </Button>
+                <Button
+                  onClick={handleSaveFeedback}
+                  disabled={saving || isFeedbackLocked}
+                  className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                >
+                  <Save className="h-4 w-4" />
+                  {saving ? 'Saving...' : 'Save & Submit'}
+                </Button>
+              </div>
             )}
 
             {currentPage === 2 && canEditSupervisorSection && (
@@ -4158,14 +4352,27 @@ export default function SessionRecording() {
             )}
 
             {currentPage === 3 && canEditCoordinatorSection && (
-              <Button
-                onClick={handleSaveFeedback}
-                disabled={saving || isFeedbackLocked}
-                className="gap-2"
-              >
-                <Save className="h-4 w-4" />
-                {saving ? 'Saving...' : 'Save & Complete'}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleAutoSaveDraft(formData, true)}
+                  disabled={draftSaving || saving || isFeedbackLocked}
+                  className="gap-2 border-slate-300 dark:border-slate-700 hover:bg-slate-100"
+                  title="Save partial work as draft in browser cache & database"
+                >
+                  {draftSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 text-slate-600" />}
+                  <span>Save Draft</span>
+                </Button>
+                <Button
+                  onClick={handleSaveFeedback}
+                  disabled={saving || isFeedbackLocked}
+                  className="gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  {saving ? 'Saving...' : 'Save & Complete'}
+                </Button>
+              </div>
             )}
           </div>
         </div>

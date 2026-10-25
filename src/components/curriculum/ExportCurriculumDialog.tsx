@@ -22,6 +22,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
+import { normalizeTopicKey, extractCoreTopic, isClassMatch } from '@/utils/curriculumTopicUtils';
 
 interface ExportCurriculumDialogProps {
   isOpen: boolean;
@@ -136,10 +137,23 @@ export function ExportCurriculumDialog({
       const topicSessions = new Map<string, any[]>();
       (sessionData || []).forEach(session => {
         if (!session.topics_covered || !session.class_batch) return;
-        const key = `${session.class_batch}||${session.topics_covered}`;
-        const existing = topicSessions.get(key) || [];
-        existing.push(session);
-        topicSessions.set(key, existing);
+        const cleanClass = session.class_batch.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        const normTopic = normalizeTopicKey(session.topics_covered);
+        const coreTopic = extractCoreTopic(session.topics_covered);
+
+        const keys = [
+          `${session.class_batch}||${session.topics_covered}`,
+          `${cleanClass}||${normTopic}`,
+        ];
+        if (coreTopic && coreTopic.length >= 4) {
+          keys.push(`${cleanClass}||${coreTopic}`);
+        }
+
+        keys.forEach(k => {
+          const existing = topicSessions.get(k) || [];
+          existing.push(session);
+          topicSessions.set(k, existing);
+        });
       });
 
       // 4. Generate Data Rows by Class
@@ -164,8 +178,13 @@ export function ExportCurriculumDialog({
         const className = item.classes?.name || (classObj ? classObj.name : 'Unknown');
         const cleanModuleTitle = item.module_name?.replace(/^-\s+/, '') || '';
         const topic = item.topics_covered || '';
-        const key = `${className}||${topic}`;
-        const sessions = topicSessions.get(key) || [];
+        const cleanClass = className.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        const normTopic = normalizeTopicKey(topic);
+        const coreTopic = extractCoreTopic(topic);
+        const sessions = topicSessions.get(`${className}||${topic}`) ||
+          topicSessions.get(`${cleanClass}||${normTopic}`) ||
+          (coreTopic && coreTopic.length >= 4 ? topicSessions.get(`${cleanClass}||${coreTopic}`) : undefined) ||
+          [];
         
         let status = 'Not Started';
         let volunteerName = '-';

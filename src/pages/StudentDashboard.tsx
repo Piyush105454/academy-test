@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
+import { normalizeTopicKey } from '@/utils/curriculumTopicUtils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Select, 
@@ -230,13 +231,19 @@ export default function StudentDashboard() {
             .eq('status', 'completed');
 
           if (curriculumData && curriculumData.length > 0) {
-            const completedTopics = new Set(
-              completedSessionsData?.map(s => s.topics_covered?.trim().toLowerCase()).filter(Boolean) || []
-            );
+            const completedTopics = new Set<string>();
+            completedSessionsData?.forEach(s => {
+              if (s.topics_covered) {
+                completedTopics.add(s.topics_covered.trim().toLowerCase());
+                const norm = normalizeTopicKey(s.topics_covered);
+                if (norm) completedTopics.add(norm);
+              }
+            });
             let completedCount = 0;
             curriculumData.forEach(item => {
               const topic = item.topics_covered?.trim().toLowerCase();
-              if (topic && completedTopics.has(topic)) {
+              const norm = normalizeTopicKey(item.topics_covered);
+              if ((topic && completedTopics.has(topic)) || (norm && completedTopics.has(norm))) {
                 completedCount++;
               }
             });
