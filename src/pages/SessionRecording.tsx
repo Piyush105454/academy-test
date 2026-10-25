@@ -526,9 +526,9 @@ export default function SessionRecording() {
     }
   };
 
-  const fetchSession = async () => {
+  const fetchSession = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const { data, error } = await supabase
         .from('sessions')
         .select(`
@@ -570,26 +570,27 @@ export default function SessionRecording() {
         }
       }
       const bestPerformerVal = (sessionData as any).best_performer || '';
-      setFormData({
-        session_objective: (sessionData as any).session_objective || '',
-        practical_activities: (sessionData as any).practical_activities || '',
-        session_highlights: (sessionData as any).session_highlights || '',
-        learning_outcomes: (sessionData as any).learning_outcomes || '',
-        facilitator_reflection: (sessionData as any).facilitator_reflection || '',
-        best_performer: bestPerformerVal,
-        guest_teacher_feedback: (sessionData as any).guest_teacher_feedback || '',
-        incharge_reviewer_feedback: (sessionData as any).incharge_reviewer_feedback || '',
-        recording_url: (sessionData as any).recording_url || '',
-        record_sheet_link: (sessionData as any).record_sheet_link || '',
-          session_pictures: (sessionData as any).session_pictures || [],
-        mic_sound_rating: (sessionData as any).mic_sound_rating || 5,
-        seating_view_rating: (sessionData as any).seating_view_rating || 5,
-        session_strength: (sessionData as any).session_strength || 5,
-        coordinator_mic_sound_rating: (sessionData as any).coordinator_mic_sound_rating || 5,
-        coordinator_seating_view_rating: (sessionData as any).coordinator_seating_view_rating || 5,
-        coordinator_session_strength: (sessionData as any).coordinator_session_strength || 5,
-        class_batch: (sessionData as any).class_batch || '',
-      } as any);
+      setFormData(prev => ({
+        ...prev,
+        session_objective: (sessionData as any).session_objective ?? prev.session_objective ?? '',
+        practical_activities: (sessionData as any).practical_activities ?? prev.practical_activities ?? '',
+        session_highlights: (sessionData as any).session_highlights ?? prev.session_highlights ?? '',
+        learning_outcomes: (sessionData as any).learning_outcomes ?? prev.learning_outcomes ?? '',
+        facilitator_reflection: (sessionData as any).facilitator_reflection ?? prev.facilitator_reflection ?? '',
+        best_performer: bestPerformerVal || prev.best_performer || '',
+        guest_teacher_feedback: (sessionData as any).guest_teacher_feedback ?? prev.guest_teacher_feedback ?? '',
+        incharge_reviewer_feedback: (sessionData as any).incharge_reviewer_feedback ?? prev.incharge_reviewer_feedback ?? '',
+        recording_url: (sessionData as any).recording_url ?? prev.recording_url ?? '',
+        record_sheet_link: (sessionData as any).record_sheet_link ?? prev.record_sheet_link ?? '',
+        session_pictures: (sessionData as any).session_pictures || prev.session_pictures || [],
+        mic_sound_rating: (sessionData as any).mic_sound_rating ?? prev.mic_sound_rating ?? 5,
+        seating_view_rating: (sessionData as any).seating_view_rating ?? prev.seating_view_rating ?? 5,
+        session_strength: (sessionData as any).session_strength ?? prev.session_strength ?? 5,
+        coordinator_mic_sound_rating: (sessionData as any).coordinator_mic_sound_rating ?? prev.coordinator_mic_sound_rating ?? 5,
+        coordinator_seating_view_rating: (sessionData as any).coordinator_seating_view_rating ?? prev.coordinator_seating_view_rating ?? 5,
+        coordinator_session_strength: (sessionData as any).coordinator_session_strength ?? prev.coordinator_session_strength ?? 5,
+        class_batch: (sessionData as any).class_batch ?? prev.class_batch ?? '',
+      } as any));
       if (bestPerformerVal) {
         setIsBestPerformerManual(true);
       } else {
@@ -600,7 +601,7 @@ export default function SessionRecording() {
       toast.error('Failed to load session');
       navigate('/sessions');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -1068,16 +1069,18 @@ export default function SessionRecording() {
 
   const handleTogglePerformer = (studentName: string) => {
     setIsBestPerformerManual(true);
-    const currentNames = formData.best_performer 
-      ? formData.best_performer.split(',').map(name => name.trim()).filter(Boolean)
-      : [];
-    let updatedNames: string[];
-    if (currentNames.includes(studentName)) {
-      updatedNames = currentNames.filter(name => name !== studentName);
-    } else {
-      updatedNames = [...currentNames, studentName];
-    }
-    setFormData({ ...formData, best_performer: updatedNames.join(', ') });
+    setFormData(prev => {
+      const currentNames = prev.best_performer 
+        ? prev.best_performer.split(',').map(name => name.trim()).filter(Boolean)
+        : [];
+      let updatedNames: string[];
+      if (currentNames.includes(studentName)) {
+        updatedNames = currentNames.filter(name => name !== studentName);
+      } else {
+        updatedNames = [...currentNames, studentName];
+      }
+      return { ...prev, best_performer: updatedNames.join(', ') };
+    });
   };
 
     const handlePictureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1203,34 +1206,64 @@ export default function SessionRecording() {
     try {
       setSaving(true);
 
-      // Prepare the update object
-      const updateData: any = {
-        session_objective: formData.session_objective,
-        practical_activities: formData.practical_activities,
-        session_highlights: formData.session_highlights,
-        learning_outcomes: formData.learning_outcomes,
-        facilitator_reflection: formData.facilitator_reflection,
-        best_performer: formData.best_performer,
-        guest_teacher_feedback: formData.guest_teacher_feedback,
-        incharge_reviewer_feedback: formData.incharge_reviewer_feedback,
-        recording_url: formData.recording_url,
-        record_sheet_link: (formData as any).record_sheet_link?.trim() || null,
-        ...(Array.isArray((formData as any).session_pictures) && (formData as any).session_pictures.length > 0 ? { session_pictures: (formData as any).session_pictures } : {}),
-        mic_sound_rating: Number(formData.mic_sound_rating) || 5,
-        seating_view_rating: Number(formData.seating_view_rating) || 5,
-        session_strength: Number(formData.session_strength) || 5,
-        coordinator_mic_sound_rating: Number(formData.coordinator_mic_sound_rating) || 5,
-        coordinator_seating_view_rating: Number(formData.coordinator_seating_view_rating) || 5,
-        coordinator_session_strength: Number(formData.coordinator_session_strength) || 5,
-        class_batch: formData.class_batch,
+      // Prepare the update object strictly scoped to current page role
+      let updateData: any = {
         recorded_at: new Date().toISOString(),
       };
 
-      // Update the appropriate feedback status based on current page
       if (currentPage === 1) {
-        updateData.facilitator_feedback_status = 'done';
+        // Only Facilitator fields - NEVER touch Coordinator fields
+        updateData = {
+          ...updateData,
+          session_objective: formData.session_objective,
+          practical_activities: formData.practical_activities,
+          session_highlights: formData.session_highlights,
+          learning_outcomes: formData.learning_outcomes,
+          facilitator_reflection: formData.facilitator_reflection,
+          best_performer: formData.best_performer,
+          recording_url: formData.recording_url,
+          record_sheet_link: (formData as any).record_sheet_link?.trim() || null,
+          ...(Array.isArray((formData as any).session_pictures) && (formData as any).session_pictures.length > 0 ? { session_pictures: (formData as any).session_pictures } : {}),
+          mic_sound_rating: Number(formData.mic_sound_rating) || 5,
+          seating_view_rating: Number(formData.seating_view_rating) || 5,
+          session_strength: Number(formData.session_strength) || 5,
+          class_batch: formData.class_batch,
+          facilitator_feedback_status: 'done',
+        };
       } else if (currentPage === 3) {
-        updateData.coordinator_feedback_status = 'done';
+        // Only Coordinator fields - NEVER touch Facilitator fields
+        updateData = {
+          ...updateData,
+          guest_teacher_feedback: formData.guest_teacher_feedback,
+          incharge_reviewer_feedback: formData.incharge_reviewer_feedback,
+          coordinator_mic_sound_rating: Number(formData.coordinator_mic_sound_rating) || 5,
+          coordinator_seating_view_rating: Number(formData.coordinator_seating_view_rating) || 5,
+          coordinator_session_strength: Number(formData.coordinator_session_strength) || 5,
+          coordinator_feedback_status: 'done',
+        };
+      } else {
+        // Fallback for general update
+        updateData = {
+          ...updateData,
+          session_objective: formData.session_objective,
+          practical_activities: formData.practical_activities,
+          session_highlights: formData.session_highlights,
+          learning_outcomes: formData.learning_outcomes,
+          facilitator_reflection: formData.facilitator_reflection,
+          best_performer: formData.best_performer,
+          guest_teacher_feedback: formData.guest_teacher_feedback,
+          incharge_reviewer_feedback: formData.incharge_reviewer_feedback,
+          recording_url: formData.recording_url,
+          record_sheet_link: (formData as any).record_sheet_link?.trim() || null,
+          ...(Array.isArray((formData as any).session_pictures) && (formData as any).session_pictures.length > 0 ? { session_pictures: (formData as any).session_pictures } : {}),
+          mic_sound_rating: Number(formData.mic_sound_rating) || 5,
+          seating_view_rating: Number(formData.seating_view_rating) || 5,
+          session_strength: Number(formData.session_strength) || 5,
+          coordinator_mic_sound_rating: Number(formData.coordinator_mic_sound_rating) || 5,
+          coordinator_seating_view_rating: Number(formData.coordinator_seating_view_rating) || 5,
+          coordinator_session_strength: Number(formData.coordinator_session_strength) || 5,
+          class_batch: formData.class_batch,
+        };
       }
 
       // First, fetch the current session to check all feedback statuses
@@ -1277,8 +1310,8 @@ export default function SessionRecording() {
         `Submitted/updated feedback for session: "${session?.title}" (Class: ${session?.class_batch}, Role: ${currentPage === 1 ? 'Facilitator' : 'Coordinator'}, Status: ${updateData.status || 'in_progress'})`
       );
 
-      // Update student profiles for best performers in this session
-      if (students.length > 0) {
+      // Update student profiles for best performers in this session (Facilitator page only)
+      if (currentPage === 1 && students.length > 0) {
         const sessionDateStr = session?.session_date || new Date().toISOString().split('T')[0];
         const selectedPerformerNames = formData.best_performer 
           ? formData.best_performer.split(',').map(name => name.trim()).filter(Boolean)
@@ -1303,6 +1336,7 @@ export default function SessionRecording() {
         }
       }
 
+      await fetchSession(true);
       toast.success('Session feedback saved successfully');
     } catch (error) {
       console.error('Error saving session:', error);
@@ -2385,7 +2419,7 @@ export default function SessionRecording() {
                   <CardContent>
                     <RichTextEditor
                       value={formData.session_objective || ''}
-                      onChange={(value) => setFormData({ ...formData, session_objective: value })}
+                      onChange={(value) => setFormData(prev => ({ ...prev, session_objective: value }))}
                       placeholder="What were the main objectives?"
                       minHeight="120px"
                     />
@@ -2402,7 +2436,7 @@ export default function SessionRecording() {
                         <Label className="text-sm font-medium">Mic/Sound Quality <span className="text-destructive">*</span></Label>
                         <Select
                           value={formData.mic_sound_rating?.toString() || ''}
-                          onValueChange={(val) => setFormData({ ...formData, mic_sound_rating: parseInt(val) } as any)}
+                          onValueChange={(val) => setFormData(prev => ({ ...prev, mic_sound_rating: parseInt(val) } as any))}
                         >
                           <SelectTrigger className="mt-1"><SelectValue placeholder="Rate 1-10" /></SelectTrigger>
                           <SelectContent>
@@ -2416,7 +2450,7 @@ export default function SessionRecording() {
                         <Label className="text-sm font-medium">Seating/View <span className="text-destructive">*</span></Label>
                         <Select
                           value={formData.seating_view_rating?.toString() || ''}
-                          onValueChange={(val) => setFormData({ ...formData, seating_view_rating: parseInt(val) } as any)}
+                          onValueChange={(val) => setFormData(prev => ({ ...prev, seating_view_rating: parseInt(val) } as any))}
                         >
                           <SelectTrigger className="mt-1"><SelectValue placeholder="Rate 1-10" /></SelectTrigger>
                           <SelectContent>
@@ -2430,7 +2464,7 @@ export default function SessionRecording() {
                         <Label className="text-sm font-medium">Session Strength <span className="text-destructive">*</span></Label>
                         <Select
                           value={formData.session_strength?.toString() || ''}
-                          onValueChange={(val) => setFormData({ ...formData, session_strength: parseInt(val) } as any)}
+                          onValueChange={(val) => setFormData(prev => ({ ...prev, session_strength: parseInt(val) } as any))}
                         >
                           <SelectTrigger className="mt-1"><SelectValue placeholder="Rate 1-10" /></SelectTrigger>
                           <SelectContent>
@@ -2457,7 +2491,7 @@ export default function SessionRecording() {
                   <CardContent>
                     <RichTextEditor
                       value={formData.practical_activities || ''}
-                      onChange={(value) => setFormData({ ...formData, practical_activities: value })}
+                      onChange={(value) => setFormData(prev => ({ ...prev, practical_activities: value }))}
                       placeholder="Describe the practical activities"
                       minHeight="120px"
                     />
@@ -2472,7 +2506,7 @@ export default function SessionRecording() {
                   <CardContent>
                     <RichTextEditor
                       value={formData.session_highlights || ''}
-                      onChange={(value) => setFormData({ ...formData, session_highlights: value })}
+                      onChange={(value) => setFormData(prev => ({ ...prev, session_highlights: value }))}
                       placeholder="Key highlights and summary"
                       minHeight="120px"
                     />
@@ -2487,7 +2521,7 @@ export default function SessionRecording() {
                   <CardContent>
                     <RichTextEditor
                       value={formData.learning_outcomes || ''}
-                      onChange={(value) => setFormData({ ...formData, learning_outcomes: value })}
+                      onChange={(value) => setFormData(prev => ({ ...prev, learning_outcomes: value }))}
                       placeholder="What did students learn?"
                       minHeight="120px"
                     />
@@ -2762,7 +2796,7 @@ export default function SessionRecording() {
                   <CardContent>
                     <RichTextEditor
                       value={formData.facilitator_reflection || ''}
-                      onChange={(value) => setFormData({ ...formData, facilitator_reflection: value })}
+                      onChange={(value) => setFormData(prev => ({ ...prev, facilitator_reflection: value }))}
                       placeholder="Facilitator's reflection and remarks"
                       minHeight="120px"
                     />
@@ -2823,7 +2857,7 @@ export default function SessionRecording() {
                         id="record_sheet_link"
                         type="url"
                         value={(formData as any).record_sheet_link || ''}
-                        onChange={(e) => setFormData({ ...formData, record_sheet_link: e.target.value } as any)}
+                        onChange={(e) => setFormData(prev => ({ ...prev, record_sheet_link: e.target.value } as any))}
                         placeholder="please paste link the record sheet(physical) of sesssion(pdf)"
                         className="mt-1"
                       />
@@ -2897,9 +2931,11 @@ export default function SessionRecording() {
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      const newPics = [...(formData as any).session_pictures];
-                                      newPics.splice(index, 1);
-                                      setFormData({ ...formData, session_pictures: newPics } as any);
+                                      setFormData(prev => {
+                                        const newPics = [...((prev as any).session_pictures || [])];
+                                        newPics.splice(index, 1);
+                                        return { ...prev, session_pictures: newPics } as any;
+                                      });
                                     }}
                                   >
                                     <X className="h-3.5 w-3.5 stroke-[2.5]" />
@@ -2992,7 +3028,7 @@ export default function SessionRecording() {
                         id="recording_url"
                         type="url"
                         value={formData.recording_url || ''}
-                        onChange={(e) => setFormData({ ...formData, recording_url: e.target.value })}
+                        onChange={(e) => setFormData(prev => ({ ...prev, recording_url: e.target.value }))}
                         placeholder="https://example.com/recording"
                         className="w-full"
                       />
@@ -3736,7 +3772,7 @@ export default function SessionRecording() {
                   <Label htmlFor="guest_teacher_feedback" className="text-sm">Feedback <span className="text-destructive">*</span></Label>
                   <RichTextEditor
                     value={formData.guest_teacher_feedback || ''}
-                    onChange={(value) => setFormData({ ...formData, guest_teacher_feedback: value })}
+                    onChange={(value) => setFormData(prev => ({ ...prev, guest_teacher_feedback: value }))}
                     placeholder="Feedback from guest teacher"
                     minHeight="120px"
                   />
@@ -3751,7 +3787,7 @@ export default function SessionRecording() {
               <CardContent>
                 <RichTextEditor
                   value={formData.incharge_reviewer_feedback || ''}
-                  onChange={(value) => setFormData({ ...formData, incharge_reviewer_feedback: value })}
+                  onChange={(value) => setFormData(prev => ({ ...prev, incharge_reviewer_feedback: value }))}
                   placeholder="Feedback from incharge or reviewer"
                   minHeight="120px"
                 />
@@ -3768,7 +3804,7 @@ export default function SessionRecording() {
                     <Label className="text-sm font-medium">Mic/Sound Quality <span className="text-destructive">*</span></Label>
                     <Select
                       value={formData.coordinator_mic_sound_rating?.toString() || ''}
-                      onValueChange={(val) => setFormData({ ...formData, coordinator_mic_sound_rating: parseInt(val) } as any)}
+                      onValueChange={(val) => setFormData(prev => ({ ...prev, coordinator_mic_sound_rating: parseInt(val) } as any))}
                     >
                       <SelectTrigger className="mt-1"><SelectValue placeholder="Rate 1-10" /></SelectTrigger>
                       <SelectContent>
@@ -3782,7 +3818,7 @@ export default function SessionRecording() {
                     <Label className="text-sm font-medium">Seating/View <span className="text-destructive">*</span></Label>
                     <Select
                       value={formData.coordinator_seating_view_rating?.toString() || ''}
-                      onValueChange={(val) => setFormData({ ...formData, coordinator_seating_view_rating: parseInt(val) } as any)}
+                      onValueChange={(val) => setFormData(prev => ({ ...prev, coordinator_seating_view_rating: parseInt(val) } as any))}
                     >
                       <SelectTrigger className="mt-1"><SelectValue placeholder="Rate 1-10" /></SelectTrigger>
                       <SelectContent>
@@ -3796,7 +3832,7 @@ export default function SessionRecording() {
                     <Label className="text-sm font-medium">Session Strength <span className="text-destructive">*</span></Label>
                     <Select
                       value={formData.coordinator_session_strength?.toString() || ''}
-                      onValueChange={(val) => setFormData({ ...formData, coordinator_session_strength: parseInt(val) } as any)}
+                      onValueChange={(val) => setFormData(prev => ({ ...prev, coordinator_session_strength: parseInt(val) } as any))}
                     >
                       <SelectTrigger className="mt-1"><SelectValue placeholder="Rate 1-10" /></SelectTrigger>
                       <SelectContent>

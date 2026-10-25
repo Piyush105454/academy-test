@@ -207,9 +207,9 @@ export default function StudentTaskDetail() {
       if (error) throw error;
       toast.success('Task submitted successfully! 🎉');
       await fetchTask(); // refresh
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to submit task');
+    } catch (err: any) {
+      console.error('Task submission error:', err);
+      toast.error(err?.message ? `Failed to submit task: ${err.message}` : 'Failed to submit task');
     } finally {
       setSaving(false);
     }

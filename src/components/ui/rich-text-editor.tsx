@@ -40,20 +40,32 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = '200p
   const [linkText, setLinkText] = useState('');
   const savedRange = useRef<Range | null>(null);
   const isInitialized = useRef(false);
+  const lastEmittedValue = useRef<string>(value || '');
 
-  // Init
+  // Synchronize incoming value into editorRef safely
   useEffect(() => {
-    if (editorRef.current && !isInitialized.current) {
-      if (value) editorRef.current.innerHTML = value;
-      isInitialized.current = true;
-    }
-  }, []);
+    if (!editorRef.current) return;
 
-  useEffect(() => {
-    if (editorRef.current && !isFocused && value !== undefined) {
-      if (editorRef.current.innerHTML !== value) {
+    // First mount with content
+    if (!isInitialized.current) {
+      if (value) {
         editorRef.current.innerHTML = value;
+        lastEmittedValue.current = value;
       }
+      isInitialized.current = true;
+      return;
+    }
+
+    // If editor is currently focused, do not overwrite user's typing
+    if (isFocused) return;
+
+    // If incoming value matches what we just emitted, avoid redundant DOM re-injection
+    if (value === lastEmittedValue.current) return;
+
+    // Only update innerHTML if it genuinely differs
+    if (editorRef.current.innerHTML !== (value || '')) {
+      editorRef.current.innerHTML = value || '';
+      lastEmittedValue.current = value || '';
     }
   }, [value, isFocused]);
 
@@ -104,7 +116,11 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = '200p
   };
 
   const emitChange = () => {
-    if (editorRef.current) onChange(editorRef.current.innerHTML);
+    if (editorRef.current) {
+      const html = editorRef.current.innerHTML;
+      lastEmittedValue.current = html;
+      onChange(html);
+    }
   };
 
   const applyHeading = (tag: string) => {
@@ -113,8 +129,10 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = '200p
   };
 
   const handleClear = () => {
-    if (editorRef.current) {
+    if (!editorRef.current || !editorRef.current.innerHTML.trim()) return;
+    if (window.confirm('Are you sure you want to clear the editor content?')) {
       editorRef.current.innerHTML = '';
+      lastEmittedValue.current = '';
       onChange('');
       setCurrentFormat('p');
       setActiveFormats(new Set());

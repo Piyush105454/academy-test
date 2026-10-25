@@ -149,9 +149,6 @@ export function serializeSubmissionLinks(
     };
     if (r.learned || r.challenges || r.doubts) {
       payload._reflection = r;
-      payload.reflection_learned = r.learned;
-      payload.reflection_challenges = r.challenges;
-      payload.reflection_doubts = r.doubts;
     }
   }
 
