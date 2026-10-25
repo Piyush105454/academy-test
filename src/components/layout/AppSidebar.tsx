@@ -67,14 +67,14 @@ const navGroups: NavGroup[] = [
     items: [
       { title: 'Dashboard', url: '/dashboard', icon: Home, requiredRole: null, studentVisible: false },
       { title: 'Calendar', url: '/calendar', icon: CalendarDays, requiredRole: null, studentVisible: false },
+      { title: 'Curriculum', url: '/curriculum', icon: BookOpen, requiredRole: null, studentVisible: false },
       { title: 'Resource Hub', url: '/resources', icon: BookOpen, requiredRole: null, studentVisible: false },
     ],
   },
   {
-    label: 'Curriculum & Session Management',
+    label: 'Session Management',
     studentVisible: false,
     items: [
-      { title: 'Curriculum', url: '/curriculum', icon: BookOpen, requiredRole: null, studentVisible: false },
       { title: 'All Sessions', url: '/sessions', icon: BookOpen, requiredRole: null, studentVisible: false },
       { title: 'All Feedbacks', url: '/feedback', icon: FileText, requiredRole: null, studentVisible: false },
       { title: 'Session Prep_by Facilitator', url: '/sessions?tab=facilitator', icon: BookOpen, requiredRole: null, studentVisible: false },
