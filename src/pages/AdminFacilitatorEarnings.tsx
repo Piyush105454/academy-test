@@ -15,12 +15,22 @@ import {
   X,
   AlertTriangle,
   FileText,
-  Video
+  Video,
+  Eye,
+  ExternalLink,
+  FileCheck
 } from 'lucide-react';
 import { 
   isSessionDelayed, 
   getDelayReasonNote, 
-  calculateFacilitatorSessionAmount 
+  calculateFacilitatorSessionAmount,
+  getStoredPayments,
+  saveStoredPayment,
+  getStoredVouchers,
+  saveStoredVoucher,
+  FacilitatorEarningStatus,
+  EncashmentVoucherInfo,
+  OnlinePaymentInfo
 } from '@/utils/facilitatorEarningsUtils';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { supabase } from '@/integrations/supabase/client';
@@ -66,6 +76,7 @@ interface FacilitatorEarning {
   id: string;
   name: string;
   total_approved: number;
+  total_to_pay: number;
   total_paid_online: number;
   total_pending: number;
   last_earned_at: string | null;
@@ -97,45 +108,17 @@ interface EarningRecord {
   facilitator_id: string;
   session_id: string;
   amount: number;
-  status: string; // 'pending' | 'approved' | 'paid_online'
+  status: FacilitatorEarningStatus;
   created_at: string;
   approved_at: string | null;
   transaction_id?: string | null;
   paid_at?: string | null;
+  voucher_url?: string | null;
   is_unrecorded?: boolean;
   is_delayed?: boolean;
   delay_reason?: string | null;
   sessions?: SessionData;
 }
-
-interface OnlinePaymentInfo {
-  earning_id: string;
-  transaction_id: string;
-  paid_amount: number;
-  paid_at: string;
-  notes?: string;
-}
-
-const PAYMENTS_STORAGE_KEY = 'facilitator_online_payments_v2';
-
-const getStoredPayments = (): Record<string, OnlinePaymentInfo> => {
-  try {
-    const data = localStorage.getItem(PAYMENTS_STORAGE_KEY);
-    return data ? JSON.parse(data) : {};
-  } catch (e) {
-    return {};
-  }
-};
-
-const saveStoredPayment = (info: OnlinePaymentInfo) => {
-  try {
-    const current = getStoredPayments();
-    current[info.earning_id] = info;
-    localStorage.setItem(PAYMENTS_STORAGE_KEY, JSON.stringify(current));
-  } catch (e) {
-    console.error('Error saving stored payment:', e);
-  }
-};
 
 // Truncated text component matching FeedbackSelection UI
 const TruncatedText = ({ text, maxLength = 18 }: { text: string | null | undefined; maxLength?: number }) => {
@@ -201,6 +184,10 @@ export default function AdminFacilitatorEarnings() {
   const [undoTargetRecord, setUndoTargetRecord] = useState<EarningRecord | null>(null);
   const [undoConfirmInput, setUndoConfirmInput] = useState('');
   const [isUndoingPayment, setIsUndoingPayment] = useState(false);
+
+  // Voucher Preview Dialog State
+  const [voucherPreviewUrl, setVoucherPreviewUrl] = useState<string | null>(null);
+  const [voucherPreviewTitle, setVoucherPreviewTitle] = useState<string>('');
 
   useEffect(() => {
     fetchEarnings();
@@ -301,6 +288,7 @@ export default function AdminFacilitatorEarnings() {
 
       const { startDate, endDate } = getDateRange();
       const storedPayments = getStoredPayments();
+      const storedVouchers = getStoredVouchers();
 
       const aggregated = (facilitators || []).map((f: any) => {
         const earnings = (f.facilitator_earnings || []).filter((e: any) => {
@@ -312,6 +300,7 @@ export default function AdminFacilitatorEarnings() {
         });
 
         let totalApproved = 0;
+        let totalToPay = 0;
         let totalPaidOnline = 0;
         let totalPending = 0;
 
@@ -319,11 +308,19 @@ export default function AdminFacilitatorEarnings() {
           const rawAmt = parseFloat(e.amount) || 0;
           const amt = calculateFacilitatorSessionAmount(e.sessions, perSessionAmount, rawAmt);
           const paymentInfo = storedPayments[e.id];
-          const isPaid = e.status === 'paid_online' || !!paymentInfo;
+          const voucherInfo = storedVouchers[e.id] || (e.session_id ? storedVouchers[e.session_id] : null);
+          const hasVoucher = (e as any).signed_voucher_url || !!voucherInfo;
+
+          const rawStatus = (e.status || '').toLowerCase();
+          const isPaid = rawStatus === 'paid_online' || rawStatus === 'paid' || !!paymentInfo;
+          const isToPay = !isPaid && (rawStatus === 'to_pay' || rawStatus === 'encash_requested' || hasVoucher);
+          const isApproved = !isPaid && !isToPay && rawStatus === 'approved';
 
           if (isPaid) {
             totalPaidOnline += paymentInfo?.paid_amount || amt;
-          } else if (e.status === 'approved') {
+          } else if (isToPay) {
+            totalToPay += amt;
+          } else if (isApproved) {
             totalApproved += amt;
           } else {
             totalPending += amt;
@@ -338,6 +335,7 @@ export default function AdminFacilitatorEarnings() {
           id: f.id,
           name: f.name,
           total_approved: totalApproved,
+          total_to_pay: totalToPay,
           total_paid_online: totalPaidOnline,
           total_pending: totalPending,
           last_earned_at: lastRecord?.created_at || null
@@ -397,6 +395,7 @@ export default function AdminFacilitatorEarnings() {
       
       const { startDate, endDate } = getDateRange();
       const storedPayments = getStoredPayments();
+      const storedVouchers = getStoredVouchers();
       
       // Filter existing recorded earnings by academic year
       const recorded: EarningRecord[] = (data || [])
@@ -409,29 +408,39 @@ export default function AdminFacilitatorEarnings() {
           const effectiveAmount = calculateFacilitatorSessionAmount(r.sessions, perSessionAmount, parseFloat(r.amount as any));
           const delayReason = getDelayReasonNote(r.sessions);
           const paymentInfo = storedPayments[r.id];
+          const voucherInfo = storedVouchers[r.id] || (r.session_id ? storedVouchers[r.session_id] : null);
+          const voucherUrl = (r as any).signed_voucher_url || voucherInfo?.voucher_url || null;
+
           const sData = r.sessions ? {
             ...r.sessions,
             coordinator_name: (r.sessions as any).coordinators?.name || '-'
           } : undefined;
 
-          if (paymentInfo) {
-            return {
-              ...r,
-              amount: effectiveAmount,
-              is_delayed: isDelayed,
-              delay_reason: delayReason,
-              sessions: sData,
-              status: r.status === 'pending' ? 'pending' : 'paid_online',
-              transaction_id: paymentInfo.transaction_id,
-              paid_at: paymentInfo.paid_at,
-            };
+          const rawStatus = (r.status || '').toLowerCase();
+          let finalStatus: FacilitatorEarningStatus = 'pending';
+
+          if (rawStatus === 'paid_online' || rawStatus === 'paid' || !!paymentInfo) {
+            finalStatus = 'paid_online';
+          } else if (rawStatus === 'to_pay' || rawStatus === 'encash_requested' || !!voucherUrl) {
+            finalStatus = 'to_pay';
+          } else if (rawStatus === 'approved') {
+            finalStatus = 'approved';
+          } else if (rawStatus === 'submitted' || rawStatus === 'pending_approval') {
+            finalStatus = 'submitted';
+          } else {
+            finalStatus = 'pending';
           }
+
           return {
             ...r,
             amount: effectiveAmount,
             is_delayed: isDelayed,
             delay_reason: delayReason,
-            sessions: sData
+            sessions: sData,
+            status: finalStatus,
+            transaction_id: paymentInfo?.transaction_id || (r as any).transaction_id || null,
+            paid_at: paymentInfo?.paid_at || (r as any).paid_at || null,
+            voucher_url: voucherUrl
           };
         });
 
@@ -653,22 +662,32 @@ export default function AdminFacilitatorEarnings() {
       const storedPayments = getStoredPayments();
       if (storedPayments[undoTargetRecord.id]) {
         delete storedPayments[undoTargetRecord.id];
-        localStorage.setItem(PAYMENTS_STORAGE_KEY, JSON.stringify(storedPayments));
+        localStorage.setItem('facilitator_online_payments_v2', JSON.stringify(storedPayments));
       }
 
-      // 2. Update DB status back to 'approved' if record exists in DB
+      // 2. Revert to 'to_pay' if voucher exists, else 'approved'
+      const revertStatus = undoTargetRecord.voucher_url ? 'to_pay' : 'approved';
+
+      // 3. Update DB status back
       if (!undoTargetRecord.is_unrecorded && !undoTargetRecord.id.startsWith('unrecorded_')) {
         const { error } = await supabase
           .from('facilitator_earnings')
           .update({
-            status: 'approved'
+            status: revertStatus
           })
           .eq('id', undoTargetRecord.id);
 
-        if (error) throw error;
+        if (error) {
+          await supabase
+            .from('facilitator_earnings')
+            .update({
+              status: 'approved'
+            })
+            .eq('id', undoTargetRecord.id);
+        }
       }
 
-      toast.success('Payment undone successfully. Status reversed to Approved.');
+      toast.success(`Payment undone successfully. Status reversed to ${revertStatus === 'to_pay' ? 'To Pay' : 'Approved'}.`);
       setUndoDialogOpen(false);
       setUndoTargetRecord(null);
       setUndoConfirmInput('');
@@ -703,16 +722,18 @@ export default function AdminFacilitatorEarnings() {
       setTransactionIdInput(record.transaction_id || '');
       setPayAmountInput(record.amount || perSessionAmount);
     } else if (fac) {
-      const approvedAmount = (selectedFacilitator && detailApprovedSum > 0 ? detailApprovedSum : fac.total_approved) || 0;
+      const payableAmount = (selectedFacilitator && (detailToPaySum + detailAvailableToEncashSum) > 0 
+        ? (detailToPaySum + detailAvailableToEncashSum) 
+        : ((fac.total_to_pay || 0) + (fac.total_approved || 0))) || 0;
       setPayOnlineTarget({
         facilitatorId: fac.id,
         facilitatorName: fac.name,
-        sessionTitle: `All Approved Sessions for ${fac.name}`,
-        defaultAmount: approvedAmount,
+        sessionTitle: `Approved / To Pay Sessions for ${fac.name}`,
+        defaultAmount: payableAmount,
         isBulkPayment: true
       });
       setTransactionIdInput('');
-      setPayAmountInput(approvedAmount);
+      setPayAmountInput(payableAmount);
     }
     setPayDateInput(new Date().toISOString().split('T')[0]);
     setPayNotesInput('');
@@ -737,19 +758,19 @@ export default function AdminFacilitatorEarnings() {
       if (payOnlineTarget?.isBulkPayment && payOnlineTarget.facilitatorId) {
         const facId = payOnlineTarget.facilitatorId;
 
-        // 1. Process unrecorded approved sessions first if on detail view
-        const unrecordedApproved = allDetailRecords.filter(
-          r => r.is_unrecorded && r.status === 'approved'
+        // 1. Process unrecorded approved/to_pay sessions first if on detail view
+        const unrecordedPayable = allDetailRecords.filter(
+          r => r.is_unrecorded && (r.status === 'to_pay' || r.status === 'approved')
         );
 
-        for (const unrec of unrecordedApproved) {
+        for (const unrec of unrecordedPayable) {
           const { data: createdData } = await supabase
             .from('facilitator_earnings')
             .insert({
               facilitator_id: facId,
               session_id: unrec.session_id,
               amount: unrec.amount || perSessionAmount,
-              status: 'approved',
+              status: 'paid_online',
               approved_at: new Date().toISOString(),
               approved_by: user?.id
             })
@@ -767,28 +788,37 @@ export default function AdminFacilitatorEarnings() {
           }
         }
 
-        // 2. Fetch and bulk update all existing approved earnings for this facilitator
-        const { data: approvedEarnings, error: fetchErr } = await supabase
+        // 2. Fetch and bulk update all existing to_pay and approved earnings for this facilitator
+        const { data: payableEarnings, error: fetchErr } = await supabase
           .from('facilitator_earnings')
           .select('id, amount')
           .eq('facilitator_id', facId)
-          .eq('status', 'approved');
+          .in('status', ['to_pay', 'approved']);
 
         if (fetchErr) throw fetchErr;
 
-        if (approvedEarnings && approvedEarnings.length > 0) {
-          const ids = approvedEarnings.map(e => e.id);
-          // Update DB status to approved
-          await supabase
+        if (payableEarnings && payableEarnings.length > 0) {
+          const ids = payableEarnings.map(e => e.id);
+          const { error: updateErr } = await supabase
             .from('facilitator_earnings')
             .update({
-              status: 'approved',
+              status: 'paid_online',
               approved_at: new Date().toISOString()
             })
             .in('id', ids);
 
+          if (updateErr) {
+            await supabase
+              .from('facilitator_earnings')
+              .update({
+                status: 'approved',
+                approved_at: new Date().toISOString()
+              })
+              .in('id', ids);
+          }
+
           // Save payment info for each record in storage
-          approvedEarnings.forEach(e => {
+          payableEarnings.forEach(e => {
             saveStoredPayment({
               earning_id: e.id,
               transaction_id: transactionIdInput.trim(),
@@ -805,7 +835,7 @@ export default function AdminFacilitatorEarnings() {
             facilitator_id: payOnlineTarget.facilitatorId || selectedFacilitator!.id,
             session_id: payOnlineTarget.sessionId,
             amount: payAmountInput,
-            status: 'approved',
+            status: 'paid_online',
             approved_at: new Date().toISOString(),
             approved_by: user?.id
           })
@@ -822,13 +852,23 @@ export default function AdminFacilitatorEarnings() {
           });
         }
       } else if (payOnlineTarget?.earningId && !payOnlineTarget.earningId.startsWith('unrecorded_')) {
-        await supabase
+        const { error: updateErr } = await supabase
           .from('facilitator_earnings')
           .update({
-            status: 'approved',
+            status: 'paid_online',
             approved_at: new Date().toISOString()
           })
           .eq('id', payOnlineTarget.earningId);
+
+        if (updateErr) {
+          await supabase
+            .from('facilitator_earnings')
+            .update({
+              status: 'approved',
+              approved_at: new Date().toISOString()
+            })
+            .eq('id', payOnlineTarget.earningId);
+        }
 
         saveStoredPayment({
           earning_id: payOnlineTarget.earningId,
@@ -950,32 +990,35 @@ export default function AdminFacilitatorEarnings() {
   });
 
   // Dynamic Detail Summary Card Computations
-  const detailApprovedSum = allDetailRecords
+  const detailToPaySum = allDetailRecords
     .filter(r => {
-      const isPaid = r.status === 'paid_online' || !!r.transaction_id;
-      const isApproved = r.status === 'approved';
       const recordDate = r.sessions?.session_date ? new Date(r.sessions.session_date) : new Date(r.created_at);
       const matchesMonth = detailMonthFilter === 'all' || (!isNaN(recordDate.getTime()) && recordDate.getMonth().toString() === detailMonthFilter);
-      return isApproved && !isPaid && matchesMonth;
+      return r.status === 'to_pay' && matchesMonth;
+    })
+    .reduce((acc, r) => acc + (parseFloat(r.amount as any) || 0), 0);
+
+  const detailAvailableToEncashSum = allDetailRecords
+    .filter(r => {
+      const recordDate = r.sessions?.session_date ? new Date(r.sessions.session_date) : new Date(r.created_at);
+      const matchesMonth = detailMonthFilter === 'all' || (!isNaN(recordDate.getTime()) && recordDate.getMonth().toString() === detailMonthFilter);
+      return r.status === 'approved' && matchesMonth;
     })
     .reduce((acc, r) => acc + (parseFloat(r.amount as any) || 0), 0);
 
   const detailPaidOnlineSum = allDetailRecords
     .filter(r => {
-      const isPaid = r.status === 'paid_online' || !!r.transaction_id;
       const recordDate = r.sessions?.session_date ? new Date(r.sessions.session_date) : new Date(r.created_at);
       const matchesMonth = detailMonthFilter === 'all' || (!isNaN(recordDate.getTime()) && recordDate.getMonth().toString() === detailMonthFilter);
-      return isPaid && matchesMonth;
+      return r.status === 'paid_online' && matchesMonth;
     })
     .reduce((acc, r) => acc + (parseFloat(r.amount as any) || 0), 0);
 
   const detailPendingSum = allDetailRecords
     .filter(r => {
-      const isPaid = r.status === 'paid_online' || !!r.transaction_id;
-      const isApproved = r.status === 'approved';
       const recordDate = r.sessions?.session_date ? new Date(r.sessions.session_date) : new Date(r.created_at);
       const matchesMonth = detailMonthFilter === 'all' || (!isNaN(recordDate.getTime()) && recordDate.getMonth().toString() === detailMonthFilter);
-      return !isPaid && !isApproved && matchesMonth;
+      return (r.status === 'pending' || r.status === 'submitted') && matchesMonth;
     })
     .reduce((acc, r) => acc + (parseFloat(r.amount as any) || 0), 0);
 
@@ -985,6 +1028,7 @@ export default function AdminFacilitatorEarnings() {
   }).length;
 
   // Totals for main summary cards
+  const totalToPaySum = earningsData.reduce((acc, curr) => acc + (curr.total_to_pay || 0), 0);
   const totalApprovedSum = earningsData.reduce((acc, curr) => acc + curr.total_approved, 0);
   const totalPaidOnlineSum = earningsData.reduce((acc, curr) => acc + curr.total_paid_online, 0);
   const totalPendingSum = earningsData.reduce((acc, curr) => acc + curr.total_pending, 0);
@@ -1011,7 +1055,7 @@ export default function AdminFacilitatorEarnings() {
                 Facilitator Earnings: {selectedFacilitator.name}
               </h1>
               <p className="text-muted-foreground text-sm">
-                View completed sessions, approve earnings, and control online payouts for {selectedFacilitator.name}
+                View completed sessions, approve earnings, inspect signed vouchers, and record online payouts for {selectedFacilitator.name}
               </p>
             </div>
             
@@ -1028,11 +1072,20 @@ export default function AdminFacilitatorEarnings() {
 
           {/* Facilitator Detail Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="border-l-4 border-l-emerald-500">
+              <CardContent className="p-4">
+                <p className="text-xs font-medium text-muted-foreground">To Pay (Voucher Uploaded)</p>
+                <h3 className="text-xl font-bold mt-1 text-emerald-600">
+                  ₹{detailToPaySum.toLocaleString('en-IN')}
+                </h3>
+              </CardContent>
+            </Card>
+
             <Card className="border-l-4 border-l-green-500">
               <CardContent className="p-4">
-                <p className="text-xs font-medium text-muted-foreground">Approved (Unpaid)</p>
+                <p className="text-xs font-medium text-muted-foreground">Approved (Available to Encash)</p>
                 <h3 className="text-xl font-bold mt-1 text-green-600">
-                  ₹{detailApprovedSum.toLocaleString('en-IN')}
+                  ₹{detailAvailableToEncashSum.toLocaleString('en-IN')}
                 </h3>
               </CardContent>
             </Card>
@@ -1048,18 +1101,9 @@ export default function AdminFacilitatorEarnings() {
 
             <Card className="border-l-4 border-l-yellow-500">
               <CardContent className="p-4">
-                <p className="text-xs font-medium text-muted-foreground">Pending Approval</p>
+                <p className="text-xs font-medium text-muted-foreground">Pending / Requests</p>
                 <h3 className="text-xl font-bold mt-1 text-yellow-600">
                   ₹{detailPendingSum.toLocaleString('en-IN')}
-                </h3>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-blue-500">
-              <CardContent className="p-4">
-                <p className="text-xs font-medium text-muted-foreground">Total Sessions</p>
-                <h3 className="text-xl font-bold mt-1 text-blue-600">
-                  {detailTotalSessionsCount}
                 </h3>
               </CardContent>
             </Card>
@@ -1115,12 +1159,14 @@ export default function AdminFacilitatorEarnings() {
                   <div>
                     <label className="text-xs font-medium mb-1 block">Earning Status</label>
                     <Select value={detailStatusFilter} onValueChange={setDetailStatusFilter}>
-                      <SelectTrigger className="h-9 w-[150px] text-xs"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+                      <SelectTrigger className="h-9 w-[170px] text-xs"><SelectValue placeholder="All Statuses" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="to_pay">To Pay (Voucher Uploaded)</SelectItem>
+                        <SelectItem value="approved">Approved (Available to Encash)</SelectItem>
                         <SelectItem value="paid_online">Paid Online</SelectItem>
-                        <SelectItem value="pending">Pending Approval</SelectItem>
+                        <SelectItem value="submitted">Approval Request</SelectItem>
+                        <SelectItem value="pending">Pending (Unsubmitted)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1315,21 +1361,54 @@ export default function AdminFacilitatorEarnings() {
 
                               {/* 12. STATUS */}
                               <TableCell>
-                                {isPaid ? (
+                                {record.status === 'paid_online' ? (
                                   <Badge className="bg-purple-600 hover:bg-purple-700 text-white text-[10px] whitespace-nowrap font-semibold">
                                     Paid Online
                                   </Badge>
-                                ) : isApproved ? (
-                                  <Badge className="bg-green-600 hover:bg-green-700 text-white text-[10px] whitespace-nowrap font-semibold">
-                                    Approved
+                                ) : record.status === 'to_pay' ? (
+                                  <div className="flex flex-col gap-1 items-start">
+                                    <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] whitespace-nowrap font-semibold">
+                                      To Pay
+                                    </Badge>
+                                    {record.voucher_url && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          setVoucherPreviewUrl(record.voucher_url!);
+                                          setVoucherPreviewTitle(`Signed Voucher - ${sessionCode}`);
+                                        }}
+                                        className="h-5 text-[10px] px-1.5 py-0 gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                                      >
+                                        <Eye className="h-3 w-3" />
+                                        View Voucher
+                                      </Button>
+                                    )}
+                                  </div>
+                                ) : record.status === 'approved' ? (
+                                  <Badge className="bg-green-600 hover:bg-green-700 text-white text-[10px] whitespace-nowrap font-semibold" title="Approved and available for facilitator to encash">
+                                    Approved (Available to Encash)
                                   </Badge>
+                                ) : record.status === 'submitted' ? (
+                                  <div className="flex flex-col gap-1 items-start">
+                                    <Badge variant="secondary" className="text-[10px] whitespace-nowrap text-amber-800 bg-amber-100 border-amber-300 font-semibold">
+                                      Approval Request
+                                    </Badge>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => approveEarning(record)}
+                                      className="h-5 text-[10px] px-2 py-0 bg-green-600 hover:bg-green-700 text-white"
+                                    >
+                                      Approve
+                                    </Button>
+                                  </div>
                                 ) : record.is_unrecorded ? (
                                   <Badge variant="outline" className="text-[10px] whitespace-nowrap text-slate-600 bg-slate-50 border-slate-300 font-medium">
-                                    Eligible (Unclaimed)
+                                    Pending (Unsubmitted)
                                   </Badge>
                                 ) : (
-                                  <Badge variant="secondary" className="text-[10px] whitespace-nowrap text-amber-800 bg-amber-100 border-amber-300 font-semibold">
-                                    Applied for Encashment
+                                  <Badge variant="outline" className="text-[10px] whitespace-nowrap text-amber-800 bg-amber-50 border-amber-300 font-medium">
+                                    Pending (Unsubmitted)
                                   </Badge>
                                 )}
                               </TableCell>
@@ -1360,28 +1439,41 @@ export default function AdminFacilitatorEarnings() {
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="bg-popover text-xs">
-                                      {!isPaid && (
+                                      {record.voucher_url && (
+                                        <DropdownMenuItem 
+                                          onClick={() => {
+                                            setVoucherPreviewUrl(record.voucher_url!);
+                                            setVoucherPreviewTitle(`Signed Voucher - ${sessionCode}`);
+                                          }} 
+                                          className="gap-2 cursor-pointer text-emerald-700 font-medium"
+                                        >
+                                          <Eye className="h-3.5 w-3.5" />
+                                          View Signed Voucher
+                                        </DropdownMenuItem>
+                                      )}
+
+                                      {record.status !== 'paid_online' && (
                                         <DropdownMenuItem onClick={() => openPayOnlineModal(record)} className="gap-2 cursor-pointer text-purple-700 font-medium">
                                           <CreditCard className="h-3.5 w-3.5" />
                                           Pay / Record Online Payment
                                         </DropdownMenuItem>
                                       )}
 
-                                      {!isPaid && record.status === 'pending' && (
+                                      {record.status !== 'paid_online' && record.status !== 'approved' && (
                                         <DropdownMenuItem onClick={() => approveEarning(record)} className="gap-2 cursor-pointer text-green-700 font-medium">
                                           <CheckCircle className="h-3.5 w-3.5" />
                                           Approve Earning (₹{record.amount})
                                         </DropdownMenuItem>
                                       )}
 
-                                      {!isPaid && !record.is_unrecorded && record.status === 'approved' && (
+                                      {record.status !== 'paid_online' && !record.is_unrecorded && record.status !== 'pending' && (
                                         <DropdownMenuItem onClick={() => resetToPendingEarning(record)} className="gap-2 cursor-pointer text-yellow-700">
                                           <RotateCcw className="h-3.5 w-3.5" />
                                           Reset to Pending
                                         </DropdownMenuItem>
                                       )}
 
-                                      {isPaid && (
+                                      {record.status === 'paid_online' && (
                                         <DropdownMenuItem onClick={() => openUndoPaymentModal(record)} className="gap-2 cursor-pointer text-red-600 font-medium">
                                           <RotateCcw className="h-3.5 w-3.5 text-red-600" />
                                           Undo Paid Online
@@ -1543,6 +1635,42 @@ export default function AdminFacilitatorEarnings() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Signed Voucher Preview Dialog */}
+        <Dialog open={!!voucherPreviewUrl} onOpenChange={(open) => !open && setVoucherPreviewUrl(null)}>
+          <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-emerald-700">
+                <FileCheck className="h-5 w-5 text-emerald-600" />
+                {voucherPreviewTitle || 'Signed Voucher'}
+              </DialogTitle>
+              <DialogDescription>
+                Signed voucher submitted by the facilitator for this session encashment.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="flex-1 overflow-auto p-3 bg-slate-50 border rounded-md flex items-center justify-center min-h-[320px]">
+              {voucherPreviewUrl && (voucherPreviewUrl.includes('.pdf') || voucherPreviewUrl.startsWith('data:application/pdf')) ? (
+                <iframe src={voucherPreviewUrl} className="w-full h-[500px] border-0 rounded" title="Voucher PDF" />
+              ) : (
+                <img src={voucherPreviewUrl || ''} alt="Signed Voucher" className="max-w-full max-h-[550px] object-contain rounded shadow" />
+              )}
+            </div>
+
+            <DialogFooter className="flex justify-between items-center sm:justify-between">
+              <a 
+                href={voucherPreviewUrl || '#'} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open Full Image / Document
+              </a>
+              <Button variant="outline" onClick={() => setVoucherPreviewUrl(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DashboardLayout>
     );
   }
@@ -1572,17 +1700,33 @@ export default function AdminFacilitatorEarnings() {
         </div>
 
         {/* Top Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <Card className="border-l-4 border-l-green-500">
-            <CardContent className="p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-l-4 border-l-emerald-500">
+            <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total Approved Payouts</p>
-                  <h3 className="text-2xl font-bold mt-2 text-green-600">
+                  <p className="text-xs font-medium text-muted-foreground">Total To Pay (Vouchers Uploaded)</p>
+                  <h3 className="text-2xl font-bold mt-1 text-emerald-600">
+                    ₹{totalToPaySum.toLocaleString('en-IN')}
+                  </h3>
+                </div>
+                <div className="p-2.5 bg-emerald-100 dark:bg-emerald-950/30 rounded-full">
+                  <CreditCard className="h-5 w-5 text-emerald-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-green-500">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Approved (Available to Encash)</p>
+                  <h3 className="text-2xl font-bold mt-1 text-green-600">
                     ₹{totalApprovedSum.toLocaleString('en-IN')}
                   </h3>
                 </div>
-                <div className="p-3 bg-green-100 dark:bg-green-950/30 rounded-full">
+                <div className="p-2.5 bg-green-100 dark:bg-green-950/30 rounded-full">
                   <Wallet className="h-5 w-5 text-green-600" />
                 </div>
               </div>
@@ -1590,15 +1734,15 @@ export default function AdminFacilitatorEarnings() {
           </Card>
           
           <Card className="border-l-4 border-l-purple-500">
-            <CardContent className="p-6">
+            <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total Paid Online</p>
+                  <p className="text-xs font-medium text-muted-foreground">Total Paid Online</p>
                   <h3 className="text-2xl font-bold mt-2 text-purple-600">
                     ₹{totalPaidOnlineSum.toLocaleString('en-IN')}
                   </h3>
                 </div>
-                <div className="p-3 bg-purple-100 dark:bg-purple-950/30 rounded-full">
+                <div className="p-2.5 bg-purple-100 dark:bg-purple-950/30 rounded-full">
                   <CreditCard className="h-5 w-5 text-purple-600" />
                 </div>
               </div>
@@ -1606,15 +1750,15 @@ export default function AdminFacilitatorEarnings() {
           </Card>
 
           <Card className="border-l-4 border-l-yellow-500">
-            <CardContent className="p-6">
+            <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total Pending Payouts</p>
-                  <h3 className="text-2xl font-bold mt-2 text-yellow-600">
+                  <p className="text-xs font-medium text-muted-foreground">Total Pending / Requests</p>
+                  <h3 className="text-2xl font-bold mt-1 text-yellow-600">
                     ₹{totalPendingSum.toLocaleString('en-IN')}
                   </h3>
                 </div>
-                <div className="p-3 bg-yellow-100 dark:bg-yellow-950/30 rounded-full">
+                <div className="p-2.5 bg-yellow-100 dark:bg-yellow-950/30 rounded-full">
                   <TrendingUp className="h-5 w-5 text-yellow-600" />
                 </div>
               </div>
@@ -1669,20 +1813,21 @@ export default function AdminFacilitatorEarnings() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Facilitator Name</TableHead>
-                    <TableHead className="text-right">Total Approved</TableHead>
+                    <TableHead className="text-right">To Pay (Voucher Uploaded)</TableHead>
+                    <TableHead className="text-right">Available to Encash</TableHead>
                     <TableHead className="text-right">Paid Online</TableHead>
-                    <TableHead className="text-right">Total Pending</TableHead>
+                    <TableHead className="text-right">Pending Requests</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8">Loading...</TableCell>
+                      <TableCell colSpan={6} className="text-center py-8">Loading...</TableCell>
                     </TableRow>
                   ) : filteredData.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                         No facilitators found
                       </TableCell>
                     </TableRow>
@@ -1690,6 +1835,9 @@ export default function AdminFacilitatorEarnings() {
                     filteredData.map((f) => (
                       <TableRow key={f.id} className="hover:bg-muted/50">
                         <TableCell className="font-semibold text-foreground">{f.name}</TableCell>
+                        <TableCell className="text-right text-emerald-600 font-semibold">
+                          ₹{(f.total_to_pay || 0).toLocaleString('en-IN')}
+                        </TableCell>
                         <TableCell className="text-right text-green-600 font-semibold">
                           ₹{f.total_approved.toLocaleString('en-IN')}
                         </TableCell>

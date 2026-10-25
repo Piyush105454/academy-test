@@ -12,14 +12,15 @@ import { toast } from 'sonner';
 import { 
   ArrowLeft, CheckCircle2, Clock, CalendarDays, BookOpen, 
   FileText, Image as ImageIcon, Link2, Trophy, AlertCircle, 
-  Upload, X, Loader2, ExternalLink, ShieldCheck, FileCheck
+  Upload, X, Loader2, ExternalLink, ShieldCheck, FileCheck,
+  Hash, Video, FileSpreadsheet
 } from 'lucide-react';
 import { GoogleDriveResumableUploader } from '@/utils/GoogleDriveResumableUploader';
 
 interface TaskRequirement {
   id: string;
   title: string;
-  type: 'text' | 'image' | 'pdf' | 'link';
+  type: 'text' | 'number' | 'image' | 'pdf' | 'link' | 'video' | 'excel';
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgClass: string; icon: React.ElementType }> = {
@@ -144,26 +145,41 @@ export default function AcademyTaskDetail() {
 
   // Extract submission requirements
   const requirements: TaskRequirement[] = [];
-  
-  if (template?.requires_note ?? true) {
-    requirements.push({ id: 'req-note', title: 'Text Note / Context Summary', type: 'text' });
+
+  const reqMatch = (template?.description || '').match(/__REQS\[(.*?)\]__/);
+  if (reqMatch) {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(reqMatch[1]));
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        requirements.push(...parsed);
+      }
+    } catch (e) {
+      console.error("Error parsing requirements tag:", e);
+    }
   }
-  if (template?.requires_photo ?? true) {
-    requirements.push({ id: 'req-photo', title: 'Photo(s) / Image Evidence', type: 'image' });
-  }
-  // Check description tags or default doc/link
-  if (template?.description?.includes('Document') || template?.requires_doc) {
-    requirements.push({ id: 'req-doc', title: 'Document (PDF / Word File)', type: 'pdf' });
-  }
-  if (template?.description?.includes('Link') || template?.requires_link) {
-    requirements.push({ id: 'req-link', title: 'Google Drive / External Link', type: 'link' });
+
+  // Fallback to legacy fields if no custom requirements found
+  if (requirements.length === 0) {
+    if (template?.requires_note ?? true) {
+      requirements.push({ id: 'req-note', title: 'Text Note / Context Summary', type: 'text' });
+    }
+    if (template?.requires_photo ?? true) {
+      requirements.push({ id: 'req-photo', title: 'Photo(s) / Image Evidence', type: 'image' });
+    }
+    // Check description tags or default doc/link
+    if (template?.description?.includes('Document') || template?.requires_doc) {
+      requirements.push({ id: 'req-doc', title: 'Document (PDF / Word File)', type: 'pdf' });
+    }
+    if (template?.description?.includes('Link') || template?.requires_link) {
+      requirements.push({ id: 'req-link', title: 'Google Drive / External Link', type: 'link' });
+    }
   }
 
   const managerApprovalReq = taskData.manager_approval_required ?? template?.manager_approval_required ?? true;
   const autoApproveMins = taskData.auto_approve_minutes ?? template?.auto_approve_minutes;
 
   // Handle File Upload directly to Google Drive
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, reqId: string) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, reqId: string, reqType: string) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -221,6 +237,30 @@ export default function AcademyTaskDetail() {
   };
 
   const handleSubmitTask = async () => {
+    // Validate all requirements are provided
+    for (const req of requirements) {
+      const val = (submissionLinks[req.id] || '').trim();
+      if (req.type === 'text') {
+        const textVal = val || submissionNote.trim();
+        if (!textVal) {
+          return toast.error(`Please provide your text response for: ${req.title}`);
+        }
+      } else if (req.type === 'number') {
+        if (!val) {
+          return toast.error(`Please enter a number for: ${req.title}`);
+        }
+      } else if (req.type === 'link') {
+        if (!val) {
+          return toast.error(`Please enter the link for: ${req.title}`);
+        }
+      } else {
+        // file requirements (image, pdf, video, excel)
+        if (!val) {
+          return toast.error(`Please upload required file(s) for: ${req.title}`);
+        }
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const now = new Date();
@@ -239,14 +279,16 @@ export default function AcademyTaskDetail() {
 
       // Format photo_url field
       const serializedLinks = JSON.stringify(submissionLinks);
-      const firstDirectLink = Object.values(submissionLinks).find(l => l.trim() !== '') || '';
+      const firstDirectLink = Object.values(submissionLinks).find(l => typeof l === 'string' && l.trim() !== '') || '';
+      const primaryTextReq = requirements.find(r => r.type === 'text');
+      const finalNote = (primaryTextReq && submissionLinks[primaryTextReq.id]) ? submissionLinks[primaryTextReq.id] : submissionNote;
 
       // Upsert submission
       const { error: submitError } = await supabase
         .from('academy_submissions')
         .upsert({
           task_id: taskData.id,
-          submission_note: submissionNote,
+          submission_note: finalNote,
           photo_url: serializedLinks !== '{}' ? serializedLinks : firstDirectLink,
           submitted_at: now.toISOString(),
           ...(newStatus === 'approved' ? { reviewed_at: reviewedAt, reviewer_comments: 'Auto-Approved immediately' } : {})
@@ -373,8 +415,11 @@ export default function AcademyTaskDetail() {
               {requirements.map((req) => (
                 <div key={req.id} className="inline-flex items-center gap-1.5 bg-white text-blue-800 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs">
                   {req.type === 'text' && <FileText className="h-3.5 w-3.5 text-blue-600" />}
+                  {req.type === 'number' && <Hash className="h-3.5 w-3.5 text-blue-600" />}
                   {req.type === 'image' && <ImageIcon className="h-3.5 w-3.5 text-blue-600" />}
                   {req.type === 'pdf' && <FileText className="h-3.5 w-3.5 text-blue-600" />}
+                  {req.type === 'video' && <Video className="h-3.5 w-3.5 text-blue-600" />}
+                  {req.type === 'excel' && <FileSpreadsheet className="h-3.5 w-3.5 text-blue-600" />}
                   {req.type === 'link' && <Link2 className="h-3.5 w-3.5 text-blue-600" />}
                   <span>{req.title}</span>
                 </div>
@@ -448,14 +493,30 @@ export default function AcademyTaskDetail() {
                   {req.type === 'text' && (
                     <Textarea
                       placeholder="Enter detailed notes, context, or summary of your task work..."
-                      value={submissionNote}
-                      onChange={(e) => setSubmissionNote(e.target.value)}
+                      value={submissionLinks[req.id] !== undefined ? submissionLinks[req.id] : submissionNote}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSubmissionLinks(prev => ({ ...prev, [req.id]: val }));
+                        setSubmissionNote(val);
+                      }}
                       rows={4}
                       className="bg-white resize-none"
                     />
                   )}
 
-                  {(req.type === 'image' || req.type === 'pdf') && (
+                  {req.type === 'number' && (
+                    <div className="space-y-1.5">
+                      <Input
+                        type="number"
+                        placeholder="Enter numeric value (e.g. 25, 100)..."
+                        value={submissionLinks[req.id] || ''}
+                        onChange={(e) => setSubmissionLinks(prev => ({ ...prev, [req.id]: e.target.value }))}
+                        className="bg-white text-sm max-w-xs"
+                      />
+                    </div>
+                  )}
+
+                  {(req.type === 'image' || req.type === 'pdf' || req.type === 'video' || req.type === 'excel') && (
                     <div className="space-y-3">
                       <label 
                         className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all bg-white border-slate-300 hover:border-blue-500 hover:bg-blue-50/20 ${uploadingReqId === req.id ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -465,7 +526,12 @@ export default function AcademyTaskDetail() {
                           multiple
                           className="hidden"
                           disabled={uploadingReqId === req.id}
-                          accept={req.type === 'image' ? 'image/*' : '.pdf,.doc,.docx'}
+                          accept={
+                            req.type === 'image' ? 'image/*' :
+                            req.type === 'video' ? 'video/*' :
+                            req.type === 'excel' ? '.xls,.xlsx,.csv' :
+                            '.pdf,.doc,.docx'
+                          }
                           onChange={(e) => handleFileUpload(e, req.id)}
                         />
                         {uploadingReqId === req.id ? (
@@ -480,12 +546,18 @@ export default function AcademyTaskDetail() {
                             </div>
                             <div>
                               <span className="text-sm font-bold text-blue-600 hover:underline">Click to upload file(s)</span>
-                              <p className="text-xs text-slate-500 mt-0.5">Supports {req.type === 'image' ? 'JPG, PNG images' : 'PDF, Word Documents'}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Supports {
+                                  req.type === 'image' ? 'JPG, PNG images' :
+                                  req.type === 'video' ? 'MP4, MOV videos' :
+                                  req.type === 'excel' ? 'Excel spreadsheets (.xlsx, .csv)' :
+                                  'PDF, Word Documents'
+                                }
+                              </p>
                             </div>
                           </div>
                         )}
                       </label>
-
                     </div>
                   )}
 
@@ -503,9 +575,9 @@ export default function AcademyTaskDetail() {
                   )}
 
                   {/* Uploaded links list */}
-                  {linkList.length > 0 && req.type !== 'text' && (
+                  {linkList.length > 0 && req.type !== 'text' && req.type !== 'number' && (
                     <div className="space-y-2 pt-2 border-t border-slate-200">
-                      <p className="text-xs font-semibold text-slate-700">Attached Evidence Files:</p>
+                      <p className="text-xs font-semibold text-slate-700">Attached Evidence Files / Links:</p>
                       {linkList.map((link, lIdx) => (
                         <div key={lIdx} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-slate-200 text-xs">
                           <div className="flex items-center gap-2 truncate max-w-[80%]">

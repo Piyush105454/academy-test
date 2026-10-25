@@ -20,6 +20,12 @@ interface Facilitator {
   email?: string;
 }
 
+export interface WorkRequirement {
+  id: string;
+  title: string;
+  type: 'text' | 'number' | 'image' | 'pdf' | 'link' | 'video' | 'excel';
+}
+
 interface TaskAssignment {
   id?: string;
   facilitator_id: string;
@@ -63,6 +69,9 @@ export default function TasksAdmin() {
   const [includeLeaderboard, setIncludeLeaderboard] = useState(true);
   const [requiresNote, setRequiresNote] = useState(true);
   const [requiresPhoto, setRequiresPhoto] = useState(true);
+  const [submissionRequirements, setSubmissionRequirements] = useState<WorkRequirement[]>([
+    { id: 'req-1', title: 'Work Summary / Notes', type: 'text' }
+  ]);
 
   // Auto-approval state
   const [requiresManagerApproval, setRequiresManagerApproval] = useState(true);
@@ -193,6 +202,9 @@ export default function TasksAdmin() {
     setIncludeLeaderboard(true);
     setRequiresNote(true);
     setRequiresPhoto(true);
+    setSubmissionRequirements([
+      { id: `req-${Date.now()}`, title: 'Work Summary / Notes', type: 'text' }
+    ]);
     setRequiresManagerApproval(true);
     setAutoApprovePreset("1440");
     setAutoApproveHours(24);
@@ -212,8 +224,44 @@ export default function TasksAdmin() {
     setName(task.name || "");
     setCategory(task.category || "attendance");
 
-    const cleanDesc = (task.description || "").replace(/__AUTOAPPROVE\[.*?\]__/g, "").trim();
+    const cleanDesc = (task.description || "")
+      .replace(/__AUTOAPPROVE\[.*?\]__/g, "")
+      .replace(/__REQS\[.*?\]__/g, "")
+      .trim();
     setDescription(cleanDesc);
+
+    // Extract submission requirements
+    const reqMatch = (task.description || "").match(/__REQS\[(.*?)\]__/);
+    if (reqMatch) {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(reqMatch[1]));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSubmissionRequirements(parsed);
+        } else {
+          setSubmissionRequirements([{ id: `req-${Date.now()}`, title: 'Work Summary / Notes', type: 'text' }]);
+        }
+      } catch (e) {
+        setSubmissionRequirements([{ id: `req-${Date.now()}`, title: 'Work Summary / Notes', type: 'text' }]);
+      }
+    } else {
+      // Legacy fallback
+      const legacyReqs: WorkRequirement[] = [];
+      if (task.requires_note) {
+        legacyReqs.push({ id: `req-note-${Date.now()}`, title: 'Text Note / Context Summary', type: 'text' });
+      }
+      if (task.requires_photo) {
+        legacyReqs.push({ id: `req-photo-${Date.now()}`, title: 'Photo(s) / Image Evidence', type: 'image' });
+      }
+      if (task.description?.includes('Document')) {
+        legacyReqs.push({ id: `req-doc-${Date.now()}`, title: 'Document (PDF / Word)', type: 'pdf' });
+      }
+      if (task.description?.includes('Link')) {
+        legacyReqs.push({ id: `req-link-${Date.now()}`, title: 'External / Drive Link', type: 'link' });
+      }
+      setSubmissionRequirements(legacyReqs.length > 0 ? legacyReqs : [
+        { id: `req-${Date.now()}`, title: 'Work Summary / Notes', type: 'text' }
+      ]);
+    }
 
     setRecurrence(task.recurrence || "daily");
     if (task.recurrence_rule) {
@@ -270,6 +318,15 @@ export default function TasksAdmin() {
     e.preventDefault();
     if (!name.trim()) return toast.error("Work Name is required");
     
+    // Validate submission requirements: at least one is mandatory, and all must have titles
+    if (submissionRequirements.length === 0) {
+      return toast.error("Please add at least one submission requirement.");
+    }
+    const missingTitle = submissionRequirements.some(req => !req.title.trim());
+    if (missingTitle) {
+      return toast.error("All submission requirements must have a title.");
+    }
+
     setIsSubmitting(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -277,7 +334,17 @@ export default function TasksAdmin() {
 
       const totalAutoApproveMinutes = requiresManagerApproval ? 0 : ((Number(autoApproveHours) || 0) * 60 + (Number(autoApproveMins) || 0));
       const autoApproveTag = `__AUTOAPPROVE[${requiresManagerApproval ? 'manual' : totalAutoApproveMinutes}]__`;
-      const finalDescription = `${description || ''} ${autoApproveTag}`.trim();
+      const reqsTag = `__REQS[${encodeURIComponent(JSON.stringify(submissionRequirements))}]__`;
+
+      const cleanUserDesc = (description || "")
+        .replace(/__AUTOAPPROVE\[.*?\]__/g, "")
+        .replace(/__REQS\[.*?\]__/g, "")
+        .trim();
+
+      const finalDescription = `${cleanUserDesc} ${autoApproveTag} ${reqsTag}`.trim();
+
+      const hasTextReq = submissionRequirements.some(r => r.type === 'text');
+      const hasImageReq = submissionRequirements.some(r => r.type === 'image');
 
       const templatePayload = {
         name: name.trim(),
@@ -287,8 +354,8 @@ export default function TasksAdmin() {
         recurrence_rule: recurrence !== 'onetime' ? selectedDays.join(',') : null,
         base_reward_amount: baseRewardAmount,
         leaderboard_points: includeLeaderboard ? leaderboardPoints : 0,
-        requires_note: requiresNote,
-        requires_photo: requiresPhoto,
+        requires_note: hasTextReq,
+        requires_photo: hasImageReq,
         manager_approval_required: requiresManagerApproval,
         auto_approve_minutes: totalAutoApproveMinutes,
         due_time: dueTime,
@@ -893,41 +960,126 @@ export default function TasksAdmin() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings2 className="h-5 w-5 text-slate-600" /> Submission Requirements
-              </CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings2 className="h-5 w-5 text-slate-600" /> Submission Requirements *
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    What evidence or data must facilitators provide when submitting this work? (At least 1 required)
+                  </CardDescription>
+                </div>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm"
+                  className="gap-1.5 text-xs font-semibold self-start sm:self-auto border-blue-200 text-blue-700 hover:bg-blue-50"
+                  onClick={() => {
+                    const newReq: WorkRequirement = {
+                      id: `req-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                      title: '',
+                      type: 'text'
+                    };
+                    setSubmissionRequirements(prev => [...prev, newReq]);
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Requirement
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <Label>What evidence is required to complete this task?</Label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox 
-                      id="req_note" 
-                      checked={requiresNote}
-                      onCheckedChange={(checked) => setRequiresNote(checked as boolean)}
-                    />
-                    <Label htmlFor="req_note">Text Note</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox 
-                      id="req_photo" 
-                      checked={requiresPhoto}
-                      onCheckedChange={(checked) => setRequiresPhoto(checked as boolean)}
-                    />
-                    <Label htmlFor="req_photo">Photo(s)</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id="req_doc" />
-                    <Label htmlFor="req_doc">Document (PDF)</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id="req_link" />
-                    <Label htmlFor="req_link">External Link</Label>
-                  </div>
+              {submissionRequirements.length === 0 ? (
+                <div className="p-4 rounded-xl border border-dashed border-red-200 bg-red-50 text-red-700 text-xs font-medium flex items-center justify-between">
+                  <span>At least one submission requirement is mandatory. Add a requirement to proceed.</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-red-300 bg-white hover:bg-red-100"
+                    onClick={() => {
+                      setSubmissionRequirements([{
+                        id: `req-${Date.now()}`,
+                        title: '',
+                        type: 'text'
+                      }]);
+                    }}
+                  >
+                    Add Requirement
+                  </Button>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-3">
+                  {submissionRequirements.map((req, index) => (
+                    <div key={req.id} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center border border-slate-200 p-3.5 rounded-xl bg-slate-50/70 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-500 shrink-0">
+                        <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-xs">
+                          {index + 1}
+                        </span>
+                      </div>
+                      
+                      <div className="flex-1 w-full space-y-1">
+                        <Label className="text-xs text-slate-600 font-semibold">Requirement Title *</Label>
+                        <Input 
+                          placeholder={
+                            req.type === 'number' ? 'e.g. Number of Students Present' :
+                            req.type === 'text' ? 'e.g. Session Summary / Observation Notes' :
+                            req.type === 'image' ? 'e.g. Class Activity Photo' :
+                            req.type === 'pdf' ? 'e.g. Attendance Sheet (PDF / Doc)' :
+                            req.type === 'link' ? 'e.g. Google Drive Folder Link' :
+                            req.type === 'video' ? 'e.g. Class Video Recording' :
+                            'e.g. Requirement Title'
+                          }
+                          value={req.title}
+                          onChange={(e) => {
+                            const updated = [...submissionRequirements];
+                            updated[index].title = e.target.value;
+                            setSubmissionRequirements(updated);
+                          }}
+                          className="bg-white h-9 text-sm"
+                          required
+                        />
+                      </div>
+
+                      <div className="w-full sm:w-56 space-y-1">
+                        <Label className="text-xs text-slate-600 font-semibold">Submission Type</Label>
+                        <select 
+                          className="flex h-9 w-full rounded-md border border-input bg-white px-3 py-1.5 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                          value={req.type}
+                          onChange={(e) => {
+                            const updated = [...submissionRequirements];
+                            updated[index].type = e.target.value as WorkRequirement['type'];
+                            setSubmissionRequirements(updated);
+                          }}
+                        >
+                          <option value="text">📝 Text Box (Summary / Notes)</option>
+                          <option value="number">🔢 Number Field (Count / Value)</option>
+                          <option value="image">📸 Photo / Image</option>
+                          <option value="pdf">📄 Document (PDF / Word)</option>
+                          <option value="link">🔗 External / Drive Link</option>
+                          <option value="video">🎥 Video Recording</option>
+                          <option value="excel">📊 Spreadsheet (Excel / Sheet)</option>
+                        </select>
+                      </div>
+
+                      <div className="self-end sm:self-center sm:pt-5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => {
+                            setSubmissionRequirements(prev => prev.filter((_, i) => i !== index));
+                          }}
+                          title="Remove requirement"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="space-y-4 pt-4 border-t">
                 <div className="flex items-center space-x-2">

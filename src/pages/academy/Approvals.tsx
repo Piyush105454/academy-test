@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from "@/components/ui/textarea";
 import { 
   CheckCircle2, AlertCircle, Clock, ExternalLink, Search, 
-  FileText, Link2, ShieldCheck, User, Sparkles, Filter
+  FileText, Link2, ShieldCheck, User, Sparkles, Filter, Hash
 } from 'lucide-react';
 
 export default function Approvals() {
@@ -51,6 +51,7 @@ export default function Approvals() {
               academy_task_templates (
                 name,
                 category,
+                description,
                 base_reward_amount,
                 leaderboard_points
               )
@@ -277,17 +278,61 @@ export default function Approvals() {
                     const reward = assignment?.custom_reward_amount || template?.base_reward_amount || 20;
                     const facName = assignment?.user_profiles?.full_name || 'Unknown User';
 
-                    // Evidence link parsing
+                    // Requirements & Evidence Parsing
                     const rawPhoto = sub.photo_url || '';
-                    let linksList: string[] = [];
-
+                    let parsedEvidenceMap: Record<string, string> | null = null;
                     if (rawPhoto.startsWith('{') && rawPhoto.endsWith('}')) {
                       try {
-                        const parsed = JSON.parse(rawPhoto);
-                        linksList = Object.values(parsed).filter((v: any) => typeof v === 'string' && v.trim() !== '') as string[];
-                      } catch(e) {}
+                        parsedEvidenceMap = JSON.parse(rawPhoto);
+                      } catch (e) {}
+                    }
+
+                    // Extract template requirements
+                    let templateReqs: Array<{ id: string; title: string; type: string }> = [];
+                    const reqMatch = (template?.description || '').match(/__REQS\[(.*?)\]__/);
+                    if (reqMatch) {
+                      try {
+                        templateReqs = JSON.parse(decodeURIComponent(reqMatch[1]));
+                      } catch (e) {}
+                    }
+
+                    // Collect structured items
+                    const numberItems: Array<{ label: string; value: string }> = [];
+                    const evidenceLinks: Array<{ label: string; url: string }> = [];
+                    const extraTextNotes: Array<{ label: string; text: string }> = [];
+
+                    if (parsedEvidenceMap) {
+                      Object.entries(parsedEvidenceMap).forEach(([reqId, val]) => {
+                        if (typeof val !== 'string' || !val.trim()) return;
+                        const reqDef = templateReqs.find(r => r.id === reqId);
+                        const label = reqDef?.title || 'Requirement';
+                        const type = reqDef?.type;
+
+                        if (type === 'number') {
+                          numberItems.push({ label, value: val.trim() });
+                        } else if (type === 'text') {
+                          if (val.trim() !== (sub.submission_note || '').trim()) {
+                            extraTextNotes.push({ label, text: val.trim() });
+                          }
+                        } else {
+                          // Files or links - may be comma separated
+                          const splitted = val.split(',').filter(Boolean);
+                          splitted.forEach((url, uIdx) => {
+                            evidenceLinks.push({
+                              label: reqDef ? (splitted.length > 1 ? `${label} (${uIdx + 1})` : label) : `Evidence ${evidenceLinks.length + 1}`,
+                              url: url.trim()
+                            });
+                          });
+                        }
+                      });
                     } else if (rawPhoto) {
-                      linksList = rawPhoto.split(',').filter(Boolean);
+                      // Fallback legacy links
+                      rawPhoto.split(',').filter(Boolean).forEach((url: string, uIdx: number) => {
+                        evidenceLinks.push({
+                          label: `Evidence ${uIdx + 1}`,
+                          url: url.trim()
+                        });
+                      });
                     }
 
                     return (
@@ -324,7 +369,21 @@ export default function Approvals() {
 
                         {/* Submitted Evidence */}
                         <td className="px-6 py-4 max-w-xs">
-                          <div className="space-y-1.5">
+                          <div className="space-y-2">
+                            {/* Number metrics */}
+                            {numberItems.length > 0 && (
+                              <div className="space-y-1">
+                                {numberItems.map((num, nIdx) => (
+                                  <div key={nIdx} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-900 font-medium">
+                                    <Hash className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                                    <span className="font-bold">{num.label}:</span>
+                                    <span className="font-mono font-semibold">{num.value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Note / Text */}
                             {sub.submission_note && (
                               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 leading-relaxed font-medium">
                                 <span className="font-bold text-slate-900 block mb-0.5">Note:</span>
@@ -332,25 +391,34 @@ export default function Approvals() {
                               </div>
                             )}
 
-                            {linksList.length > 0 && (
-                              <div className="flex flex-wrap gap-1.5">
-                                {linksList.map((link, lIdx) => (
+                            {/* Additional text answers */}
+                            {extraTextNotes.map((tn, tIdx) => (
+                              <div key={tIdx} className="p-2 bg-blue-50/50 border border-blue-200 rounded-lg text-xs text-slate-700 leading-relaxed font-medium">
+                                <span className="font-bold text-blue-900 block mb-0.5">{tn.label}:</span>
+                                {tn.text}
+                              </div>
+                            ))}
+
+                            {/* Links & Files */}
+                            {evidenceLinks.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                {evidenceLinks.map((item, lIdx) => (
                                   <Button
                                     key={lIdx}
                                     variant="outline"
                                     size="sm"
-                                    className="h-7 text-xs gap-1 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
-                                    onClick={() => window.open(link.trim(), '_blank')}
+                                    className="h-7 text-xs gap-1 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 max-w-full truncate"
+                                    onClick={() => window.open(item.url, '_blank')}
                                   >
-                                    <Link2 className="h-3 w-3" />
-                                    <span>Evidence {linksList.length > 1 ? lIdx + 1 : ''}</span>
-                                    <ExternalLink className="h-3 w-3 ml-0.5" />
+                                    <Link2 className="h-3 w-3 shrink-0" />
+                                    <span className="truncate max-w-[140px]">{item.label}</span>
+                                    <ExternalLink className="h-3 w-3 ml-0.5 shrink-0" />
                                   </Button>
                                 ))}
                               </div>
                             )}
 
-                            {!sub.submission_note && linksList.length === 0 && (
+                            {!sub.submission_note && numberItems.length === 0 && evidenceLinks.length === 0 && extraTextNotes.length === 0 && (
                               <span className="text-xs text-slate-400 italic">No notes or links attached</span>
                             )}
                           </div>

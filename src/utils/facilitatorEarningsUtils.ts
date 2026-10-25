@@ -89,3 +89,71 @@ export const calculateFacilitatorSessionAmount = (
 
   return perSessionAmount;
 };
+
+export type FacilitatorEarningStatus = 
+  | 'pending'           // Completed session, not yet submitted for approval
+  | 'submitted'         // FAL submitted for approval (Under Review by Supervisor/Admin)
+  | 'approved'          // Approved by Admin/Supervisor -> "Approved - Available to Encash" for FAL
+  | 'to_pay'            // FAL requested encashment with signed voucher (ready for admin payout)
+  | 'paid_online';      // Admin paid online / completed payout
+
+export interface EncashmentVoucherInfo {
+  earning_id?: string;
+  session_id: string;
+  voucher_url: string;
+  uploaded_at: string;
+  file_name?: string;
+  amount?: number;
+}
+
+export interface OnlinePaymentInfo {
+  earning_id: string;
+  transaction_id: string;
+  paid_amount: number;
+  paid_at: string;
+  notes?: string;
+}
+
+const PAYMENTS_STORAGE_KEY = 'facilitator_online_payments_v2';
+
+export const getStoredPayments = (): Record<string, OnlinePaymentInfo> => {
+  try {
+    const data = localStorage.getItem(PAYMENTS_STORAGE_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+export const saveStoredPayment = (info: OnlinePaymentInfo) => {
+  try {
+    const current = getStoredPayments();
+    current[info.earning_id] = info;
+    localStorage.setItem(PAYMENTS_STORAGE_KEY, JSON.stringify(current));
+  } catch (e) {
+    console.error('Error saving stored payment:', e);
+  }
+};
+
+const VOUCHERS_STORAGE_KEY = 'facilitator_encashment_vouchers_v2';
+
+export const getStoredVouchers = (): Record<string, EncashmentVoucherInfo> => {
+  try {
+    const data = localStorage.getItem(VOUCHERS_STORAGE_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+export const saveStoredVoucher = (info: EncashmentVoucherInfo) => {
+  try {
+    const current = getStoredVouchers();
+    if (info.earning_id) current[info.earning_id] = info;
+    if (info.session_id) current[info.session_id] = info;
+    localStorage.setItem(VOUCHERS_STORAGE_KEY, JSON.stringify(current));
+  } catch (e) {
+    console.error('Error saving stored voucher:', e);
+  }
+};
+
