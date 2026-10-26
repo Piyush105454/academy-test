@@ -269,7 +269,7 @@ export default function Classes() {
           <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => setIsViewStudentsOpen(true)}
+              onClick={() => navigate('/students')}
               className="gap-2"
             >
               <Eye className="h-4 w-4" />

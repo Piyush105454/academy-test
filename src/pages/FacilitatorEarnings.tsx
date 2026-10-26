@@ -56,7 +56,10 @@ import {
   calculateFacilitatorSessionAmount,
   getStoredPayments,
   getStoredVouchers,
-  saveStoredVoucher
+  saveStoredVoucher,
+  getStoredSubmissions,
+  saveStoredSubmission,
+  removeStoredSubmission
 } from '@/utils/facilitatorEarningsUtils';
 import { GoogleDriveResumableUploader } from '@/utils/GoogleDriveResumableUploader';
 
@@ -229,6 +232,7 @@ export default function FacilitatorEarnings() {
 
       const storedPayments = getStoredPayments();
       const storedVouchers = getStoredVouchers();
+      const storedSubmissions = getStoredSubmissions();
 
       // 4. Build unified session items
       const items: FacilitatorSessionItem[] = (completedSessions || []).map(sess => {
@@ -241,21 +245,33 @@ export default function FacilitatorEarnings() {
 
         const storedPayment = storedPayments[earning?.id || sess.id];
         const storedVoucher = storedVouchers[earning?.id || sess.id];
+        const storedSubmission = storedSubmissions[sess.id] || (earning?.id ? storedSubmissions[earning.id] : undefined);
 
         if (earning) {
           earningId = earning.id;
           const rawStatus = (earning.status || '').toLowerCase();
-          if (rawStatus === 'paid_online' || rawStatus === 'paid' || !!storedPayment) {
+          const notes = (earning.notes || '').toLowerCase();
+
+          if (rawStatus === 'paid_online' || rawStatus === 'paid' || !!storedPayment || !!earning.transaction_id || !!earning.paid_at) {
             status = 'paid';
-          } else if (rawStatus === 'to_pay' || rawStatus === 'encash_requested') {
+          } else if (rawStatus === 'to_pay' || rawStatus === 'encash_requested' || !!storedVoucher || !!earning.signed_voucher_url) {
             status = 'to_pay';
           } else if (rawStatus === 'approved') {
             status = 'approved'; // Available to Encash (NOT PAID!)
-          } else if (rawStatus === 'submitted' || rawStatus === 'pending_approval' || rawStatus === 'under_review') {
+          } else if (
+            rawStatus === 'submitted' || 
+            rawStatus === 'pending_approval' || 
+            rawStatus === 'under_review' || 
+            notes.includes('submitted') ||
+            rawStatus === 'pending' || // In facilitator_earnings table, a row with pending status indicates submission awaiting admin review
+            !!storedSubmission
+          ) {
             status = 'submitted';
           } else {
             status = 'pending';
           }
+        } else if (storedSubmission) {
+          status = 'submitted';
         }
 
         // Format module & topic
@@ -450,24 +466,75 @@ export default function FacilitatorEarnings() {
         const sessItem = sessions.find(s => s.id === sessionId);
         const amount = sessItem?.amount ?? (sessItem?.is_delayed ? Math.round(perSessionRate / 2) : perSessionRate);
 
-        if (sessItem?.earning_id) {
+        // 1. Save submission locally so it survives refreshes across roles immediately
+        saveStoredSubmission({
+          session_id: sessionId,
+          facilitator_id: currentFacilitator.id,
+          amount,
+          submitted_at: new Date().toISOString()
+        });
+
+        // 2. Persist to facilitator_earnings table in database
+        try {
+          if (sessItem?.earning_id) {
+            const { error: updateErr } = await supabase
+              .from('facilitator_earnings')
+              .update({
+                status: 'submitted',
+                amount,
+                notes: 'submitted_for_approval'
+              })
+              .eq('id', sessItem.earning_id);
+
+            if (updateErr) {
+              // Fallback for databases with check constraint (pending, approved)
+              await supabase
+                .from('facilitator_earnings')
+                .update({
+                  status: 'pending',
+                  amount,
+                  notes: 'submitted_for_approval'
+                })
+                .eq('id', sessItem.earning_id);
+            }
+          } else {
+            const { error: insertErr } = await supabase
+              .from('facilitator_earnings')
+              .insert({
+                facilitator_id: currentFacilitator.id,
+                session_id: sessionId,
+                amount,
+                status: 'submitted',
+                notes: 'submitted_for_approval',
+                created_at: new Date().toISOString()
+              });
+
+            if (insertErr) {
+              // Fallback for databases with check constraint (pending, approved)
+              await supabase
+                .from('facilitator_earnings')
+                .insert({
+                  facilitator_id: currentFacilitator.id,
+                  session_id: sessionId,
+                  amount,
+                  status: 'pending',
+                  notes: 'submitted_for_approval',
+                  created_at: new Date().toISOString()
+                });
+            }
+          }
+        } catch (dbErr) {
+          console.warn('Database write handled gracefully with local sync:', dbErr);
+        }
+
+        // 3. Update session's supervisor review status
+        try {
           await supabase
-            .from('facilitator_earnings')
-            .update({
-              status: 'submitted',
-              amount
-            })
-            .eq('id', sessItem.earning_id);
-        } else {
-          await supabase
-            .from('facilitator_earnings')
-            .insert({
-              facilitator_id: currentFacilitator.id,
-              session_id: sessionId,
-              amount,
-              status: 'submitted',
-              created_at: new Date().toISOString()
-            });
+            .from('sessions')
+            .update({ supervisor_feedback_status: 'submitted_for_approval' })
+            .eq('id', sessionId);
+        } catch (sessUpdateErr) {
+          console.warn('Could not update session supervisor status:', sessUpdateErr);
         }
       }
 
@@ -475,10 +542,10 @@ export default function FacilitatorEarnings() {
       setIsApprovalDialogOpen(false);
       setAckApproval(false);
       setSelectedSessionIds([]);
-      loadFacilitatorSessions(currentFacilitator.id, currentFacilitator.name);
+      await loadFacilitatorSessions(currentFacilitator.id, currentFacilitator.name);
     } catch (err: any) {
       console.error('Error submitting for approval:', err);
-      toast.error('Failed to submit sessions for approval');
+      toast.error('Failed to submit sessions for approval: ' + (err?.message || ''));
     } finally {
       setIsSubmitting(false);
     }

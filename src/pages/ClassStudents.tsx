@@ -74,6 +74,8 @@ interface Student {
   account_number?: string | null;
   ifsc_code?: string | null;
   is_active?: boolean;
+  class_id?: string | null;
+  class_name?: string | null;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
@@ -86,6 +88,10 @@ export default function ClassStudents() {
   const [classItem, setClassItem] = useState<Class | null>(null);
   const [userRole, setUserRole] = useState<number | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
+  const [allClasses, setAllClasses] = useState<Class[]>([]);
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>(
+    classId && classId !== 'all' ? classId : 'all'
+  );
   const [loading, setLoading] = useState(true);
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
   const [isEditStudentOpen, setIsEditStudentOpen] = useState(false);
@@ -169,6 +175,7 @@ export default function ClassStudents() {
   };
 
   const filteredStudents = students.filter(student => {
+    if (selectedClassFilter !== 'all' && student.class_id !== selectedClassFilter) return false;
     if (selectedAcademicYear !== 'all' && student.academic_year !== selectedAcademicYear) return false;
     if (selectedDesignation !== 'all' && student.designation !== selectedDesignation) return false;
     if (statusFilter === 'active' && student.is_active === false) return false;
@@ -178,7 +185,11 @@ export default function ClassStudents() {
       const query = searchQuery.toLowerCase().trim();
       const nameMatch = student.name?.toLowerCase().includes(query);
       const idMatch = student.student_id?.toLowerCase().includes(query);
-      if (!nameMatch && !idMatch) return false;
+      const emailMatch = student.email?.toLowerCase().includes(query);
+      const classMatch = student.class_name?.toLowerCase().includes(query);
+      const phoneMatch = student.phone_number?.toLowerCase().includes(query);
+      const rollMatch = student.roll_number?.toLowerCase().includes(query);
+      if (!nameMatch && !idMatch && !emailMatch && !classMatch && !phoneMatch && !rollMatch) return false;
     }
     
     return true;
@@ -224,30 +235,39 @@ export default function ClassStudents() {
   const isAdmin = userRole === 1;
 
   useEffect(() => {
-    if (classId) {
-      fetchClassAndStudents();
+    if (classId && classId !== 'all') {
+      setSelectedClassFilter(classId);
+    } else {
+      setSelectedClassFilter('all');
     }
+    fetchClassAndStudents();
   }, [classId]);
 
   const fetchClassAndStudents = async () => {
     try {
       setLoading(true);
       
-      // Fetch class
-      const { data: classData, error: classError } = await supabase
+      // 1. Fetch all classes for filter dropdown and mapping
+      const { data: classesData, error: classesError } = await supabase
         .from('classes')
         .select('*')
-        .eq('id', classId)
-        .single();
+        .order('name', { ascending: true });
 
-      if (classError) throw classError;
-      setClassItem(classData);
+      if (classesError) throw classesError;
+      setAllClasses(classesData || []);
+      const classMap = new Map((classesData || []).map(c => [c.id, c.name]));
 
-      // Fetch students
+      if (classId && classId !== 'all') {
+        const found = (classesData || []).find(c => c.id === classId);
+        setClassItem(found || null);
+      } else {
+        setClassItem(null);
+      }
+
+      // 2. Fetch all students across classes
       const { data: studentsData, error: studentsError } = await supabase
         .from('students')
         .select('*')
-        .eq('class_id', classId)
         .order('name', { ascending: true });
 
       if (studentsError) throw studentsError;
@@ -274,7 +294,6 @@ export default function ClassStudents() {
           if (profiles) {
             profiles.forEach((p: any) => {
               if (p.id) profileMapById.set(p.id, p.is_active);
-              // CRITICAL: NEVER map placeholder emails (e.g. bob@example.com) to prevent mass deactivation
               if (p.email && !isPlaceholderEmail(p.email)) {
                 profileMapByEmail.set(p.email.toLowerCase().trim(), p.is_active);
               }
@@ -287,12 +306,18 @@ export default function ClassStudents() {
 
       const enrichedStudents = (studentsData || []).map((student) => {
         const isActive = getStudentActiveStatus(student, profileMapById, profileMapByEmail);
+        const className = student.class_id ? (classMap.get(student.class_id) || 'Unknown Class') : 'No Class';
 
         if (student.monitor_id) {
-          const monitor = studentsData.find(s => s.id === student.monitor_id);
-          return { ...student, is_active: isActive, monitor_name: monitor ? monitor.name : 'Unknown' };
+          const monitor = (studentsData || []).find(s => s.id === student.monitor_id);
+          return {
+            ...student,
+            class_name: className,
+            is_active: isActive,
+            monitor_name: monitor ? monitor.name : 'Unknown'
+          };
         }
-        return { ...student, is_active: isActive };
+        return { ...student, class_name: className, is_active: isActive };
       });
       
       setStudents(enrichedStudents);
@@ -439,7 +464,7 @@ export default function ClassStudents() {
     );
   }
 
-  if (!classItem) {
+  if (!loading && classId && classId !== 'all' && !classItem && selectedClassFilter !== 'all') {
     return (
       <DashboardLayout>
         <div className="text-center py-12">
@@ -468,10 +493,14 @@ export default function ClassStudents() {
             </Button>
             <div className="min-w-0">
               <h1 className="text-2xl md:text-3xl font-bold text-foreground">
-                {classItem.name}
+                {selectedClassFilter === 'all'
+                  ? 'All Students'
+                  : (allClasses.find(c => c.id === selectedClassFilter)?.name || classItem?.name || 'Class Students')}
               </h1>
               <p className="text-sm md:text-base text-muted-foreground mt-1">
-                Manage students
+                {selectedClassFilter === 'all'
+                  ? 'Manage and view all students across all classes'
+                  : 'Manage students in this class'}
               </p>
             </div>
           </div>
@@ -489,6 +518,31 @@ export default function ClassStudents() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2 bg-muted/10 p-2 rounded-lg border border-border/60">
+          {/* Class Filter */}
+          <Select
+            value={selectedClassFilter}
+            onValueChange={(val) => {
+              setSelectedClassFilter(val);
+              if (val !== 'all') {
+                const found = allClasses.find(c => c.id === val);
+                setClassItem(found || null);
+              } else {
+                setClassItem(null);
+              }
+            }}
+          >
+            <SelectTrigger className="h-9 w-[170px] text-xs bg-transparent font-medium">
+              <SelectValue placeholder="All Classes" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Classes</SelectItem>
+              {allClasses.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="h-9 w-[150px] text-xs bg-transparent">
               <SelectValue placeholder="Status" />
@@ -726,6 +780,11 @@ export default function ClassStudents() {
                                 {student.is_active !== false ? 'Active' : 'Inactive'}
                               </Badge>
                             </TableCell>
+                          <TableCell className="font-medium whitespace-nowrap">
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[11px] font-semibold">
+                              {student.class_name || 'No Class'}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-sm">
                             {student.dob
                               ? new Date(student.dob).toLocaleDateString()
@@ -768,6 +827,10 @@ export default function ClassStudents() {
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="col-span-2">
+                          <span className="text-muted-foreground block">Class</span>
+                          <span className="font-semibold text-blue-700 text-xs">{student.class_name || 'No Class'}</span>
+                        </div>
                         <div>
                           <span className="text-muted-foreground block">Gender</span>
                           <span className="font-medium">{student.gender || '-'}</span>
@@ -880,7 +943,8 @@ export default function ClassStudents() {
       <AddStudentDialog
         open={isAddStudentOpen}
         onOpenChange={setIsAddStudentOpen}
-        classId={classId!}
+        classId={selectedClassFilter === 'all' ? undefined : selectedClassFilter}
+        classes={allClasses}
         onSuccess={fetchClassAndStudents}
       />
 
@@ -956,7 +1020,7 @@ export default function ClassStudents() {
         open={isAssignMonitorOpen}
         onOpenChange={setIsAssignMonitorOpen}
         student={studentForMonitor}
-        classId={classId!}
+        classId={studentForMonitor?.class_id || (selectedClassFilter !== 'all' ? selectedClassFilter : (allClasses[0]?.id || ''))}
         onSuccess={fetchClassAndStudents}
       />
 
@@ -965,7 +1029,7 @@ export default function ClassStudents() {
         open={isAuthDialogOpen}
         onOpenChange={setIsAuthDialogOpen}
         student={studentForAuth}
-        classId={classId!}
+        classId={studentForAuth?.class_id || (selectedClassFilter !== 'all' ? selectedClassFilter : (allClasses[0]?.id || ''))}
       />
     </DashboardLayout>
   );

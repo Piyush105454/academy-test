@@ -25,7 +25,8 @@ import { logActivity } from '@/utils/activityLogger';
 interface AddStudentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  classId: string;
+  classId?: string;
+  classes?: Array<{ id: string; name: string }>;
   onSuccess: () => void;
 }
 
@@ -33,9 +34,21 @@ export function AddStudentDialog({
   open,
   onOpenChange,
   classId,
+  classes = [],
   onSuccess,
 }: AddStudentDialogProps) {
   const [saving, setSaving] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState<string>(
+    classId && classId !== 'all' ? classId : (classes[0]?.id || '')
+  );
+
+  useEffect(() => {
+    if (classId && classId !== 'all') {
+      setSelectedClassId(classId);
+    } else if (classes.length > 0 && (!selectedClassId || selectedClassId === 'all')) {
+      setSelectedClassId(classes[0].id);
+    }
+  }, [classId, classes, open]);
   const [newStudent, setNewStudent] = useState({
     student_id: '',
     name: '',
@@ -172,7 +185,7 @@ export function AddStudentDialog({
         const { error: accountError } = await supabase.rpc('ensure_student_account', {
           student_email: newStudent.email.trim(),
           student_full_name: newStudent.name.trim(),
-          student_class_id: classId,
+          student_class_id: targetClassId,
           old_email: null
         });
 
@@ -253,6 +266,29 @@ export function AddStudentDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {(!classId || classId === 'all') && classes.length > 0 && (
+            <div>
+              <Label htmlFor="class_picker" className="text-sm font-semibold">
+                Class *
+              </Label>
+              <Select
+                value={selectedClassId}
+                onValueChange={setSelectedClassId}
+              >
+                <SelectTrigger id="class_picker" className="mt-1">
+                  <SelectValue placeholder="Select class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {classes.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="student_id" className="text-sm">

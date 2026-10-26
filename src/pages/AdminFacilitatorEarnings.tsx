@@ -28,6 +28,9 @@ import {
   saveStoredPayment,
   getStoredVouchers,
   saveStoredVoucher,
+  getStoredSubmissions,
+  saveStoredSubmission,
+  removeStoredSubmission,
   FacilitatorEarningStatus,
   EncashmentVoucherInfo,
   OnlinePaymentInfo
@@ -272,6 +275,9 @@ export default function AdminFacilitatorEarnings() {
             id,
             amount,
             status,
+            notes,
+            transaction_id,
+            paid_at,
             created_at,
             session_id,
             sessions (
@@ -289,6 +295,7 @@ export default function AdminFacilitatorEarnings() {
       const { startDate, endDate } = getDateRange();
       const storedPayments = getStoredPayments();
       const storedVouchers = getStoredVouchers();
+      const storedSubmissions = getStoredSubmissions();
 
       const aggregated = (facilitators || []).map((f: any) => {
         const earnings = (f.facilitator_earnings || []).filter((e: any) => {
@@ -312,7 +319,7 @@ export default function AdminFacilitatorEarnings() {
           const hasVoucher = (e as any).signed_voucher_url || !!voucherInfo;
 
           const rawStatus = (e.status || '').toLowerCase();
-          const isPaid = rawStatus === 'paid_online' || rawStatus === 'paid' || !!paymentInfo;
+          const isPaid = rawStatus === 'paid_online' || rawStatus === 'paid' || !!paymentInfo || !!(e as any).paid_at || !!(e as any).transaction_id;
           const isToPay = !isPaid && (rawStatus === 'to_pay' || rawStatus === 'encash_requested' || hasVoucher);
           const isApproved = !isPaid && !isToPay && rawStatus === 'approved';
 
@@ -396,6 +403,7 @@ export default function AdminFacilitatorEarnings() {
       const { startDate, endDate } = getDateRange();
       const storedPayments = getStoredPayments();
       const storedVouchers = getStoredVouchers();
+      const storedSubmissions = getStoredSubmissions();
       
       // Filter existing recorded earnings by academic year
       const recorded: EarningRecord[] = (data || [])
@@ -410,6 +418,7 @@ export default function AdminFacilitatorEarnings() {
           const paymentInfo = storedPayments[r.id];
           const voucherInfo = storedVouchers[r.id] || (r.session_id ? storedVouchers[r.session_id] : null);
           const voucherUrl = (r as any).signed_voucher_url || voucherInfo?.voucher_url || null;
+          const submissionInfo = storedSubmissions[r.session_id] || storedSubmissions[r.id];
 
           const sData = r.sessions ? {
             ...r.sessions,
@@ -417,15 +426,23 @@ export default function AdminFacilitatorEarnings() {
           } : undefined;
 
           const rawStatus = (r.status || '').toLowerCase();
+          const notes = ((r as any).notes || '').toLowerCase();
           let finalStatus: FacilitatorEarningStatus = 'pending';
 
-          if (rawStatus === 'paid_online' || rawStatus === 'paid' || !!paymentInfo) {
+          if (rawStatus === 'paid_online' || rawStatus === 'paid' || !!paymentInfo || !!(r as any).paid_at || !!(r as any).transaction_id) {
             finalStatus = 'paid_online';
           } else if (rawStatus === 'to_pay' || rawStatus === 'encash_requested' || !!voucherUrl) {
             finalStatus = 'to_pay';
           } else if (rawStatus === 'approved') {
             finalStatus = 'approved';
-          } else if (rawStatus === 'submitted' || rawStatus === 'pending_approval') {
+          } else if (
+            rawStatus === 'submitted' || 
+            rawStatus === 'pending_approval' || 
+            rawStatus === 'under_review' || 
+            notes.includes('submitted') || 
+            rawStatus === 'pending' || 
+            !!submissionInfo
+          ) {
             finalStatus = 'submitted';
           } else {
             finalStatus = 'pending';
@@ -483,6 +500,7 @@ export default function AdminFacilitatorEarnings() {
           const isDelayed = isSessionDelayed(s);
           const amt = calculateFacilitatorSessionAmount(s, perSessionAmount);
           const delayReason = getDelayReasonNote(s);
+          const isSubmitted = !!storedSubmissions[s.id];
           return {
             id: `unrecorded_${s.id}`,
             facilitator_id: facId,
@@ -490,7 +508,7 @@ export default function AdminFacilitatorEarnings() {
             amount: amt,
             is_delayed: isDelayed,
             delay_reason: delayReason,
-            status: 'pending',
+            status: isSubmitted ? 'submitted' : 'pending',
             created_at: s.session_date,
             approved_at: null,
             is_unrecorded: true,
@@ -521,6 +539,10 @@ export default function AdminFacilitatorEarnings() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
+      // Clean up storedSubmissions so session immediately transitions to approved
+      removeStoredSubmission(record.session_id);
+      if (record.id) removeStoredSubmission(record.id);
+
       if (record.is_unrecorded) {
         // Create new earning record in DB with the halved amount if delayed
         const { error } = await supabase
@@ -530,6 +552,7 @@ export default function AdminFacilitatorEarnings() {
             session_id: record.session_id,
             amount: record.amount,
             status: 'approved',
+            notes: null,
             approved_at: new Date().toISOString(),
             approved_by: user?.id
           });
@@ -541,6 +564,7 @@ export default function AdminFacilitatorEarnings() {
           .update({
             amount: record.amount,
             status: 'approved',
+            notes: null,
             approved_at: new Date().toISOString(),
             approved_by: user?.id
           })
@@ -548,7 +572,7 @@ export default function AdminFacilitatorEarnings() {
         if (error) throw error;
       }
 
-      toast.success('Earning approved successfully');
+      toast.success('Earning approved successfully (Available to Encash)');
       
       if (selectedFacilitator) {
         fetchFacilitatorRecords(selectedFacilitator.id, selectedFacilitator.name);
@@ -673,7 +697,9 @@ export default function AdminFacilitatorEarnings() {
         const { error } = await supabase
           .from('facilitator_earnings')
           .update({
-            status: revertStatus
+            status: revertStatus,
+            transaction_id: null,
+            paid_at: null
           })
           .eq('id', undoTargetRecord.id);
 
@@ -681,7 +707,9 @@ export default function AdminFacilitatorEarnings() {
           await supabase
             .from('facilitator_earnings')
             .update({
-              status: 'approved'
+              status: 'approved',
+              transaction_id: null,
+              paid_at: null
             })
             .eq('id', undoTargetRecord.id);
         }
@@ -803,6 +831,9 @@ export default function AdminFacilitatorEarnings() {
             .from('facilitator_earnings')
             .update({
               status: 'paid_online',
+              transaction_id: transactionIdInput.trim(),
+              paid_at: payDateInput,
+              notes: payNotesInput.trim() || undefined,
               approved_at: new Date().toISOString()
             })
             .in('id', ids);
@@ -812,6 +843,9 @@ export default function AdminFacilitatorEarnings() {
               .from('facilitator_earnings')
               .update({
                 status: 'approved',
+                transaction_id: transactionIdInput.trim(),
+                paid_at: payDateInput,
+                notes: payNotesInput.trim() || undefined,
                 approved_at: new Date().toISOString()
               })
               .in('id', ids);
@@ -835,7 +869,10 @@ export default function AdminFacilitatorEarnings() {
             facilitator_id: payOnlineTarget.facilitatorId || selectedFacilitator!.id,
             session_id: payOnlineTarget.sessionId,
             amount: payAmountInput,
-            status: 'paid_online',
+            status: 'approved',
+            transaction_id: transactionIdInput.trim(),
+            paid_at: payDateInput,
+            notes: payNotesInput.trim() || undefined,
             approved_at: new Date().toISOString(),
             approved_by: user?.id
           })
@@ -856,6 +893,9 @@ export default function AdminFacilitatorEarnings() {
           .from('facilitator_earnings')
           .update({
             status: 'paid_online',
+            transaction_id: transactionIdInput.trim(),
+            paid_at: payDateInput,
+            notes: payNotesInput.trim() || undefined,
             approved_at: new Date().toISOString()
           })
           .eq('id', payOnlineTarget.earningId);
@@ -865,6 +905,9 @@ export default function AdminFacilitatorEarnings() {
             .from('facilitator_earnings')
             .update({
               status: 'approved',
+              transaction_id: transactionIdInput.trim(),
+              paid_at: payDateInput,
+              notes: payNotesInput.trim() || undefined,
               approved_at: new Date().toISOString()
             })
             .eq('id', payOnlineTarget.earningId);

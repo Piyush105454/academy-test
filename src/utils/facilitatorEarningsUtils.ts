@@ -157,3 +157,42 @@ export const saveStoredVoucher = (info: EncashmentVoucherInfo) => {
   }
 };
 
+export interface FacilitatorSubmissionInfo {
+  session_id: string;
+  facilitator_id?: string;
+  amount?: number;
+  submitted_at: string;
+}
+
+const SUBMISSIONS_STORAGE_KEY = 'facilitator_approval_submissions_v2';
+
+export const getStoredSubmissions = (): Record<string, FacilitatorSubmissionInfo> => {
+  try {
+    const data = localStorage.getItem(SUBMISSIONS_STORAGE_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+export const saveStoredSubmission = (info: FacilitatorSubmissionInfo) => {
+  try {
+    const current = getStoredSubmissions();
+    current[info.session_id] = info;
+    localStorage.setItem(SUBMISSIONS_STORAGE_KEY, JSON.stringify(current));
+  } catch (e) {
+    console.error('Error saving stored submission:', e);
+  }
+};
+
+export const removeStoredSubmission = (sessionId: string) => {
+  try {
+    const current = getStoredSubmissions();
+    delete current[sessionId];
+    localStorage.setItem(SUBMISSIONS_STORAGE_KEY, JSON.stringify(current));
+  } catch (e) {
+    console.error('Error removing stored submission:', e);
+  }
+};
+
+
