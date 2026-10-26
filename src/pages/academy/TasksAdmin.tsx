@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Calendar, Clock, Plus, Users, Award, FileText, Settings2, MoreHorizontal, X, Edit, Trash2 } from "lucide-react";
+import { Calendar, Clock, Plus, Users, Award, FileText, Settings2, MoreHorizontal, X, Edit, Trash2, Search, RotateCcw, ArrowUpDown, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from '@/integrations/supabase/client';
 
@@ -542,27 +542,418 @@ export default function TasksAdmin() {
     }
   };
 
+  // ==================== FILTER & SORT STATES ====================
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterOccurrence, setFilterOccurrence] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterProgress, setFilterProgress] = useState("all");
+  const [filterAssignee, setFilterAssignee] = useState("all");
+  const [filterCategory, setFilterCategory] = useState("all");
+  const [filterTimeframe, setFilterTimeframe] = useState("all");
+  const [sortBy, setSortBy] = useState("newest");
+
+  // Pre-calculate progress & assignment info for each template
+  const processedTemplates = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    return templates.map((task) => {
+      const assignments = task.academy_task_assignments || [];
+      const assignedNames = assignments.map(a => a.user_profiles?.full_name).filter(Boolean) as string[];
+      const assignedFacIds = assignments.map(a => a.facilitator_id).filter(Boolean);
+      const isAllFacilitators = assignments.length === 0;
+      const assignedText = isAllFacilitators ? "All Facilitators" : assignedNames.join(', ');
+
+      const isEnded = Boolean(task.end_date && new Date(task.end_date) < new Date());
+
+      let todayPending = 0;
+      let todaySubmitted = 0;
+      assignments.forEach((a) => {
+        const todayTasks = (a.academy_tasks || []).filter(t => t.task_date === todayStr);
+        todayTasks.forEach(t => {
+          if (t.status === 'pending') todayPending++;
+          if (t.status === 'submitted' || t.status === 'approved') todaySubmitted++;
+        });
+      });
+      const totalToday = todayPending + todaySubmitted;
+
+      let occurrenceText = task.recurrence;
+      if (task.recurrence !== 'onetime' && task.recurrence_rule) {
+        const daysMap: Record<string, string> = { '1': 'M', '2': 'T', '3': 'W', '4': 'Th', '5': 'F', '6': 'Sa', '7': 'Su' };
+        const daysArr = task.recurrence_rule.split(',').map((d: string) => daysMap[d]);
+        occurrenceText += ` (${daysArr.join(', ')})`;
+      }
+
+      return {
+        ...task,
+        assignedText,
+        assignedNames,
+        assignedFacIds,
+        isAllFacilitators,
+        isEnded,
+        todayPending,
+        todaySubmitted,
+        totalToday,
+        occurrenceText,
+      };
+    });
+  }, [templates]);
+
+  // Unique category options from templates
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    templates.forEach(t => {
+      if (t.category) set.add(t.category);
+    });
+    return Array.from(set).sort();
+  }, [templates]);
+
+  // Unique assignee options from templates and facilitators list
+  const assigneeOptions = useMemo(() => {
+    const map = new Map<string, string>(); // facilitator_id -> full_name
+    templates.forEach(t => {
+      (t.academy_task_assignments || []).forEach(a => {
+        if (a.facilitator_id && a.user_profiles?.full_name) {
+          map.set(a.facilitator_id, a.user_profiles.full_name);
+        }
+      });
+    });
+    facilitators.forEach(f => {
+      if (f.id && f.full_name) {
+        map.set(f.id, f.full_name);
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [templates, facilitators]);
+
+  // Filtered & sorted templates
+  const filteredTemplates = useMemo(() => {
+    let result = processedTemplates;
+
+    // 1. Search Query (Name, Category, Description, Assigned Text)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(item => 
+        item.name?.toLowerCase().includes(q) ||
+        item.category?.toLowerCase().includes(q) ||
+        item.description?.toLowerCase().includes(q) ||
+        item.assignedText?.toLowerCase().includes(q) ||
+        item.occurrenceText?.toLowerCase().includes(q)
+      );
+    }
+
+    // 2. Occurrence Filter
+    if (filterOccurrence !== 'all') {
+      result = result.filter(item => item.recurrence === filterOccurrence);
+    }
+
+    // 3. Status Filter (Published / Ended)
+    if (filterStatus === 'published') {
+      result = result.filter(item => !item.isEnded);
+    } else if (filterStatus === 'ended') {
+      result = result.filter(item => item.isEnded);
+    }
+
+    // 4. Today's Progress Filter
+    if (filterProgress === 'active_today') {
+      result = result.filter(item => item.totalToday > 0);
+    } else if (filterProgress === 'submitted_today') {
+      result = result.filter(item => item.todaySubmitted > 0);
+    } else if (filterProgress === 'pending_today') {
+      result = result.filter(item => item.todayPending > 0);
+    } else if (filterProgress === 'no_tasks_today') {
+      result = result.filter(item => item.totalToday === 0);
+    }
+
+    // 5. Assigned To Filter
+    if (filterAssignee === 'all_facilitators') {
+      result = result.filter(item => item.isAllFacilitators);
+    } else if (filterAssignee !== 'all') {
+      result = result.filter(item => 
+        item.isAllFacilitators || item.assignedFacIds.includes(filterAssignee)
+      );
+    }
+
+    // 6. Category Filter
+    if (filterCategory !== 'all') {
+      result = result.filter(item => item.category?.toLowerCase() === filterCategory.toLowerCase());
+    }
+
+    // 7. Timeframe Filter (Creation Date)
+    if (filterTimeframe === 'today') {
+      const todayStr = new Date().toDateString();
+      result = result.filter(item => item.created_at && new Date(item.created_at).toDateString() === todayStr);
+    } else if (filterTimeframe === 'last_7_days') {
+      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      result = result.filter(item => item.created_at && new Date(item.created_at) >= cutoff);
+    } else if (filterTimeframe === 'last_30_days') {
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      result = result.filter(item => item.created_at && new Date(item.created_at) >= cutoff);
+    } else if (filterTimeframe === 'this_month') {
+      const now = new Date();
+      result = result.filter(item => {
+        if (!item.created_at) return false;
+        const d = new Date(item.created_at);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      });
+    }
+
+    // 8. Sorting
+    const sorted = [...result];
+    if (sortBy === 'newest') {
+      sorted.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    } else if (sortBy === 'oldest') {
+      sorted.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+    } else if (sortBy === 'name_asc') {
+      sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    } else if (sortBy === 'name_desc') {
+      sorted.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+    } else if (sortBy === 'reward_high') {
+      sorted.sort((a, b) => (b.base_reward_amount || 0) - (a.base_reward_amount || 0));
+    } else if (sortBy === 'reward_low') {
+      sorted.sort((a, b) => (a.base_reward_amount || 0) - (b.base_reward_amount || 0));
+    } else if (sortBy === 'due_time') {
+      sorted.sort((a, b) => (a.due_time || '').localeCompare(b.due_time || ''));
+    }
+
+    return sorted;
+  }, [
+    processedTemplates,
+    searchQuery,
+    filterOccurrence,
+    filterStatus,
+    filterProgress,
+    filterAssignee,
+    filterCategory,
+    filterTimeframe,
+    sortBy,
+  ]);
+
+  const activeFiltersCount = [
+    searchQuery.trim() !== '',
+    filterOccurrence !== 'all',
+    filterStatus !== 'all',
+    filterProgress !== 'all',
+    filterAssignee !== 'all',
+    filterCategory !== 'all',
+    filterTimeframe !== 'all',
+  ].filter(Boolean).length;
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setFilterOccurrence('all');
+    setFilterStatus('all');
+    setFilterProgress('all');
+    setFilterAssignee('all');
+    setFilterCategory('all');
+    setFilterTimeframe('all');
+    setSortBy('newest');
+  };
+
   if (!isCreating) {
     return (
       <DashboardLayout>
-        <div className="p-6 max-w-6xl mx-auto space-y-6">
-          <div className="flex justify-between items-center mb-6">
+        <div className="p-6 max-w-7xl mx-auto space-y-6">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Work & Templates</h1>
-              <p className="text-sm text-slate-500 mt-1">Manage recurring work templates and assignments.</p>
+              <h1 className="text-2xl font-bold text-slate-900">Tasks & Templates</h1>
+              <p className="text-sm text-slate-500 mt-1">Manage recurring task templates and assignments.</p>
             </div>
-            <Button onClick={handleOpenCreate} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+            <Button onClick={handleOpenCreate} className="bg-blue-600 hover:bg-blue-700 text-white gap-2 shadow-sm shrink-0">
               <Plus className="h-4 w-4" />
-              Create Work
+              Create Task
             </Button>
           </div>
 
+          {/* Filter Bar */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 space-y-3">
+            {/* Top row: Search input + count summary + clear reset */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder="Search task name, category, assignee..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 pr-8 h-9 text-sm bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+                />
+                {searchQuery && (
+                  <button 
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    title="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 justify-between sm:justify-end">
+                <span className="text-xs text-slate-500 font-medium">
+                  Showing <strong className="text-slate-800">{filteredTemplates.length}</strong> of {templates.length} templates
+                </span>
+                {activeFiltersCount > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={handleResetFilters}
+                    className="h-8 px-2.5 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 gap-1.5"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Reset ({activeFiltersCount})
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Bottom row: Filter Select Dropdowns */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5 pt-3 border-t border-slate-100">
+              {/* 1. Occurrence Filter */}
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <Clock className="h-3 w-3 text-slate-400" /> Occurrence
+                </Label>
+                <Select value={filterOccurrence} onValueChange={setFilterOccurrence}>
+                  <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                    <SelectValue placeholder="Occurrence" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Occurrences</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="onetime">One-time</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 2. Template Status Filter */}
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block"></span> Status
+                </Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="published">🟢 Published</SelectItem>
+                    <SelectItem value="ended">🔴 Ended</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 3. Today's Progress Filter */}
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3 text-slate-400" /> Progress
+                </Label>
+                <Select value={filterProgress} onValueChange={setFilterProgress}>
+                  <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                    <SelectValue placeholder="Today's Progress" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Progress</SelectItem>
+                    <SelectItem value="active_today">⚡ Active Today</SelectItem>
+                    <SelectItem value="submitted_today">✓ Submitted Today</SelectItem>
+                    <SelectItem value="pending_today">⌛ Pending Today</SelectItem>
+                    <SelectItem value="no_tasks_today">⚪ No Tasks Today</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 4. Assigned To Filter */}
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <Users className="h-3 w-3 text-slate-400" /> Assigned To
+                </Label>
+                <Select value={filterAssignee} onValueChange={setFilterAssignee}>
+                  <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                    <SelectValue placeholder="Assigned To" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-56">
+                    <SelectItem value="all">All Assignees</SelectItem>
+                    <SelectItem value="all_facilitators">🌐 All Facilitators (Open)</SelectItem>
+                    {assigneeOptions.map(fac => (
+                      <SelectItem key={fac.id} value={fac.id}>
+                        {fac.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 5. Category Filter */}
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <FileText className="h-3 w-3 text-slate-400" /> Category
+                </Label>
+                <Select value={filterCategory} onValueChange={setFilterCategory}>
+                  <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {categoryOptions.map(cat => (
+                      <SelectItem key={cat} value={cat}>
+                        <span className="capitalize">{cat}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 6. Creation Date Filter */}
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <Calendar className="h-3 w-3 text-slate-400" /> Created
+                </Label>
+                <Select value={filterTimeframe} onValueChange={setFilterTimeframe}>
+                  <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                    <SelectValue placeholder="Created" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="last_7_days">Last 7 Days</SelectItem>
+                    <SelectItem value="last_30_days">Last 30 Days</SelectItem>
+                    <SelectItem value="this_month">This Month</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 7. Sort By Filter */}
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <ArrowUpDown className="h-3 w-3 text-slate-400" /> Sort By
+                </Label>
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                    <SelectValue placeholder="Sort" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Newest First</SelectItem>
+                    <SelectItem value="oldest">Oldest First</SelectItem>
+                    <SelectItem value="name_asc">Name (A-Z)</SelectItem>
+                    <SelectItem value="name_desc">Name (Z-A)</SelectItem>
+                    <SelectItem value="reward_high">Reward (High to Low)</SelectItem>
+                    <SelectItem value="reward_low">Reward (Low to High)</SelectItem>
+                    <SelectItem value="due_time">Due Time</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Table Container */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
                 <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-medium">
                   <tr>
-                    <th className="px-6 py-4">Work Name & Details</th>
+                    <th className="px-6 py-4">Task Name & Details</th>
                     <th className="px-6 py-4">Creation Date</th>
                     <th className="px-6 py-4">Occurrence & Deadline</th>
                     <th className="px-6 py-4">Template Status</th>
@@ -574,46 +965,44 @@ export default function TasksAdmin() {
                 <tbody className="divide-y divide-slate-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-slate-500">Loading templates...</td>
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                        <div className="flex items-center justify-center gap-2">
+                          <Clock className="h-4 w-4 animate-spin text-blue-600" />
+                          <span>Loading templates...</span>
+                        </div>
+                      </td>
                     </tr>
-                  ) : templates.length === 0 ? (
+                  ) : filteredTemplates.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-slate-500">No work templates found. Click 'Create Work' to add one.</td>
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                        {templates.length === 0 ? (
+                          <p>No work templates found. Click 'Create Task' to add one.</p>
+                        ) : (
+                          <div className="space-y-3">
+                            <p className="font-medium text-slate-700">No task templates match the selected filters.</p>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={handleResetFilters}
+                              className="text-xs gap-1.5"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Clear All Filters
+                            </Button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ) : (
-                    templates.map((task) => {
-                      const assignments = task.academy_task_assignments || [];
-                      
-                      let assignedText = "All Facilitators";
-                      if (assignments.length > 0) {
-                        assignedText = assignments.map((a: TaskAssignment) => a.user_profiles?.full_name).filter(Boolean).join(', ');
-                      }
-
-                      // Occurrence logic
-                      let occurrenceText = task.recurrence;
-                      if (task.recurrence !== 'onetime' && task.recurrence_rule) {
-                        const daysMap: Record<string, string> = { '1': 'M', '2': 'T', '3': 'W', '4': 'Th', '5': 'F', '6': 'Sa', '7': 'Su' };
-                        const daysArr = task.recurrence_rule.split(',').map((d: string) => daysMap[d]);
-                        occurrenceText += ` (${daysArr.join(', ')})`;
-                      }
-
-                      // Status Logic (Published vs Ended)
-                      const isEnded = task.end_date && new Date(task.end_date) < new Date();
-                      
-                      // Today's Progress Logic
-                      const todayStr = new Date().toISOString().split('T')[0];
-                      let todayPending = 0;
-                      let todaySubmitted = 0;
-                      
-                      assignments.forEach((a: TaskAssignment) => {
-                        const todayTasks = (a.academy_tasks || []).filter((t: { status: string; task_date: string }) => t.task_date === todayStr);
-                        todayTasks.forEach((t: { status: string }) => {
-                          if (t.status === 'pending') todayPending++;
-                          if (t.status === 'submitted' || t.status === 'approved') todaySubmitted++;
-                        });
-                      });
-
-                      const totalToday = todayPending + todaySubmitted;
+                    filteredTemplates.map((task) => {
+                      const {
+                        assignedText,
+                        occurrenceText,
+                        isEnded,
+                        todayPending,
+                        todaySubmitted,
+                        totalToday,
+                      } = task;
 
                       return (
                         <tr key={task.id} className="hover:bg-slate-50 transition-colors">
@@ -622,7 +1011,7 @@ export default function TasksAdmin() {
                             <div className="text-xs text-slate-500 capitalize">{task.category} • ₹{task.base_reward_amount}</div>
                           </td>
                           <td className="px-6 py-4 text-slate-600">
-                            {new Date(task.created_at).toLocaleDateString('en-GB')}
+                            {task.created_at ? new Date(task.created_at).toLocaleDateString('en-GB') : '-'}
                           </td>
                           <td className="px-6 py-4">
                             <div className="inline-flex px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-md capitalize">
