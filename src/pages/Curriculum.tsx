@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Trash2, Upload, MoreVertical, Plus, Search, ListTodo, RefreshCcw, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -190,11 +190,57 @@ const getCategorySortOrder = (name: string): number => {
   return 99;
 };
 
+const resolveCurriculumUrl = (
+  rawUrl: string | null | undefined,
+  type: 'video' | 'quiz' | 'material'
+): string | null => {
+  if (!rawUrl) return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed || trimmed === '-' || trimmed === '#') return null;
+
+  // If already absolute http/https
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+
+  // If starts with domain like drive.google.com, docs.google.com, youtube.com, youtu.be, www.
+  if (
+    trimmed.startsWith('www.') ||
+    trimmed.startsWith('drive.google.com') ||
+    trimmed.startsWith('docs.google.com') ||
+    trimmed.startsWith('youtube.com') ||
+    trimmed.startsWith('youtu.be')
+  ) {
+    return `https://${trimmed}`;
+  }
+
+  // If it's a domain with a slash like example.com/xyz
+  if (/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}\//.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+
+  // If it's a Google Drive file name or media file (.mp4, .mov, .pptx, .ppt, .pdf, .docx, or starts with Copy of / T16)
+  const isFileName = /\.(mp4|mov|mkv|webm|pptx|ppt|pdf|docx|doc|xlsx|csv)$/i.test(trimmed) || trimmed.startsWith('Copy of ') || /^T\d+/i.test(trimmed);
+  if (isFileName) {
+    // Open Google Drive search for this file name
+    return `https://drive.google.com/drive/search?q=${encodeURIComponent(trimmed)}`;
+  }
+
+  // If it's a video search title (e.g. YouTube video title)
+  if (type === 'video') {
+    return `https://www.youtube.com/results?search_query=${encodeURIComponent(trimmed)}`;
+  }
+
+  // If it's a quiz or material title
+  return `https://drive.google.com/drive/search?q=${encodeURIComponent(trimmed)}`;
+};
+
 export default function Curriculum({ isStudent = false }: { isStudent?: boolean }) {
   const { user } = useAuth();
+  const isPublic = !user;
   const [curriculum, setCurriculum] = useState<CurriculumItem[]>([]);
-  const [filteredCurriculum, setFilteredCurriculum] = useState<CurriculumItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [classesLoading, setClassesLoading] = useState(true);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isAddTopicOpen, setIsAddTopicOpen] = useState(false);
@@ -206,6 +252,8 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
   const [showVolunteerSuggestions, setShowVolunteerSuggestions] = useState(false);
 
   useEffect(() => {
+    if (!isPublic) return;
+
     const fetchAllVolunteers = async () => {
       try {
         const { data: volData } = await supabase
@@ -233,7 +281,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     };
 
     fetchAllVolunteers();
-  }, []);
+  }, [isPublic]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -286,7 +334,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedClass, setSelectedClass] = useState<string>('');
-  const [selectedSubject, setSelectedSubject] = useState<string>('');
+  const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [selectedModule, setSelectedModule] = useState<string>('all');
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -333,7 +381,6 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const { selectedYear, getDateRange } = useAcademicYear();
-  const isPublic = !user;
 
   const getFilteredSessions = (sessions?: Array<{ id: string; date: string; volunteer: string; status: string }>) => {
     if (!sessions) return [];
@@ -432,16 +479,20 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
   }, [isStudent, user?.email]);
 
   useEffect(() => {
-    // When class changes, fetch subjects for that class & reset subject filter
+    // When class changes, fetch subjects for that class & reset all filters to show all curriculum
     if (selectedClass) {
       fetchSubjects(selectedClass);
-      setSelectedSubject('');
+      setSelectedSubject('all');
       setSelectedCategory('all');
+      setSelectedModule('all');
+      setSelectedTopic('all');
+      setStatusFilter('all');
+      setSessionTypeFilter('all');
+      setSessionCategoryFilter('all');
       fetchCurriculum(selectedClass);
       fetchSessionInfo(selectedClass);
     } else {
       setCurriculum([]);
-      setFilteredCurriculum([]);
       setSessionInfo({});
       setSubjects([]);
     }
@@ -489,7 +540,39 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     }
   }, [publicVolunteerSearch, isPublic, curriculum, sessionInfo]);
 
-  useEffect(() => {
+  const availableModules = useMemo(() => {
+    let list = curriculum;
+    if (isPublic) {
+      list = list.filter((item) => !isSubjectHiddenInPublic(item.subject_name || ''));
+    }
+    if (selectedSubject && selectedSubject !== 'all') {
+      list = list.filter((item) => item.subject_id === selectedSubject);
+    }
+    if (selectedCategory && selectedCategory !== 'all') {
+      list = list.filter((item) => item.content_category === selectedCategory);
+    }
+    return [...new Set(list.map((item) => item.module_title).filter(Boolean))].sort();
+  }, [curriculum, isPublic, selectedSubject, selectedCategory]);
+
+  const availableTopics = useMemo(() => {
+    let list = curriculum;
+    if (isPublic) {
+      list = list.filter((item) => !isSubjectHiddenInPublic(item.subject_name || ''));
+    }
+    if (selectedSubject && selectedSubject !== 'all') {
+      list = list.filter((item) => item.subject_id === selectedSubject);
+    }
+    if (selectedCategory && selectedCategory !== 'all') {
+      list = list.filter((item) => item.content_category === selectedCategory);
+    }
+    if (selectedModule && selectedModule !== 'all') {
+      list = list.filter((item) => item.module_title === selectedModule);
+    }
+    return [...new Set(list.map((item) => item.topic_title).filter(Boolean))].sort();
+  }, [curriculum, isPublic, selectedSubject, selectedCategory, selectedModule]);
+
+  // Derived synchronously with useMemo to eliminate "No curriculum items" flashes on load
+  const filteredCurriculum = useMemo(() => {
     let filtered = curriculum;
     
     if (isPublic) {
@@ -500,15 +583,15 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
       filtered = filtered.filter((item) => item.subject_id === selectedSubject);
     }
 
-    if (selectedCategory !== 'all') {
+    if (selectedCategory && selectedCategory !== 'all') {
       filtered = filtered.filter((item) => item.content_category === selectedCategory);
     }
 
-    if (selectedModule !== 'all') {
+    if (selectedModule && selectedModule !== 'all') {
       filtered = filtered.filter((item) => item.module_title === selectedModule);
     }
 
-    if (selectedTopic !== 'all') {
+    if (selectedTopic && selectedTopic !== 'all') {
       filtered = filtered.filter((item) => item.topic_title === selectedTopic);
     }
 
@@ -517,9 +600,9 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
       filtered = filtered.filter((item) => {
         const info = getSessionInfo(item.topic_title);
         if (statusFilter === 'fresh') {
-          return info?.fresh_status === statusFilter || info?.fresh_count > 0;
+          return info?.fresh_status === statusFilter || (info?.fresh_count ?? 0) > 0;
         } else if (statusFilter === 'revision') {
-          return info?.revision_status === statusFilter || info?.revision_count > 0;
+          return info?.revision_status === statusFilter || (info?.revision_count ?? 0) > 0;
         }
         return info?.fresh_status === statusFilter || info?.revision_status === statusFilter;
       });
@@ -530,9 +613,9 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
       filtered = filtered.filter((item) => {
         const info = getSessionInfo(item.topic_title);
         if (sessionTypeFilter === 'fresh') {
-          return info?.fresh_count > 0;
+          return (info?.fresh_count ?? 0) > 0;
         } else if (sessionTypeFilter === 'revision') {
-          return info?.revision_count > 0;
+          return (info?.revision_count ?? 0) > 0;
         }
         return true;
       });
@@ -542,7 +625,6 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     if (sessionCategoryFilter !== 'all') {
       filtered = filtered.filter((item) => {
         const info = getSessionInfo(item.topic_title);
-        // Check if there are ANY sessions of the selected type for this topic
         return (info as any)?.session_types?.has(sessionCategoryFilter);
       });
     }
@@ -604,8 +686,8 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
       });
     }
     
-    setFilteredCurriculum(filtered);
-  }, [selectedCategory, selectedSubject, selectedModule, selectedTopic, curriculum, searchQuery, sessionInfo, statusFilter, sessionTypeFilter, sortColumn, sortDirection, isPublic, publicVolunteerSearch]);
+    return filtered;
+  }, [curriculum, isPublic, selectedSubject, selectedCategory, selectedModule, selectedTopic, statusFilter, sessionTypeFilter, sessionCategoryFilter, searchQuery, publicVolunteerSearch, sessionInfo, sortColumn, sortDirection]);
 
   const fetchCurriculum = async (classId?: string) => {
     try {
@@ -664,6 +746,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
 
   const fetchClasses = async () => {
     try {
+      setClassesLoading(true);
       const { data, error } = await (supabase as any)
         .from('classes')
         .select('id, name')
@@ -675,6 +758,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
       const classList = data || [];
       setClasses(classList);
 
+      let targetClassId = '';
       if (isStudent && user?.email) {
         const { data: student } = await supabase
           .from('students')
@@ -683,25 +767,30 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
           .limit(1)
           .maybeSingle();
         if (student?.class_id) {
-          setSelectedClass(student.class_id);
-          return;
+          targetClassId = student.class_id;
         }
       }
 
       // Auto-select "WES Fellows" class if available
-      if (!selectedClass) {
+      if (!targetClassId && !selectedClass) {
         const wesFellows = classList.find((c: Class) =>
           c.name.toLowerCase().includes('wes fellow')
         );
         if (wesFellows) {
-          setSelectedClass(wesFellows.id);
+          targetClassId = wesFellows.id;
         } else if (classList.length > 0) {
-          setSelectedClass(classList[0].id);
+          targetClassId = classList[0].id;
         }
+      }
+
+      if (targetClassId) {
+        setSelectedClass(targetClassId);
       }
     } catch (error) {
       console.error('Error fetching classes:', error);
       toast.error('Failed to load classes');
+    } finally {
+      setClassesLoading(false);
     }
   };
 
@@ -724,7 +813,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     }
   };
 
-  const fetchSessionInfo = async (classId?: string) => {
+  const fetchSessionInfo = async (classId?: string, overrideClasses?: Class[]) => {
     try {
       // Only fetch if a class is selected
       if (!classId) {
@@ -733,10 +822,20 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
       }
 
       // Get the class name from the selected class ID
-      const selectedClassObj = classes.find(c => c.id === classId);
+      const list = overrideClasses && overrideClasses.length > 0 ? overrideClasses : classes;
+      let selectedClassObj = list.find(c => c.id === classId);
       if (!selectedClassObj) {
-        setSessionInfo({});
-        return;
+        const { data: clsData } = await (supabase as any)
+          .from('classes')
+          .select('id, name')
+          .eq('id', classId)
+          .maybeSingle();
+        if (clsData) {
+          selectedClassObj = clsData;
+        } else {
+          setSessionInfo({});
+          return;
+        }
       }
 
       // Fetch sessions filtered by class_batch (class name) and academic year
@@ -1350,7 +1449,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Modules</SelectItem>
-                {[...new Set(filteredCurriculum.map(item => item.module_title).filter(Boolean))].sort().map((module) => (
+                {availableModules.map((module) => (
                   <SelectItem key={module} value={module}>
                     {module}
                   </SelectItem>
@@ -1369,7 +1468,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Topics</SelectItem>
-                {[...new Set(filteredCurriculum.map(item => item.topic_title).filter(Boolean))].sort().map((topic) => (
+                {availableTopics.map((topic) => (
                   <SelectItem key={topic} value={topic}>
                     {topic}
                   </SelectItem>
@@ -1397,9 +1496,28 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
             </div>
           )}
 
-          {(selectedCategory !== 'all' || selectedClass !== '' || selectedSubject !== '' || statusFilter !== 'all' || sessionTypeFilter !== 'all' || searchQuery.trim()) && (
-            <div className="text-sm text-muted-foreground">
-              Showing {filteredCurriculum.length} item{filteredCurriculum.length !== 1 ? 's' : ''}
+          {!loading && !classesLoading && (selectedCategory !== 'all' || selectedClass !== '' || selectedSubject !== 'all' || selectedModule !== 'all' || selectedTopic !== 'all' || statusFilter !== 'all' || sessionTypeFilter !== 'all' || sessionCategoryFilter !== 'all' || searchQuery.trim()) && (
+            <div className="text-sm text-muted-foreground flex items-center gap-2">
+              <span>Showing {filteredCurriculum.length} item{filteredCurriculum.length !== 1 ? 's' : ''}</span>
+              {(selectedCategory !== 'all' || selectedSubject !== 'all' || selectedModule !== 'all' || selectedTopic !== 'all' || statusFilter !== 'all' || sessionTypeFilter !== 'all' || sessionCategoryFilter !== 'all' || searchQuery.trim()) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs text-primary px-2"
+                  onClick={() => {
+                    setSelectedSubject('all');
+                    setSelectedCategory('all');
+                    setSelectedModule('all');
+                    setSelectedTopic('all');
+                    setStatusFilter('all');
+                    setSessionTypeFilter('all');
+                    setSessionCategoryFilter('all');
+                    setSearchQuery('');
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -1410,9 +1528,10 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
             <CardTitle>All Curriculum Items</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <div className="flex justify-center py-8">
+            {loading || classesLoading ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p className="text-sm text-muted-foreground">Loading curriculum topics...</p>
               </div>
             ) : !selectedClass ? (
               <div className="text-center py-12">
@@ -1423,7 +1542,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
             ) : curriculum.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-sm md:text-base text-muted-foreground mb-4">
-                  No curriculum items yet. Import data to get started!
+                  No curriculum items yet for this class. Import data to get started!
                 </p>
                 <Button onClick={() => setIsImportOpen(true)}>
                   <Upload className="h-4 w-4 mr-2" />
@@ -1433,8 +1552,25 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
             ) : filteredCurriculum.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-sm md:text-base text-muted-foreground mb-4">
-                  No curriculum items found for the selected category.
+                  No curriculum items match your selected filters.
                 </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedSubject('all');
+                    setSelectedCategory('all');
+                    setSelectedModule('all');
+                    setSelectedTopic('all');
+                    setStatusFilter('all');
+                    setSessionTypeFilter('all');
+                    setSessionCategoryFilter('all');
+                    setSearchQuery('');
+                  }}
+                >
+                  <RefreshCcw className="h-4 w-4 mr-2" />
+                  Reset Filters
+                </Button>
               </div>
             ) : (
               <>
@@ -1505,48 +1641,59 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                           <TableCell className="font-medium"><TruncatedText text={item.module_title} maxLength={25} /></TableCell>
                           <TableCell className="max-w-[200px]"><TruncatedText text={item.topic_title} maxLength={25} /></TableCell>
                           <TableCell>
-                            {item.videos ? (
-                              <a
-                                href={item.videos}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline"
-                              >
-                                🎥 View
-                              </a>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {item.quiz_content_ppt ? (
-                              <a
-                                href={item.quiz_content_ppt}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline"
-                              >
-                                📊 View
-                              </a>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                            <TableCell>
-                              {item.material_link ? (
+                            {(() => {
+                              const videoUrl = resolveCurriculumUrl(item.videos, 'video');
+                              return videoUrl ? (
                                 <a
-                                  href={item.material_link}
+                                  href={videoUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-primary hover:underline"
+                                  className="text-primary hover:underline font-medium inline-flex items-center gap-1"
+                                >
+                                  🎥 View
+                                </a>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const quizUrl = resolveCurriculumUrl(item.quiz_content_ppt, 'quiz');
+                              return quizUrl ? (
+                                <a
+                                  href={quizUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline font-medium inline-flex items-center gap-1"
+                                >
+                                  📊 View
+                                </a>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const matUrl = resolveCurriculumUrl(item.material_link, 'material');
+                              return matUrl ? (
+                                <a
+                                  href={matUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline font-medium"
                                 >
                                   <div className="flex items-center gap-1">
                                     <FileText className="h-4 w-4 text-purple-500" />
                                     <span>View</span>
                                   </div>
                                 </a>
-                              ) : '-'}
-                            </TableCell>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              );
+                            })()}
+                          </TableCell>
                           <TableCell>
                             {(() => {
                               const info = getSessionInfo(item.topic_title);
@@ -1730,48 +1877,56 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                       </div>
 
                       {/* Videos */}
-                      {item.videos && (
-                        <div className="text-xs">
-                          <a
-                            href={item.videos}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline font-medium"
-                          >
-                            🎥 View Videos →
-                          </a>
-                        </div>
-                      )}
-
-                      {/* Quiz */}
-                      {item.quiz_content_ppt && (
-                        <div className="text-xs">
-                          <a
-                            href={item.quiz_content_ppt}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline font-medium"
-                          >
-                            📊 View Quiz →
-                          </a>
-                        </div>
-                      )}
-
-                        {item.material_link && (
+                      {(() => {
+                        const videoUrl = resolveCurriculumUrl(item.videos, 'video');
+                        return videoUrl ? (
                           <div className="text-xs">
                             <a
-                              href={item.material_link}
+                              href={videoUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-primary hover:underline font-medium"
+                              className="text-primary hover:underline font-medium inline-flex items-center gap-1"
                             >
-                              <div className="flex items-center gap-1">
-                                <FileText className="h-3 w-3 text-purple-500" />
-                                <span>Material</span>
-                              </div>
+                              🎥 View Videos →
                             </a>
                           </div>
-                        )}
+                        ) : null;
+                      })()}
+
+                      {/* Quiz */}
+                      {(() => {
+                        const quizUrl = resolveCurriculumUrl(item.quiz_content_ppt, 'quiz');
+                        return quizUrl ? (
+                          <div className="text-xs">
+                            <a
+                              href={quizUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline font-medium inline-flex items-center gap-1"
+                            >
+                              📊 View Quiz →
+                            </a>
+                          </div>
+                        ) : null;
+                      })()}
+
+                      {/* Material */}
+                      {(() => {
+                        const matUrl = resolveCurriculumUrl(item.material_link, 'material');
+                        return matUrl ? (
+                          <div className="text-xs">
+                            <a
+                              href={matUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline font-medium inline-flex items-center gap-1"
+                            >
+                              <FileText className="h-3 w-3 text-purple-500" />
+                              <span>Material →</span>
+                            </a>
+                          </div>
+                        ) : null;
+                      })()}
 
                       {/* Fresh Session */}
                       {(() => {

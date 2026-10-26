@@ -1202,14 +1202,50 @@ export default function AdminFacilitatorEarnings() {
                   <div>
                     <label className="text-xs font-medium mb-1 block">Earning Status</label>
                     <Select value={detailStatusFilter} onValueChange={setDetailStatusFilter}>
-                      <SelectTrigger className="h-9 w-[170px] text-xs"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+                      <SelectTrigger className="h-9 w-[215px] text-xs"><SelectValue placeholder="All Statuses" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="to_pay">To Pay (Voucher Uploaded)</SelectItem>
-                        <SelectItem value="approved">Approved (Available to Encash)</SelectItem>
-                        <SelectItem value="paid_online">Paid Online</SelectItem>
-                        <SelectItem value="submitted">Approval Request</SelectItem>
-                        <SelectItem value="pending">Pending (Unsubmitted)</SelectItem>
+                        {/* 1. All Statuses */}
+                        <SelectItem value="all">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                            <span>All Statuses</span>
+                          </span>
+                        </SelectItem>
+                        {/* 2. Pending (Unsubmitted) */}
+                        <SelectItem value="pending">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+                            <span className="text-slate-700 font-medium">Pending (Unsubmitted)</span>
+                          </span>
+                        </SelectItem>
+                        {/* 3. Approval Request */}
+                        <SelectItem value="submitted">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                            <span className="text-amber-800 font-medium">Approval Request</span>
+                          </span>
+                        </SelectItem>
+                        {/* 4. Approved (Available to Encash) */}
+                        <SelectItem value="approved">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                            <span className="text-green-700 font-medium">Approved (Available to Encash)</span>
+                          </span>
+                        </SelectItem>
+                        {/* 5. To Pay (Voucher Uploaded) */}
+                        <SelectItem value="to_pay">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span className="text-emerald-700 font-medium">To Pay (Voucher Uploaded)</span>
+                          </span>
+                        </SelectItem>
+                        {/* 6. Paid Online */}
+                        <SelectItem value="paid_online">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                            <span className="text-purple-700 font-medium">Paid Online</span>
+                          </span>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

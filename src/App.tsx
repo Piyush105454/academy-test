@@ -43,6 +43,7 @@ const AdminPanel = lazy(() => import("./pages/AdminPanel"));
 
 // Task Management Heavy Routes (Lazy Loaded)
 const TasksAdmin = lazy(() => import("./pages/academy/TasksAdmin"));
+const WorkTemplateHistory = lazy(() => import("./pages/academy/WorkTemplateHistory"));
 const MyWork = lazy(() => import("./pages/academy/MyWork"));
 const AcademyTaskDetail = lazy(() => import("./pages/academy/TaskDetail"));
 const MyEarnings = lazy(() => import("./pages/academy/MyEarnings"));
@@ -123,6 +124,7 @@ const App = () => (
                     
                     {/* Academy MVP Routes */}
                     <Route path="/academy/tasks" element={<TasksAdmin />} />
+                    <Route path="/academy/tasks/:templateId/history" element={<WorkTemplateHistory />} />
                     <Route path="/academy/my-work" element={<MyWork />} />
                     <Route path="/academy/my-work/:taskId" element={<AcademyTaskDetail />} />
                     <Route path="/academy/my-earnings" element={<MyEarnings />} />

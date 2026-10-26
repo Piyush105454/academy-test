@@ -64,13 +64,28 @@ export function EditCurriculumDialog({
     try {
       setLoading(true);
 
+      const formatUrl = (u: string) => {
+        const t = (u || '').trim();
+        if (!t) return null;
+        if (t.startsWith('http://') || t.startsWith('https://')) return t;
+        if (
+          t.startsWith('www.') ||
+          t.startsWith('drive.google.com') ||
+          t.startsWith('docs.google.com') ||
+          t.startsWith('youtube.com') ||
+          t.startsWith('youtu.be')
+        ) {
+          return `https://${t}`;
+        }
+        return t;
+      };
+
       const { error } = await (supabase as any)
         .from('curriculum')
         .update({
-          videos: formData.videos || null,
-          quiz_content_ppt: formData.quiz_content_ppt || null,
-          material_link: formData.material_link || null,
-          
+          videos: formatUrl(formData.videos),
+          quiz_content_ppt: formatUrl(formData.quiz_content_ppt),
+          material_link: formatUrl(formData.material_link),
         })
         .eq('id', item.id);
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Calendar, Clock, Plus, Users, Award, FileText, Settings2, MoreHorizontal, X, Edit, Trash2, Search, RotateCcw, ArrowUpDown, CheckCircle2 } from "lucide-react";
+import { Calendar, Clock, Plus, Users, Award, FileText, Settings2, MoreHorizontal, X, Edit, Trash2, Search, RotateCcw, ArrowUpDown, CheckCircle2, ExternalLink, Archive, ArchiveRestore, Power } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from '@/integrations/supabase/client';
 
@@ -54,7 +55,10 @@ interface TaskTemplate {
 }
 
 export default function TasksAdmin() {
+  const navigate = useNavigate();
   const [isCreating, setIsCreating] = useState(false);
+  const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
+  const [workStatus, setWorkStatus] = useState<'active' | 'inactive'>('active');
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [recurrence, setRecurrence] = useState("daily");
   
@@ -211,6 +215,7 @@ export default function TasksAdmin() {
     setAutoApproveMins(0);
     setSelectedFacilitators([]);
     setSelectedDays([1, 2, 3, 4, 5]);
+    setWorkStatus('active');
     setEditingTemplateId(null);
   };
 
@@ -223,6 +228,8 @@ export default function TasksAdmin() {
     setEditingTemplateId(task.id);
     setName(task.name || "");
     setCategory(task.category || "attendance");
+    const isInactive = Boolean(task.description?.includes('__STATUS[inactive]__'));
+    setWorkStatus(isInactive ? 'inactive' : 'active');
 
     const cleanDesc = (task.description || "")
       .replace(/__AUTOAPPROVE\[.*?\]__/g, "")
@@ -335,13 +342,21 @@ export default function TasksAdmin() {
       const totalAutoApproveMinutes = requiresManagerApproval ? 0 : ((Number(autoApproveHours) || 0) * 60 + (Number(autoApproveMins) || 0));
       const autoApproveTag = `__AUTOAPPROVE[${requiresManagerApproval ? 'manual' : totalAutoApproveMinutes}]__`;
       const reqsTag = `__REQS[${encodeURIComponent(JSON.stringify(submissionRequirements))}]__`;
+      const statusTag = `__STATUS[${workStatus}]__`;
+      
+      const isArchived = editingTemplateId 
+        ? (templates.find(t => t.id === editingTemplateId)?.description?.includes('__ARCHIVED[true]__') || false)
+        : false;
+      const archivedTag = isArchived ? '__ARCHIVED[true]__' : '';
 
       const cleanUserDesc = (description || "")
         .replace(/__AUTOAPPROVE\[.*?\]__/g, "")
         .replace(/__REQS\[.*?\]__/g, "")
+        .replace(/__STATUS\[.*?\]__/g, "")
+        .replace(/__ARCHIVED\[.*?\]__/g, "")
         .trim();
 
-      const finalDescription = `${cleanUserDesc} ${autoApproveTag} ${reqsTag}`.trim();
+      const finalDescription = `${cleanUserDesc} ${autoApproveTag} ${reqsTag} ${statusTag} ${archivedTag}`.trim();
 
       const hasTextReq = submissionRequirements.some(r => r.type === 'text');
       const hasImageReq = submissionRequirements.some(r => r.type === 'image');
@@ -542,6 +557,81 @@ export default function TasksAdmin() {
     }
   };
 
+  // Toggle active/inactive
+  const handleToggleStatus = async (task: any) => {
+    try {
+      const isCurrentlyActive = !task.description?.includes('__STATUS[inactive]__') && !task.isEnded;
+      const newStatus = isCurrentlyActive ? 'inactive' : 'active';
+
+      let newDesc = (task.description || '')
+        .replace(/__STATUS\[.*?\]__/g, '')
+        .trim();
+      newDesc = `${newDesc} __STATUS[${newStatus}]__`.trim();
+
+      const { error } = await supabase
+        .from('academy_task_templates')
+        .update({ description: newDesc })
+        .eq('id', task.id);
+
+      if (error) throw error;
+      toast.success(`Work status set to ${newStatus === 'active' ? 'Active' : 'Inactive'}`);
+      
+      // Update local state
+      setTemplates(prev => prev.map(t => t.id === task.id ? { ...t, description: newDesc } : t));
+    } catch (err: any) {
+      toast.error('Failed to update status: ' + (err.message || ''));
+    }
+  };
+
+  // Archive template (ONLY ALLOWED IF INACTIVE)
+  const handleArchiveTemplate = async (task: any) => {
+    const isCurrentlyActive = !task.description?.includes('__STATUS[inactive]__') && !task.isEnded;
+    if (isCurrentlyActive) {
+      toast.error("Active work cannot be archived. Please set status to Inactive first.");
+      return;
+    }
+
+    try {
+      let newDesc = (task.description || '')
+        .replace(/__ARCHIVED\[.*?\]__/g, '')
+        .trim();
+      newDesc = `${newDesc} __ARCHIVED[true]__`.trim();
+
+      const { error } = await supabase
+        .from('academy_task_templates')
+        .update({ description: newDesc })
+        .eq('id', task.id);
+
+      if (error) throw error;
+      toast.success(`Work "${task.name}" archived successfully`);
+      
+      setTemplates(prev => prev.map(t => t.id === task.id ? { ...t, description: newDesc } : t));
+    } catch (err: any) {
+      toast.error('Failed to archive template: ' + (err.message || ''));
+    }
+  };
+
+  // Unarchive template
+  const handleUnarchiveTemplate = async (task: any) => {
+    try {
+      let newDesc = (task.description || '')
+        .replace(/__ARCHIVED\[.*?\]__/g, '')
+        .trim();
+
+      const { error } = await supabase
+        .from('academy_task_templates')
+        .update({ description: newDesc })
+        .eq('id', task.id);
+
+      if (error) throw error;
+      toast.success(`Work "${task.name}" restored from archive`);
+      
+      setTemplates(prev => prev.map(t => t.id === task.id ? { ...t, description: newDesc } : t));
+    } catch (err: any) {
+      toast.error('Failed to restore template: ' + (err.message || ''));
+    }
+  };
+
   // ==================== FILTER & SORT STATES ====================
   const [searchQuery, setSearchQuery] = useState("");
   const [filterOccurrence, setFilterOccurrence] = useState("all");
@@ -562,7 +652,10 @@ export default function TasksAdmin() {
       const isAllFacilitators = assignments.length === 0;
       const assignedText = isAllFacilitators ? "All Facilitators" : assignedNames.join(', ');
 
+      const isArchived = Boolean(task.description?.includes('__ARCHIVED[true]__'));
+      const isExplicitInactive = Boolean(task.description?.includes('__STATUS[inactive]__'));
       const isEnded = Boolean(task.end_date && new Date(task.end_date) < new Date());
+      const isActive = !isExplicitInactive && !isEnded;
 
       let todayPending = 0;
       let todaySubmitted = 0;
@@ -589,6 +682,9 @@ export default function TasksAdmin() {
         assignedFacIds,
         isAllFacilitators,
         isEnded,
+        isArchived,
+        isExplicitInactive,
+        isActive,
         todayPending,
         todaySubmitted,
         totalToday,
@@ -628,7 +724,10 @@ export default function TasksAdmin() {
 
   // Filtered & sorted templates
   const filteredTemplates = useMemo(() => {
-    let result = processedTemplates;
+    let result = processedTemplates.filter(item => {
+      if (activeTab === 'archived') return item.isArchived;
+      return !item.isArchived;
+    });
 
     // 1. Search Query (Name, Category, Description, Assigned Text)
     if (searchQuery.trim()) {
@@ -947,6 +1046,38 @@ export default function TasksAdmin() {
             </div>
           </div>
 
+                    {/* Tabs: Active Works vs Archived */}
+          <div className="flex border-b border-slate-200 gap-6">
+            <button
+              onClick={() => setActiveTab('active')}
+              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
+                activeTab === 'active'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <span>Work & Templates</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold">
+                {processedTemplates.filter(t => !t.isArchived).length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('archived')}
+              className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
+                activeTab === 'archived'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Archive className="h-4 w-4" />
+              <span>Archived</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold">
+                {processedTemplates.filter(t => t.isArchived).length}
+              </span>
+            </button>
+          </div>
+
           {/* Table Container */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="overflow-x-auto">
@@ -1007,7 +1138,18 @@ export default function TasksAdmin() {
                       return (
                         <tr key={task.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-4">
-                            <div className="font-semibold text-slate-900">{task.name}</div>
+                            <a
+                              href={`/academy/tasks/${task.id}/history`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                navigate(`/academy/tasks/${task.id}/history`);
+                              }}
+                              className="font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer inline-flex items-center gap-1 group"
+                              title="Click to view full submission history and manage deadlines"
+                            >
+                              <span>{task.name}</span>
+                              <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </a>
                             <div className="text-xs text-slate-500 capitalize">{task.category} • ₹{task.base_reward_amount}</div>
                           </td>
                           <td className="px-6 py-4 text-slate-600">
@@ -1020,10 +1162,18 @@ export default function TasksAdmin() {
                             <div className="text-xs text-slate-500 mt-1">Due: {task.due_time || 'EOD'}</div>
                           </td>
                           <td className="px-6 py-4">
-                            {isEnded ? (
-                              <span className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-1 rounded">Ended</span>
+                            {task.isArchived ? (
+                              <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">Archived</span>
+                            ) : task.isActive ? (
+                              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                                Active
+                              </span>
                             ) : (
-                              <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">Published</span>
+                              <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                Inactive {task.isEnded ? '(Ended)' : ''}
+                              </span>
                             )}
                           </td>
                           <td className="px-6 py-4 text-sm">
@@ -1047,10 +1197,40 @@ export default function TasksAdmin() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleEditTemplate(task)}>
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Edit Work
+                                <DropdownMenuItem onClick={() => navigate(`/academy/tasks/${task.id}/history`)}>
+                                  <Clock className="h-4 w-4 mr-2 text-blue-600" />
+                                  View Submissions & History
                                 </DropdownMenuItem>
+                                
+                                {!task.isArchived && (
+                                  <>
+                                    <DropdownMenuItem onClick={() => handleEditTemplate(task)}>
+                                      <Edit className="h-4 w-4 mr-2" />
+                                      Edit Work
+                                    </DropdownMenuItem>
+
+                                    <DropdownMenuItem onClick={() => handleToggleStatus(task)}>
+                                      <Power className={`h-4 w-4 mr-2 ${task.isActive ? 'text-amber-600' : 'text-emerald-600'}`} />
+                                      {task.isActive ? 'Set as Inactive' : 'Set as Active'}
+                                    </DropdownMenuItem>
+
+                                    <DropdownMenuItem 
+                                      onClick={() => handleArchiveTemplate(task)}
+                                      className={task.isActive ? 'text-slate-400 cursor-not-allowed' : 'text-slate-700'}
+                                    >
+                                      <Archive className="h-4 w-4 mr-2" />
+                                      Archive Work
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+
+                                {task.isArchived && (
+                                  <DropdownMenuItem onClick={() => handleUnarchiveTemplate(task)} className="text-emerald-700 font-medium">
+                                    <ArchiveRestore className="h-4 w-4 mr-2 text-emerald-600" />
+                                    Unarchive / Restore
+                                  </DropdownMenuItem>
+                                )}
+
                                 <DropdownMenuItem 
                                   className="text-red-600 focus:text-red-600 focus:bg-red-50"
                                   onClick={() => {
@@ -1120,6 +1300,15 @@ export default function TasksAdmin() {
           <h1 className="text-2xl font-bold text-slate-900">{editingTemplateId ? 'Edit Work' : 'Create Work'}</h1>
           <p className="text-sm text-slate-500 mt-1">Assign responsibility, reward and leaderboard rules.</p>
         </div>
+
+        {editingTemplateId && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded-xl text-xs flex items-start gap-2.5 max-w-4xl">
+            <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+            <div>
+              <strong>Future Effect Guarantee:</strong> Changes made here apply exclusively to upcoming and future work instances. All past completed and submitted task histories and earned rewards remain permanently preserved.
+            </div>
+          </div>
+        )}
         <form onSubmit={handleCreateTask} className="space-y-6 max-w-4xl bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
           <Card className="border-t-4 border-t-primary">
             <CardHeader>
@@ -1128,8 +1317,8 @@ export default function TasksAdmin() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2 md:col-span-1">
                   <Label>Work Name</Label>
                   <Input 
                     placeholder="e.g. Daily Attendance Record" 
@@ -1137,6 +1326,16 @@ export default function TasksAdmin() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Work Status</Label>
+                  <Select value={workStatus} onValueChange={(v: any) => setWorkStatus(v)}>
+                    <SelectTrigger className="font-semibold"><SelectValue placeholder="Status" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active (Scheduled)</SelectItem>
+                      <SelectItem value="inactive">Inactive (Paused)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Category</Label>

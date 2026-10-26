@@ -885,16 +885,52 @@ export default function FacilitatorEarnings() {
 
               {/* Status Dropdown */}
               <Select value={selectedStatusFilter} onValueChange={(val: any) => setSelectedStatusFilter(val)}>
-                <SelectTrigger className="h-9 w-full sm:w-48 text-xs bg-white border-slate-200 font-medium">
+                <SelectTrigger className="h-9 w-full sm:w-60 text-xs bg-white border-slate-200 font-medium">
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all" className="text-xs">All Statuses</SelectItem>
-                  <SelectItem value="approved" className="text-xs">Approved - Available to Encash</SelectItem>
-                  <SelectItem value="to_pay" className="text-xs">To Pay (Encashment Submitted)</SelectItem>
-                  <SelectItem value="submitted" className="text-xs">Pending Approval (Under Review)</SelectItem>
-                  <SelectItem value="pending" className="text-xs">Pending (Ready to Submit)</SelectItem>
-                  <SelectItem value="paid" className="text-xs">Paid Online</SelectItem>
+                  {/* 1. All Statuses */}
+                  <SelectItem value="all" className="text-xs">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                      <span>All Statuses</span>
+                    </span>
+                  </SelectItem>
+                  {/* 2. Pending (Ready to Submit) */}
+                  <SelectItem value="pending" className="text-xs">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+                      <span className="text-slate-700 font-medium">Pending (Ready to Submit)</span>
+                    </span>
+                  </SelectItem>
+                  {/* 3. Pending Approval (Under Review) */}
+                  <SelectItem value="submitted" className="text-xs">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                      <span className="text-amber-800 font-medium">Pending Approval (Under Review)</span>
+                    </span>
+                  </SelectItem>
+                  {/* 4. Approved - Available to Encash */}
+                  <SelectItem value="approved" className="text-xs">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                      <span className="text-green-700 font-medium">Approved - Available to Encash</span>
+                    </span>
+                  </SelectItem>
+                  {/* 5. To Pay (Encashment Submitted) */}
+                  <SelectItem value="to_pay" className="text-xs">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      <span className="text-emerald-700 font-medium">To Pay (Encashment Submitted)</span>
+                    </span>
+                  </SelectItem>
+                  {/* 6. Paid Online */}
+                  <SelectItem value="paid" className="text-xs">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                      <span className="text-purple-700 font-medium">Paid Online</span>
+                    </span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
 
