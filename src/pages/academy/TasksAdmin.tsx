@@ -1138,19 +1138,21 @@ export default function TasksAdmin() {
                       return (
                         <tr key={task.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-4">
-                            <a
-                              href={`/academy/tasks/${task.id}/history`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                navigate(`/academy/tasks/${task.id}/history`);
-                              }}
-                              className="font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer inline-flex items-center gap-1 group"
-                              title="Click to view full submission history and manage deadlines"
-                            >
-                              <span>{task.name}</span>
-                              <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </a>
-                            <div className="text-xs text-slate-500 capitalize">{task.category} • ₹{task.base_reward_amount}</div>
+                            <div className="flex items-center gap-1.5">
+                              <a
+                                href={`/academy/tasks/${task.id}/history`}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  navigate(`/academy/tasks/${task.id}/history`);
+                                }}
+                                className="font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer inline-flex items-center gap-1.5 group text-sm"
+                                title="Click to view full submission history and manage deadlines"
+                              >
+                                <span>{task.name}</span>
+                                <ExternalLink className="h-3.5 w-3.5 text-blue-500 opacity-70 group-hover:opacity-100 transition-opacity" />
+                              </a>
+                            </div>
+                            <div className="text-xs text-slate-500 capitalize mt-0.5">{task.category} • ₹{task.base_reward_amount}</div>
                           </td>
                           <td className="px-6 py-4 text-slate-600">
                             {task.created_at ? new Date(task.created_at).toLocaleDateString('en-GB') : '-'}
@@ -1163,17 +1165,28 @@ export default function TasksAdmin() {
                           </td>
                           <td className="px-6 py-4">
                             {task.isArchived ? (
-                              <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">Archived</span>
-                            ) : task.isActive ? (
-                              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                                Active
+                              <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full inline-flex items-center gap-1">
+                                <Archive className="h-3 w-3 text-slate-500" /> Archived
                               </span>
                             ) : (
-                              <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                                Inactive {task.isEnded ? '(Ended)' : ''}
-                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleStatus(task)}
+                                title={`Currently ${task.isActive ? 'Active' : 'Inactive'}. Click to toggle status.`}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs focus:outline-none"
+                              >
+                                {task.isActive ? (
+                                  <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5 hover:bg-emerald-100 transition-colors">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                                    Active
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5 hover:bg-amber-100 transition-colors">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                    Inactive
+                                  </span>
+                                )}
+                              </button>
                             )}
                           </td>
                           <td className="px-6 py-4 text-sm">
@@ -1215,11 +1228,22 @@ export default function TasksAdmin() {
                                     </DropdownMenuItem>
 
                                     <DropdownMenuItem 
-                                      onClick={() => handleArchiveTemplate(task)}
-                                      className={task.isActive ? 'text-slate-400 cursor-not-allowed' : 'text-slate-700'}
+                                      onClick={() => {
+                                        if (task.isActive) {
+                                          toast.error("Active work cannot be archived. Please set status to Inactive first.");
+                                          return;
+                                        }
+                                        handleArchiveTemplate(task);
+                                      }}
+                                      className={task.isActive ? 'text-slate-400 cursor-not-allowed opacity-60' : 'text-slate-700 cursor-pointer'}
                                     >
                                       <Archive className="h-4 w-4 mr-2" />
-                                      Archive Work
+                                      <span>Archive Work</span>
+                                      {task.isActive && (
+                                        <span className="ml-auto text-[9px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-mono font-medium border border-amber-200">
+                                          Inactive first
+                                        </span>
+                                      )}
                                     </DropdownMenuItem>
                                   </>
                                 )}
