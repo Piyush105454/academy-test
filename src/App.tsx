@@ -55,6 +55,7 @@ const Team = lazy(() => import("./pages/academy/Team"));
 const Reports = lazy(() => import("./pages/academy/Reports"));
 
 const Tasks = lazy(() => import("./pages/Tasks"));
+const StudentPerformanceReport = lazy(() => import("./pages/StudentPerformanceReport"));
 const TaskDetail = lazy(() => import("./pages/TaskDetail"));
 const TaskEdit = lazy(() => import("./pages/TaskEdit"));
 const StudentTasks = lazy(() => import("./pages/StudentTasks"));
@@ -137,6 +138,8 @@ const App = () => (
                     
                     <Route path="/tasks" element={<Tasks />} />
                     <Route path="/scheduled-tasks" element={<ScheduledTasks />} />
+                    <Route path="/performance" element={<StudentPerformanceReport />} />
+                    <Route path="/tasks/performance" element={<StudentPerformanceReport />} />
                     <Route path="/tasks/:taskTitle" element={<TaskDetail />} />
                     <Route path="/tasks/:taskTitle/edit" element={<TaskEdit />} />
                     <Route path="/student-tasks" element={<StudentTasks />} />

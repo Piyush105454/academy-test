@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Plus, ExternalLink, ClipboardList, ChevronRight, MoreHorizontal, Eye, Trash2, BookOpen, Calendar, ArrowUpDown, Clock, RotateCcw, Loader2, CheckCircle2 } from 'lucide-react';
+import { Search, Plus, ExternalLink, ClipboardList, ChevronRight, MoreHorizontal, Eye, Trash2, BookOpen, Calendar, ArrowUpDown, Clock, RotateCcw, Loader2, CheckCircle2, TrendingUp } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { logActivity } from '@/utils/activityLogger';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -1099,6 +1099,27 @@ export default function Tasks() {
           <Button onClick={() => navigate('/tasks/add')} className="gap-2 w-full sm:w-auto">
             <Plus className="h-4 w-4" />
             Create Task
+          </Button>
+        </div>
+
+        {/* Tab switcher: Tasks List vs Performance Report */}
+        <div className="flex items-center gap-2 border-b border-border/60 pb-1">
+          <Button
+            variant="default"
+            size="sm"
+            className="text-xs font-semibold h-8 gap-1.5 shadow-xs"
+          >
+            <ClipboardList className="h-3.5 w-3.5" />
+            Tasks & Projects List
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/performance')}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground h-8 gap-1.5"
+          >
+            <TrendingUp className="h-3.5 w-3.5" />
+            Performance & Completion Report
           </Button>
         </div>
 
