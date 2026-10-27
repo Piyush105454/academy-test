@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, ArrowLeft, MoreVertical, Edit, ArrowUpRight, Info, Key, UserCog, Lock, Unlock, Search } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -76,6 +76,9 @@ interface Student {
   is_active?: boolean;
   class_id?: string | null;
   class_name?: string | null;
+  location?: string | null;
+  bio?: string | null;
+  profile_image_url?: string | null;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
@@ -99,10 +102,20 @@ export default function ClassStudents() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>(selectedYear);
+  const [searchParams] = useSearchParams();
+  const urlSearch = searchParams.get('search') || '';
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>(urlSearch ? 'all' : selectedYear);
   const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>(urlSearch);
+
+  useEffect(() => {
+    const q = searchParams.get('search');
+    if (q) {
+      setSearchQuery(q);
+      setSelectedAcademicYear('all');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     setSelectedAcademicYear(selectedYear);
@@ -279,6 +292,8 @@ export default function ClassStudents() {
 
       let profileMapByEmail = new Map<string, boolean>();
       let profileMapById = new Map<string, boolean>();
+      let profileDetailsByEmail = new Map<string, any>();
+      let profileDetailsById = new Map<string, any>();
 
       try {
         const queryOr: string[] = [];
@@ -288,14 +303,19 @@ export default function ClassStudents() {
         if (queryOr.length > 0) {
           const { data: profiles } = await supabase
             .from('user_profiles')
-            .select('id, email, is_active')
+            .select('id, email, is_active, location, bio, phone, profile_image_url')
             .or(queryOr.join(','));
 
           if (profiles) {
             profiles.forEach((p: any) => {
-              if (p.id) profileMapById.set(p.id, p.is_active);
+              if (p.id) {
+                profileMapById.set(p.id, p.is_active);
+                profileDetailsById.set(p.id, p);
+              }
               if (p.email && !isPlaceholderEmail(p.email)) {
-                profileMapByEmail.set(p.email.toLowerCase().trim(), p.is_active);
+                const normEmail = p.email.toLowerCase().trim();
+                profileMapByEmail.set(normEmail, p.is_active);
+                profileDetailsByEmail.set(normEmail, p);
               }
             });
           }
@@ -307,6 +327,12 @@ export default function ClassStudents() {
       const enrichedStudents = (studentsData || []).map((student) => {
         const isActive = getStudentActiveStatus(student, profileMapById, profileMapByEmail);
         const className = student.class_id ? (classMap.get(student.class_id) || 'Unknown Class') : 'No Class';
+        const profile = (student.email && profileDetailsByEmail.get(student.email.toLowerCase().trim())) ||
+                        (student.id && profileDetailsById.get(student.id));
+
+        const finalLocation = student.location || profile?.location || null;
+        const finalBio = (student.bio && student.bio !== 'null') ? student.bio : (profile?.bio && profile.bio !== 'null' ? profile.bio : null);
+        const profileImageUrl = profile?.profile_image_url || null;
 
         if (student.monitor_id) {
           const monitor = (studentsData || []).find(s => s.id === student.monitor_id);
@@ -314,10 +340,20 @@ export default function ClassStudents() {
             ...student,
             class_name: className,
             is_active: isActive,
+            location: finalLocation,
+            bio: finalBio,
+            profile_image_url: profileImageUrl,
             monitor_name: monitor ? monitor.name : 'Unknown'
           };
         }
-        return { ...student, class_name: className, is_active: isActive };
+        return {
+          ...student,
+          class_name: className,
+          is_active: isActive,
+          location: finalLocation,
+          bio: finalBio,
+          profile_image_url: profileImageUrl,
+        };
       });
       
       setStudents(enrichedStudents);

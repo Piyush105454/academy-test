@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -41,6 +42,8 @@ interface Student {
   account_number?: string | null;
   ifsc_code?: string | null;
   allow_profile_edit?: boolean;
+  location?: string | null;
+  bio?: string | null;
 }
 
 interface AssignedItem {
@@ -316,10 +319,28 @@ export function EditStudentDialog({
           account_number: editedStudent.account_number ? editedStudent.account_number.trim() : null,
           ifsc_code: editedStudent.ifsc_code ? editedStudent.ifsc_code.trim() : null,
           allow_profile_edit: editedStudent.allow_profile_edit !== false,
+          location: editedStudent.location ? editedStudent.location.trim() : null,
+          bio: editedStudent.bio ? editedStudent.bio.trim() : null,
         })
         .eq('id', editedStudent.id);
 
       if (error) throw error;
+
+      // Also sync to user_profiles if email exists
+      if (editedStudent.email) {
+        try {
+          await (supabase as any)
+            .from('user_profiles')
+            .update({
+              location: editedStudent.location ? editedStudent.location.trim() : null,
+              bio: editedStudent.bio ? editedStudent.bio.trim() : null,
+              phone: editedStudent.phone_number || null,
+            })
+            .ilike('email', editedStudent.email.trim());
+        } catch (upErr) {
+          console.warn('Could not update user_profiles from EditStudentDialog:', upErr);
+        }
+      }
 
       // Save assigned items — delete all existing then re-insert
       try {
@@ -613,6 +634,33 @@ export function EditStudentDialog({
                   value={editedStudent.ifsc_code || ''}
                   onChange={(e) => setEditedStudent({ ...editedStudent, ifsc_code: e.target.value || null })}
                   className="mt-1"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Location & Bio Section */}
+          <div className="border-t pt-4 space-y-3">
+            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Location & Bio</h3>
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <Label htmlFor="student_location" className="text-sm">Location</Label>
+                <Input
+                  id="student_location"
+                  placeholder="e.g. Dhanpuri, Shahdol"
+                  value={editedStudent.location || ''}
+                  onChange={(e) => setEditedStudent({ ...editedStudent, location: e.target.value || null })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="student_bio" className="text-sm">Bio</Label>
+                <Textarea
+                  id="student_bio"
+                  placeholder="Short bio or introduction..."
+                  value={editedStudent.bio || ''}
+                  onChange={(e) => setEditedStudent({ ...editedStudent, bio: e.target.value || null })}
+                  className="mt-1 min-h-[70px]"
                 />
               </div>
             </div>
