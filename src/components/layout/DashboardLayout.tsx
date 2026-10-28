@@ -222,18 +222,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         path === '/profile/edit' ||
         path === '/auth';
         
-      // Special check: student-performance is actually a staff page for grading students
-      const isStudentPerformance = path.startsWith('/student-performance');
+      // Special check: student-performance and student-locations are staff pages
+      const isStaffStudentPage = 
+        path.startsWith('/student-performance') || 
+        path.startsWith('/student-locations') || 
+        path.startsWith('/locations');
 
       if (isStudent) {
         // Prevent student from accessing staff pages
-        if (!isStudentPath || isStudentPerformance) {
+        if (!isStudentPath || isStaffStudentPage) {
           toast.error('You do not have permission to access this page');
           navigate('/student-dashboard', { replace: true });
         }
       } else {
         // Prevent staff from accessing student pages (except auth and profile)
-        if (isStudentPath && path !== '/profile/edit' && path !== '/auth' && path !== '/student-auth') {
+        if (isStudentPath && !isStaffStudentPage && path !== '/profile/edit' && path !== '/auth' && path !== '/student-auth') {
           toast.error('You do not have permission to access the student portal');
           navigate('/dashboard', { replace: true });
         }
