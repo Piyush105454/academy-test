@@ -30,6 +30,7 @@ const Coordinators = lazy(() => import("./pages/Coordinators").then(m => ({ defa
 const Centres = lazy(() => import("./pages/Centres"));
 const Classes = lazy(() => import("./pages/Classes"));
 const ClassStudents = lazy(() => import("./pages/ClassStudents"));
+const StudentLocations = lazy(() => import("./pages/StudentLocations"));
 const AddVolunteer = lazy(() => import("./pages/AddVolunteer"));
 const EditVolunteer = lazy(() => import("./pages/EditVolunteer"));
 const VolunteerList = lazy(() => import("./pages/VolunteerList"));
@@ -117,6 +118,8 @@ const App = () => (
                     <Route path="/classes" element={<Classes />} />
                     <Route path="/classes/:classId/students" element={<ClassStudents />} />
                     <Route path="/students" element={<ClassStudents />} />
+                    <Route path="/student-locations" element={<StudentLocations />} />
+                    <Route path="/locations" element={<StudentLocations />} />
                     <Route path="/volunteers/edit/:id" element={<EditVolunteer />} /> 
                     <Route path="/volunteers" element={<VolunteerList />} />
                     <Route path="/volunteers/add" element={<AddVolunteer />} />

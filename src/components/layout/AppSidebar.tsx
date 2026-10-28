@@ -1,4 +1,4 @@
-import { Home, Users, LogOut, CalendarDays, BookOpen, Menu, X, Users2, MapPin, FileText, GraduationCap, Shield, ClipboardList, ChevronDown, MessageCircle, Clock, Wrench, Wallet, TrendingUp, LucideIcon } from 'lucide-react';
+import { Home, Users, LogOut, CalendarDays, BookOpen, Menu, X, Users2, MapPin, FileText, GraduationCap, Shield, ClipboardList, ChevronDown, MessageCircle, Clock, Wrench, Wallet, TrendingUp, LucideIcon, Compass } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDeveloperMode } from '@/contexts/DeveloperModeContext';
@@ -178,6 +178,7 @@ const navGroups: NavGroup[] = [
     items: [
       { title: 'Centres & Slots', url: '/centres', icon: MapPin, requiredRole: null, studentVisible: false },
       { title: 'Classes & Students', url: '/classes', icon: GraduationCap, requiredRole: null, studentVisible: false },
+      { title: 'Student Locations', url: '/student-locations', icon: Compass, requiredRole: null, studentVisible: false },
       { title: 'Support Requests', url: '/support', icon: MessageCircle, requiredRole: null, studentVisible: false },
     ]
   },

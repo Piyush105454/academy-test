@@ -104,24 +104,74 @@ export default function ClassStudents() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [searchParams] = useSearchParams();
   const urlSearch = searchParams.get('search') || '';
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>(urlSearch ? 'all' : selectedYear);
+  const urlStudentId = searchParams.get('studentId') || searchParams.get('openStudentId');
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>(urlSearch || urlStudentId ? 'all' : selectedYear);
   const [selectedDesignation, setSelectedDesignation] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>(urlSearch);
 
   useEffect(() => {
     const q = searchParams.get('search');
+    const openId = searchParams.get('studentId') || searchParams.get('openStudentId');
     if (q) {
       setSearchQuery(q);
+    }
+    if (q || openId) {
       setSelectedAcademicYear('all');
     }
   }, [searchParams]);
 
   useEffect(() => {
-    setSelectedAcademicYear(selectedYear);
-  }, [selectedYear]);
+    if (!searchParams.get('search') && !searchParams.get('studentId') && !searchParams.get('openStudentId')) {
+      setSelectedAcademicYear(selectedYear);
+    }
+  }, [selectedYear, searchParams]);
+
   const [infoDialogOpen, setInfoDialogOpen] = useState(false);
   const [selectedStudentForInfo, setSelectedStudentForInfo] = useState<Student | null>(null);
+
+  // Auto-open student profile popup if studentId or openStudentId query param is present
+  useEffect(() => {
+    const openStudentId = searchParams.get('studentId') || searchParams.get('openStudentId');
+    if (!openStudentId) return;
+
+    if (students.length > 0) {
+      const found = students.find(s => s.id === openStudentId || s.student_id === openStudentId);
+      if (found) {
+        setSelectedStudentForInfo(found);
+        setInfoDialogOpen(true);
+        return;
+      }
+    }
+
+    // Direct fetch fallback for immediate opening even while list is loading
+    let isMounted = true;
+    (async () => {
+      try {
+        const { data: directStudent, error } = await supabase
+          .from('students')
+          .select('*')
+          .or(`id.eq.${openStudentId},student_id.eq.${openStudentId}`)
+          .maybeSingle();
+
+        if (error) {
+          console.warn('Could not fetch student directly:', error.message);
+          return;
+        }
+
+        if (directStudent && isMounted) {
+          setSelectedStudentForInfo(directStudent as any);
+          setInfoDialogOpen(true);
+        }
+      } catch (err) {
+        console.error('Error auto-opening student profile:', err);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [searchParams, students]);
   const [isPromoteStudentOpen, setIsPromoteStudentOpen] = useState(false);
   const [studentToPromote, setStudentToPromote] = useState<Student | null>(null);
   const [sortColumn, setSortColumn] = useState<SortColumn>('student_id');

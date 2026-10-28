@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { cn } from '@/lib/utils';
 
 interface SubmissionData {
   id: string;
@@ -409,15 +410,29 @@ export default function WorkTemplateHistory() {
 
         {/* Metric Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <Card className="shadow-sm border-slate-200">
+          <Card 
+            onClick={() => setFilterStatus('all')}
+            className={cn(
+              "shadow-sm border-slate-200 cursor-pointer transition-all hover:shadow-md select-none",
+              filterStatus === 'all' ? "ring-2 ring-slate-800 bg-slate-50/60" : "hover:bg-slate-50/40"
+            )}
+          >
             <CardContent className="p-4">
               <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Works</p>
               <h3 className="text-xl font-extrabold text-slate-800 mt-1">{totalTasks}</h3>
-              <p className="text-[10px] text-slate-400 mt-0.5">Assigned instances</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {filterStatus === 'all' ? 'Assigned instances' : `Showing ${filteredItems.length} of ${scopedItems.length}`}
+              </p>
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm border-l-4 border-l-blue-500 border-slate-200">
+          <Card 
+            onClick={() => setFilterStatus(filterStatus === 'submitted' ? 'all' : 'submitted')}
+            className={cn(
+              "shadow-sm border-l-4 border-l-blue-500 border-slate-200 cursor-pointer transition-all hover:shadow-md select-none",
+              filterStatus === 'submitted' ? "ring-2 ring-blue-500 bg-blue-50/60" : "hover:bg-blue-50/20"
+            )}
+          >
             <CardContent className="p-4">
               <p className="text-[11px] font-semibold text-blue-600 uppercase tracking-wider">Submitted</p>
               <h3 className="text-xl font-extrabold text-blue-700 mt-1">{submittedTasks}</h3>
@@ -425,7 +440,13 @@ export default function WorkTemplateHistory() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm border-l-4 border-l-emerald-500 border-slate-200">
+          <Card 
+            onClick={() => setFilterStatus(filterStatus === 'approved' ? 'all' : 'approved')}
+            className={cn(
+              "shadow-sm border-l-4 border-l-emerald-500 border-slate-200 cursor-pointer transition-all hover:shadow-md select-none",
+              filterStatus === 'approved' ? "ring-2 ring-emerald-500 bg-emerald-50/60" : "hover:bg-emerald-50/20"
+            )}
+          >
             <CardContent className="p-4">
               <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Approved</p>
               <h3 className="text-xl font-extrabold text-emerald-700 mt-1">{approvedTasks}</h3>
@@ -433,7 +454,13 @@ export default function WorkTemplateHistory() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm border-l-4 border-l-orange-500 border-slate-200">
+          <Card 
+            onClick={() => setFilterStatus(filterStatus === 'pending' ? 'all' : 'pending')}
+            className={cn(
+              "shadow-sm border-l-4 border-l-orange-500 border-slate-200 cursor-pointer transition-all hover:shadow-md select-none",
+              filterStatus === 'pending' ? "ring-2 ring-orange-500 bg-orange-50/60" : "hover:bg-orange-50/20"
+            )}
+          >
             <CardContent className="p-4">
               <p className="text-[11px] font-semibold text-orange-600 uppercase tracking-wider">Pending</p>
               <h3 className="text-xl font-extrabold text-orange-700 mt-1">{pendingTasks}</h3>
@@ -441,7 +468,13 @@ export default function WorkTemplateHistory() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm border-l-4 border-l-red-500 border-slate-200">
+          <Card 
+            onClick={() => setFilterStatus(filterStatus === 'overdue' ? 'all' : 'overdue')}
+            className={cn(
+              "shadow-sm border-l-4 border-l-red-500 border-slate-200 cursor-pointer transition-all hover:shadow-md select-none",
+              filterStatus === 'overdue' ? "ring-2 ring-red-500 bg-red-50/60" : "hover:bg-red-50/20"
+            )}
+          >
             <CardContent className="p-4">
               <p className="text-[11px] font-semibold text-red-600 uppercase tracking-wider">Overdue</p>
               <h3 className="text-xl font-extrabold text-red-700 mt-1">{overdueTasks}</h3>

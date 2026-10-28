@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, MoreVertical, BookOpen, Users, Upload, Pencil, Eye, Lock, Unlock, Search, X, Loader2 } from 'lucide-react';
+import { Plus, Trash2, MoreVertical, BookOpen, Users, Upload, Pencil, Eye, Lock, Unlock, Search, X, Loader2, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -393,7 +393,10 @@ export default function Classes() {
                           key={student.id}
                           onClick={() => {
                             setIsSearchOpen(false);
-                            navigate(`/classes/${student.class_id}/students?search=${encodeURIComponent(student.name)}`);
+                            const targetPath = student.class_id && student.class_id !== 'all'
+                              ? `/classes/${student.class_id}/students`
+                              : `/students`;
+                            navigate(`${targetPath}?search=${encodeURIComponent(student.name)}&studentId=${student.id}&openProfile=true`);
                           }}
                           className="px-3 py-2 hover:bg-blue-50/70 cursor-pointer flex items-center justify-between transition-colors group"
                         >
@@ -419,6 +422,9 @@ export default function Classes() {
                               )}
                             </div>
                           </div>
+                          <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 shrink-0 ml-2">
+                            Profile <ExternalLink className="h-3 w-3" />
+                          </span>
                         </div>
                       ))}
                     </>
