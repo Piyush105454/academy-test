@@ -128,7 +128,8 @@ export default function StudentLocations() {
       // 1. Fetch classes
       const { data: classesData, error: classErr } = await supabase
         .from('classes')
-        .select('id, name, academic_year')
+        .select('id, name')
+        .neq('name', '__SYSTEM_DEV_MODE__')
         .order('name');
       if (classErr) throw classErr;
       setClasses(classesData || []);
@@ -222,7 +223,7 @@ export default function StudentLocations() {
   const filteredStudents = useMemo(() => {
     return students.filter(student => {
       // Academic Year Filter (if specified and student has academic_year)
-      if (selectedYear && student.academic_year && student.academic_year !== selectedYear) {
+      if (selectedYear && selectedYear !== 'all' && student.academic_year && student.academic_year !== selectedYear) {
         return false;
       }
 
