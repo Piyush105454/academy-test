@@ -347,28 +347,36 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed md:sticky md:top-0 h-screen bg-card border-r border-border flex flex-col transition-all duration-300 z-40",
-        collapsed ? "w-0 md:w-0 border-r-0 overflow-hidden" : "w-64",
+        "fixed top-0 left-0 bottom-0 h-screen bg-card border-r border-border flex flex-col transition-all duration-300 z-40",
+        collapsed ? "w-0 md:w-16" : "w-64",
         isOpen ? "translate-x-0 w-64" : "-translate-x-full md:translate-x-0"
       )}>
-        <div className="w-64 h-full flex flex-col flex-shrink-0">
+        <div className={cn("h-full flex flex-col transition-all duration-300", collapsed ? "w-full md:w-16" : "w-64")}>
           {/* Logo Section */}
-          <div className="h-[72px] px-4 md:px-6 border-b border-border flex items-center">
-            <div className="flex items-center gap-3">
+          <div className={cn(
+            "h-[72px] border-b border-border flex items-center transition-all duration-300",
+            collapsed ? "px-2 justify-center" : "px-4 md:px-6"
+          )}>
+            <div className="flex items-center gap-3 min-w-0">
               <img
                 src={wesLogo}
                 alt="WES Foundation Logo"
-              className="h-10 md:h-12 w-10 md:w-12 object-contain"
-            />
-            <div className="min-w-0">
-              <h1 className="font-bold text-foreground text-base md:text-lg truncate">WesFellow Hub</h1>
-              <p className="text-xs text-muted-foreground truncate">Management Platform</p>
+                className="h-10 md:h-12 w-10 md:w-12 object-contain shrink-0"
+              />
+              {!collapsed && (
+                <div className="min-w-0">
+                  <h1 className="font-bold text-foreground text-base md:text-lg truncate">WesFellow Hub</h1>
+                  <p className="text-xs text-muted-foreground truncate">Management Platform</p>
+                </div>
+              )}
             </div>
           </div>
-        </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 md:p-4 space-y-3 overflow-y-auto">
+        <nav className={cn(
+          "flex-1 space-y-3 overflow-y-auto overflow-x-hidden overscroll-contain transition-all",
+          collapsed ? "p-2" : "p-3 md:p-4"
+        )}>
           {isRoleLoading ? (
             <div className="flex justify-center p-4">
               <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
@@ -397,30 +405,37 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
 
             return (
               <div key={group.label} className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(group.label)}
-                  className={cn(
-                    "w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-left transition-colors select-none group",
-                    groupColor.hoverBg
-                  )}
-                  title={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.label}`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={cn("w-2 h-2 rounded-full shrink-0 shadow-sm", groupColor.dot)} />
-                    <span className={cn("text-[11px] font-bold uppercase tracking-wider truncate", groupColor.text)}>
-                      {group.label}
-                    </span>
+                {collapsed ? (
+                  <div className="py-1 flex justify-center" title={group.label}>
+                    <div className={cn("w-2 h-1 rounded-full opacity-60", groupColor.dot || "bg-border")} />
                   </div>
-                  <ChevronDown
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.label)}
                     className={cn(
-                      "h-3.5 w-3.5 shrink-0 transition-transform duration-200 text-muted-foreground/60 group-hover:text-foreground",
-                      isCollapsed ? "-rotate-90" : "rotate-0"
+                      "w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-left transition-colors select-none group",
+                      groupColor.hoverBg
                     )}
-                  />
-                </button>
-                {!isCollapsed && (
-                  <div className="space-y-0.5">
+                    title={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.label}`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={cn("w-2 h-2 rounded-full shrink-0 shadow-sm", groupColor.dot)} />
+                      <span className={cn("text-[11px] font-bold uppercase tracking-wider truncate", groupColor.text)}>
+                        {group.label}
+                      </span>
+                    </div>
+                    <ChevronDown
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 transition-transform duration-200 text-muted-foreground/60 group-hover:text-foreground",
+                        isCollapsed ? "-rotate-90" : "rotate-0"
+                      )}
+                    />
+                  </button>
+                )}
+
+                {(collapsed || !isCollapsed) && (
+                  <div className="space-y-1">
                     {visibleItems.map((item) => {
                       const isActive = item.url.includes('?') ? (location.pathname + location.search) === item.url : (location.pathname === item.url && (!location.search || !location.search.includes('tab=')));
                       return (
@@ -428,16 +443,19 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
                           key={item.title}
                           to={item.url}
                           onClick={() => setIsOpen(false)}
+                          title={item.title}
                           className={cn(
-                            'flex items-center gap-3 px-3 md:px-4 py-2 rounded-lg transition-colors',
-                            'text-sm font-medium',
+                            'flex items-center rounded-xl transition-all relative group',
+                            collapsed
+                              ? 'justify-center w-10 h-10 mx-auto'
+                              : 'gap-3 px-3 md:px-4 py-2 text-sm font-medium',
                             isActive
                               ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
                               : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                           )}
                         >
-                          <item.icon className="h-4 w-4 flex-shrink-0" />
-                          {renderNavTitle(item.title, isActive)}
+                          <item.icon className={cn(collapsed ? "h-5 w-5" : "h-4 w-4", "flex-shrink-0")} />
+                          {!collapsed && renderNavTitle(item.title, isActive)}
                         </NavLink>
                       );
                     })}
@@ -448,21 +466,26 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
           })}
         </nav>
 
-                {/* Role Switcher Section */}
-        <RoleSwitcher variant="sidebar" />
+        {/* Role Switcher Section (expanded only, header has switcher in collapsed) */}
+        {!collapsed && <RoleSwitcher variant="sidebar" />}
 
         {/* Sign Out Button */}
-        <div className="p-3 md:p-4 border-t border-border">
+        <div className={cn(
+          "border-t border-border transition-all",
+          collapsed ? "p-2 flex justify-center" : "p-3 md:p-4"
+        )}>
           <button
             onClick={handleSignOut}
+            title="Sign Out"
             className={cn(
-              'flex items-center gap-3 w-full px-3 md:px-4 py-2 md:py-3 rounded-lg transition-colors',
-              'text-sm md:text-base font-medium',
-              'text-destructive hover:bg-destructive/10'
+              'flex items-center rounded-xl transition-colors text-destructive hover:bg-destructive/10',
+              collapsed
+                ? 'justify-center w-10 h-10 p-0'
+                : 'gap-3 w-full px-3 md:px-4 py-2 md:py-3 text-sm md:text-base font-medium'
             )}
           >
             <LogOut className="h-5 w-5 flex-shrink-0" />
-            <span className="truncate">Sign Out</span>
+            {!collapsed && <span className="truncate">Sign Out</span>}
           </button>
         </div>
         </div>

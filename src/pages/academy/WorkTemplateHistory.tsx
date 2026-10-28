@@ -223,8 +223,8 @@ export default function WorkTemplateHistory() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [historyItems]);
 
-  // Filtered Items
-  const filteredItems = useMemo(() => {
+  // Scoped Items (Filtered by Search, Facilitator, and Timeframe)
+  const scopedItems = useMemo(() => {
     return historyItems.filter(item => {
       // 1. Search Query (Date, Facilitator, Notes)
       if (searchQuery.trim()) {
@@ -241,16 +241,7 @@ export default function WorkTemplateHistory() {
         return false;
       }
 
-      // 3. Status Filter
-      if (filterStatus !== 'all') {
-        if (filterStatus === 'overdue') {
-          if (!item.isOverdue) return false;
-        } else if (item.status !== filterStatus) {
-          return false;
-        }
-      }
-
-      // 4. Timeframe Filter
+      // 3. Timeframe Filter
       if (filterTimeframe === 'today') {
         const todayStr = new Date().toISOString().split('T')[0];
         if (item.taskDate !== todayStr) return false;
@@ -265,18 +256,29 @@ export default function WorkTemplateHistory() {
 
       return true;
     });
-  }, [historyItems, searchQuery, filterFacilitator, filterStatus, filterTimeframe]);
+  }, [historyItems, searchQuery, filterFacilitator, filterTimeframe]);
 
-  // Summary Metrics
-  const totalTasks = historyItems.length;
-  const submittedTasks = historyItems.filter(i => i.status === 'submitted').length;
-  const approvedTasks = historyItems.filter(i => i.status === 'approved').length;
-  const pendingTasks = historyItems.filter(i => i.status === 'pending' && !i.isOverdue).length;
-  const overdueTasks = historyItems.filter(i => i.isOverdue).length;
-  const totalEarned = historyItems.reduce((acc, curr) => {
-    if (curr.status === 'approved') return acc + curr.rewardEarned;
-    return acc;
-  }, 0);
+  // Filtered Items (Including Status Filter for Table)
+  const filteredItems = useMemo(() => {
+    if (filterStatus === 'all') return scopedItems;
+
+    return scopedItems.filter(item => {
+      if (filterStatus === 'overdue') {
+        return !!item.isOverdue;
+      }
+      return item.status === filterStatus;
+    });
+  }, [scopedItems, filterStatus]);
+
+  // Dynamic Summary Metrics based on Active Filters
+  const totalTasks = filterStatus === 'all' ? scopedItems.length : filteredItems.length;
+  const submittedTasks = scopedItems.filter(i => i.status === 'submitted').length;
+  const approvedTasks = scopedItems.filter(i => i.status === 'approved').length;
+  const pendingTasks = scopedItems.filter(i => i.status === 'pending' && !i.isOverdue).length;
+  const overdueTasks = scopedItems.filter(i => i.isOverdue).length;
+  const totalEarned = (filterStatus === 'all' || filterStatus === 'approved')
+    ? scopedItems.reduce((acc, curr) => curr.status === 'approved' ? acc + curr.rewardEarned : acc, 0)
+    : filteredItems.reduce((acc, curr) => curr.status === 'approved' ? acc + curr.rewardEarned : acc, 0);
 
   // Handle Extend Deadline
   const handleOpenExtendDialog = (item: TaskHistoryItem) => {

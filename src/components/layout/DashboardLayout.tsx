@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AppSidebar } from './AppSidebar';
 import { StudentSidebar } from './StudentSidebar';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -292,16 +293,25 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   // User is authenticated and role is loaded, render the dashboard
   return (
     <div className="min-h-screen print:min-h-0 bg-muted/30 flex w-full">
-      <div className="print:hidden h-full flex">
+      {/* Sidebar - Frozen on left side */}
+      <div className="print:hidden shrink-0">
         {userRole === 5 ? (
           <StudentSidebar collapsed={isSidebarCollapsed} />
         ) : (
           <AppSidebar collapsed={isSidebarCollapsed} />
         )}
+        {/* Desktop spacer to preserve layout flow since sidebar is fixed */}
+        <div
+          className={cn(
+            "hidden md:block shrink-0 transition-all duration-300",
+            isSidebarCollapsed ? "w-0 md:w-16" : "w-64"
+          )}
+          aria-hidden="true"
+        />
       </div>
       <main className="flex-1 flex flex-col min-w-0 print:block">
-        {/* Top Header with Profile */}
-        <div className="bg-card border-b border-border px-4 md:px-8 h-[72px] flex items-center justify-between print:hidden">
+        {/* Top Header with Profile (Frozen / Sticky at top) */}
+        <header className="sticky top-0 z-30 bg-card/95 backdrop-blur-sm border-b border-border px-4 md:px-8 h-[72px] flex items-center justify-between print:hidden shrink-0">
           <div className="flex-1 flex items-center gap-2">
             <Button
               variant="ghost"
@@ -433,7 +443,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        </div>
+        </header>
 
         {/* Main Content */}
         <div className="flex-1 p-4 md:p-8 overflow-x-hidden print:overflow-visible print:p-0">
