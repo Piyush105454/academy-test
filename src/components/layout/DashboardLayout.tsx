@@ -135,6 +135,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             if (!role && fac.status !== 'inactive') role = 4;
           }
         }
+        if (!name || !role) {
+          const { data: std } = await supabase
+            .from('students')
+            .select('name')
+            .ilike('email', email)
+            .maybeSingle();
+          if (std && std.name) {
+            if (!name) name = std.name;
+            if (!role) role = 5;
+          }
+        }
       }
 
       if (!name) {
@@ -343,29 +354,43 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               );
             })()}
 
-            {/* Profile Dropdown */}
+            {/* Profile Dropdown with Name & Email Visible by Default */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="rounded-full h-10 w-10 bg-primary/10 hover:bg-primary/20 p-0 overflow-hidden ring-1 ring-border focus-visible:ring-2 focus-visible:ring-primary"
+                <button
+                  type="button"
+                  className="flex items-center gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-xl hover:bg-accent/70 transition-all border border-border/50 hover:border-border text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer select-none bg-card shadow-2xs"
                   title={userName ? `${userName} (${userEmail})` : userEmail}
                 >
-                  {profileImage ? (
-                    <img
-                      src={profileImage}
-                      alt="Profile"
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center font-bold text-sm text-primary uppercase">
-                      {userName ? userName.trim().charAt(0) : (userEmail ? userEmail.charAt(0) : <User className="h-5 w-5 text-primary" />)}
-                    </div>
-                  )}
-                </Button>
+                  {/* Avatar Circle */}
+                  <div className="rounded-full h-9 w-9 bg-primary/10 flex-shrink-0 overflow-hidden ring-1 ring-border flex items-center justify-center">
+                    {profileImage ? (
+                      <img
+                        src={profileImage}
+                        alt="Profile"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center font-bold text-sm text-primary uppercase">
+                        {userName ? userName.trim().charAt(0) : (userEmail ? userEmail.charAt(0) : <User className="h-4 w-4 text-primary" />)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Name and Email shown directly in top bar */}
+                  <div className="flex flex-col text-left max-w-[120px] sm:max-w-[170px] md:max-w-[210px]">
+                    <span className="text-xs md:text-sm font-bold text-foreground leading-tight truncate">
+                      {userName || 'User'}
+                    </span>
+                    <span className="text-[10px] md:text-[11px] text-muted-foreground truncate leading-tight mt-0.5" title={userEmail}>
+                      {userEmail}
+                    </span>
+                  </div>
+
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground/70 group-hover:text-foreground transition-transform duration-200 shrink-0 ml-0.5" />
+                </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-60 p-1.5">
+              <DropdownMenuContent align="end" className="w-64 p-1.5">
                 {/* User Info Header: Name + Email + Role */}
                 <div className="px-3 py-2.5 bg-muted/40 rounded-md border border-border/50 mb-1">
                   <p className="text-sm font-bold text-foreground leading-tight truncate">
