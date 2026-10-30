@@ -23,7 +23,10 @@ import {
   X,
   Layers,
   BarChart3,
-  Users
+  Users,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -161,6 +164,7 @@ export default function StudentPerformanceReport() {
   const [studentsList, setStudentsList] = useState<Student[]>([]);
   const [tasksList, setTasksList] = useState<TaskRecord[]>([]);
   const [attendanceList, setAttendanceList] = useState<AttendanceRecord[]>([]);
+  const [earningsList, setEarningsList] = useState<any[]>([]);
   const [subjectsList, setSubjectsList] = useState<{ id: string; name: string }[]>([]);
 
   // Filters (Multi-select)
@@ -330,18 +334,19 @@ export default function StudentPerformanceReport() {
         status: (t.status || 'pending').toLowerCase(),
         submission_link: t.submission_link,
         feedback_type: t.feedback_type || 'General Task',
-        earning_amount: Number(t.earning_amount) || 100, // default points if not set
+        earning_amount: Number(t.earning_amount) || 0,
         created_at: t.created_at,
         subject_id: t.subject_id,
         subject_name: t.subject_id ? subjMap.get(t.subject_id) : undefined,
       }));
       setTasksList(formattedTasks);
 
-      // E. Attendance (daily_attendance & student_performance)
-      let combinedAttendance: AttendanceRecord[] = [];
+      // E. Attendance (De-duplicated by student_id & date across daily_attendance & student_performance)
       const { startDate, endDate } = getDateRange();
       const startIso = startDate.toISOString().split('T')[0];
       const endIso = endDate.toISOString().split('T')[0];
+
+      const attendanceMap = new Map<string, AttendanceRecord>();
 
       // E1: daily_attendance
       if (classIds.length > 0) {
@@ -353,7 +358,9 @@ export default function StudentPerformanceReport() {
           .lte('date', endIso);
 
         (dailyData || []).forEach(d => {
-          combinedAttendance.push({
+          if (!d.student_id || !d.date) return;
+          const key = `${d.student_id}_${d.date}`;
+          attendanceMap.set(key, {
             id: d.id,
             student_id: d.student_id,
             status: d.status || 'Present',
@@ -363,7 +370,7 @@ export default function StudentPerformanceReport() {
         });
       }
 
-      // E2: student_performance
+      // E2: student_performance (merge cleanly without double-counting the same day)
       if (studentIds.length > 0) {
         const chunkSize = 200;
         for (let i = 0; i < studentIds.length; i += chunkSize) {
@@ -386,20 +393,47 @@ export default function StudentPerformanceReport() {
             const date = p.sessions?.session_date || p.created_at;
             if (!date) return;
             const dateStr = date.split('T')[0];
-            if (dateStr >= startIso && dateStr <= endIso) {
-              combinedAttendance.push({
-                id: p.id,
-                student_id: p.student_id,
-                status: p.attendance_status || 'Present',
-                date: dateStr,
-                session_title: p.sessions?.title || 'Session Attendance',
-              });
+            if (dateStr >= startIso && dateStr <= endIso && p.student_id) {
+              const key = `${p.student_id}_${dateStr}`;
+              const statusStr = (p.attendance_status || '').toLowerCase();
+              const isPresent = statusStr === 'present' || statusStr === 'p' || statusStr.includes('late');
+
+              if (!attendanceMap.has(key)) {
+                attendanceMap.set(key, {
+                  id: p.id,
+                  student_id: p.student_id,
+                  status: p.attendance_status || 'Present',
+                  date: dateStr,
+                  session_title: p.sessions?.title || 'Session Attendance',
+                });
+              } else if (isPresent) {
+                // If either system logged Present, reflect Present
+                attendanceMap.get(key)!.status = p.attendance_status || 'Present';
+              }
             }
           });
         }
       }
 
-      setAttendanceList(combinedAttendance);
+      setAttendanceList(Array.from(attendanceMap.values()));
+
+      // F. Real Earnings (from official student_earnings table)
+      let allEarnings: any[] = [];
+      if (studentIds.length > 0) {
+        const chunkSize = 200;
+        for (let i = 0; i < studentIds.length; i += chunkSize) {
+          const slice = studentIds.slice(i, i + chunkSize);
+          const { data: earnData } = await supabase
+            .from('student_earnings')
+            .select('id, student_id, amount, earned_at, description, task_id')
+            .in('student_id', slice)
+            .gte('earned_at', startDate.toISOString())
+            .lte('earned_at', endDate.toISOString());
+
+          if (earnData) allEarnings = allEarnings.concat(earnData);
+        }
+      }
+      setEarningsList(allEarnings);
     } catch (err) {
       console.error('Error loading student performance report data:', err);
       toast.error('Failed to load performance report data');
@@ -458,7 +492,15 @@ export default function StudentPerformanceReport() {
       if (selectedSubjects.length > 0) {
         studentTasks = studentTasks.filter(t => t.subject_id && selectedSubjects.includes(t.subject_id));
       }
-      studentTasks = studentTasks.filter(t => matchesDateAndMonth(t.created_at || t.deadline));
+      const { startDate: aStart, endDate: aEnd } = getDateRange();
+      studentTasks = studentTasks.filter(t => {
+        const tDateStr = t.created_at || t.deadline;
+        if (tDateStr) {
+          const tDate = new Date(tDateStr);
+          if (tDate < aStart || tDate > aEnd) return false;
+        }
+        return matchesDateAndMonth(tDateStr);
+      });
 
       const tasksAssigned = studentTasks.length;
       const tasksCompleted = studentTasks.filter(t => t.status === 'completed' || t.status === 'approved').length;
@@ -494,12 +536,38 @@ export default function StudentPerformanceReport() {
       const sessionDays = presents + absents + leaves; // Total of (P(P+LT)+A+L)
       const attendancePercent = sessionDays > 0 ? Math.round((presents / sessionDays) * 100) : 0;
 
-      // Earnings
-      const earningsForecasted = studentTasks.reduce((sum, t) => sum + (t.earning_amount || 0), 0);
-      const earningsEarned = studentTasks
-        .filter(t => t.status === 'completed' || t.status === 'approved')
+      // Academic Year date range
+      const { startDate: acadStart, endDate: acadEnd } = getDateRange();
+
+      // Real Earnings from student_earnings table (filtered by date & month)
+      const studentEarnings = earningsList.filter(e => {
+        if (e.student_id !== student.id) return false;
+        const eDate = new Date(e.earned_at);
+        if (eDate < acadStart || eDate > acadEnd) return false;
+        return matchesDateAndMonth(e.earned_at);
+      });
+
+      const tableEarningsSum = studentEarnings.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+
+      // Check tasks completed that might have reward units not yet synced to student_earnings
+      const loggedTaskIds = new Set(studentEarnings.map(e => e.task_id).filter(Boolean));
+      const unloggedTaskRewards = studentTasks
+        .filter(t => (t.status === 'completed' || t.status === 'approved') && !loggedTaskIds.has(t.id))
         .reduce((sum, t) => sum + (t.earning_amount || 0), 0);
-      const earningsPercent = earningsForecasted > 0 ? Math.round((earningsEarned / earningsForecasted) * 100) : 0;
+
+      const earningsEarned = Math.round(tableEarningsSum + unloggedTaskRewards);
+
+      // Potential / Forecasted Earnings:
+      // Standard monthly potential per active student is ₹840 (Mentor Connect ₹800 + Daily Tasks ₹40)
+      const today = new Date();
+      let elapsedMonths = selectedMonths.length > 0
+        ? selectedMonths.length
+        : Math.max(1, Math.min(12, ((today.getFullYear() - acadStart.getFullYear()) * 12 + (today.getMonth() - acadStart.getMonth()) + 1)));
+      
+      const standardPotential = elapsedMonths * 840;
+      const assignedTaskPotential = studentTasks.reduce((sum, t) => sum + (t.earning_amount || 0), 0);
+      const earningsForecasted = Math.max(earningsEarned, Math.max(standardPotential, assignedTaskPotential));
+      const earningsPercent = earningsForecasted > 0 ? Math.min(100, Math.round((earningsEarned / earningsForecasted) * 100)) : 0;
 
       // Composite Performance Index (Task Completion 50% + Attendance 50%)
       const scoreIndex = Math.round((taskCompletionPercent * 0.5) + (attendancePercent * 0.5));
@@ -530,7 +598,7 @@ export default function StudentPerformanceReport() {
         scoreIndex,
       };
     });
-  }, [studentsList, tasksList, attendanceList, selectedTaskTypes, selectedSubjects, selectedMonths, startDateFilter, endDateFilter]);
+  }, [studentsList, tasksList, attendanceList, earningsList, selectedTaskTypes, selectedSubjects, selectedMonths, startDateFilter, endDateFilter]);
 
   // 4. Filter Rows by Student-level selections (Class, Student, Designation, Search, Tier)
   const filteredRows = useMemo(() => {
@@ -587,6 +655,9 @@ export default function StudentPerformanceReport() {
       } else if (sortField === 'designation') {
         aVal = a.student.designation || '';
         bVal = b.student.designation || '';
+      } else if (sortField === 'scoreIndex' || sortField === 'performanceLevel') {
+        aVal = a.scoreIndex;
+        bVal = b.scoreIndex;
       }
 
       if (typeof aVal === 'string') {
@@ -744,6 +815,17 @@ export default function StudentPerformanceReport() {
     setTierFilter('all');
   };
 
+
+  const renderSortIcon = (field: string) => {
+    if (sortField === field) {
+      return sortOrder === 'asc' ? (
+        <ArrowUp className="h-3.5 w-3.5 text-primary shrink-0 transition-transform" />
+      ) : (
+        <ArrowDown className="h-3.5 w-3.5 text-primary shrink-0 transition-transform" />
+      );
+    }
+    return <ArrowUpDown className="h-3 w-3 text-muted-foreground/40 shrink-0 opacity-60 group-hover:opacity-100 group-hover:text-primary transition-all" />;
+  };
   const handleSort = (field: string) => {
     if (sortField === field) {
       setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
@@ -845,180 +927,6 @@ export default function StudentPerformanceReport() {
             Performance & Completion Report
           </Button>
         </div>
-
-        {/* COLOURED OVERVIEW BOXES (Metrics Cards like in Attendance) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
-          {/* Box 1: Total Tasks Assigned */}
-          <Card className="rounded-2xl border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-50/70 to-indigo-50/30 dark:from-blue-950/30 dark:to-background border shadow-xs">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Tasks Assigned</span>
-                <ClipboardList className="w-4 h-4" />
-              </div>
-              <div className="text-2xl font-black text-slate-900 dark:text-white">
-                {overviewMetrics.totalAssigned}
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-1 truncate">
-                Across {overviewMetrics.totalStudents} students
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Box 2: Tasks Completed */}
-          <Card className="rounded-2xl border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-50/70 to-teal-50/30 dark:from-emerald-950/30 dark:to-background border shadow-xs">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Tasks Completed</span>
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
-                  {overviewMetrics.totalCompleted}
-                </span>
-                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                  ({overviewMetrics.completionRate}%)
-                </span>
-              </div>
-              <div className="mt-1.5">
-                <Progress value={overviewMetrics.completionRate} className="h-1.5 bg-emerald-100 dark:bg-emerald-950" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Box 3: Tasks Pending */}
-          <Card className="rounded-2xl border-l-4 border-l-amber-500 bg-gradient-to-br from-amber-50/70 to-orange-50/30 dark:from-amber-950/30 dark:to-background border shadow-xs">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Pending Tasks</span>
-                <Clock className="w-4 h-4" />
-              </div>
-              <div className="text-2xl font-black text-amber-600 dark:text-amber-400">
-                {overviewMetrics.totalPending}
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-1 truncate">
-                {overviewMetrics.totalAssigned > 0 ? `${100 - overviewMetrics.completionRate}% incomplete` : 'None pending'}
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Box 4: Session Attendance % */}
-          <Card className="rounded-2xl border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-50/70 to-pink-50/30 dark:from-purple-950/30 dark:to-background border shadow-xs">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between text-purple-600 dark:text-purple-400 mb-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Attendance %</span>
-                <CalendarCheck className="w-4 h-4" />
-              </div>
-              <div className="text-2xl font-black text-purple-600 dark:text-purple-400">
-                {overviewMetrics.attendanceRate}%
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-1 truncate">
-                {overviewMetrics.totalPresents} / {overviewMetrics.totalSessionDays} Days
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Box 5: Presents Breakdown */}
-          <Card className="rounded-2xl border-l-4 border-l-teal-500 bg-gradient-to-br from-teal-50/70 to-cyan-50/30 dark:from-teal-950/30 dark:to-background border shadow-xs">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between text-teal-600 dark:text-teal-400 mb-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Presents P(P+LT)</span>
-                <UserCheck className="w-4 h-4" />
-              </div>
-              <div className="text-2xl font-black text-slate-900 dark:text-white">
-                {overviewMetrics.totalPresents}
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-1 truncate">
-                {overviewMetrics.totalOntime} P • {overviewMetrics.totalLate} LT
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Box 6: Forecasted vs Earned */}
-          <Card className="rounded-2xl border-l-4 border-l-indigo-500 bg-gradient-to-br from-indigo-50/70 to-violet-50/30 dark:from-indigo-950/30 dark:to-background border shadow-xs">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between text-indigo-600 dark:text-indigo-400 mb-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Earned (Rs)</span>
-                <Coins className="w-4 h-4" />
-              </div>
-              <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
-                ₹{overviewMetrics.totalEarned.toLocaleString('en-IN')}
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-1 truncate">
-                Forecasted: ₹{overviewMetrics.totalForecasted.toLocaleString('en-IN')}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* VISUAL ANALYTICS / COMPARISON CHART (Collapsible) */}
-        {showChart && classComparisonChartData.length > 0 && (
-          <Card className="rounded-2xl border-border shadow-xs overflow-hidden bg-card">
-            <CardHeader className="py-4 px-6 border-b border-border/50 bg-muted/20 flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="text-base font-bold flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-primary" />
-                  Class Comparison: Tasks Assigned vs Completed & Attendance
-                </CardTitle>
-                <CardDescription className="text-xs mt-0.5">
-                  Visual benchmark across all active classes matching current filters
-                </CardDescription>
-              </div>
-              <Badge variant="secondary" className="text-xs font-semibold">
-                {classComparisonChartData.length} Classes Shown
-              </Badge>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-6">
-              <div className="w-full h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={classComparisonChartData} margin={{ top: 10, right: 20, left: 0, bottom: 25 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.6} />
-                    <XAxis
-                      dataKey="name"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#64748b', fontSize: 11, fontWeight: 500 }}
-                      dy={8}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#94a3b8', fontSize: 11 }}
-                    />
-                    <Tooltip
-                      content={({ active, payload }) => {
-                        if (!active || !payload || !payload.length) return null;
-                        const data = payload[0].payload;
-                        return (
-                          <div className="bg-slate-900 text-white px-3.5 py-2.5 rounded-xl shadow-xl text-xs space-y-1.5 border border-slate-700">
-                            <p className="font-bold text-sm text-white">{data.fullName}</p>
-                            <div className="flex justify-between gap-4 text-slate-300">
-                              <span>Tasks Assigned:</span>
-                              <b className="text-blue-400">{data['Tasks Assigned']}</b>
-                            </div>
-                            <div className="flex justify-between gap-4 text-slate-300">
-                              <span>Tasks Completed:</span>
-                              <b className="text-emerald-400">{data['Tasks Completed']} ({data['Completion %']}%)</b>
-                            </div>
-                            <div className="flex justify-between gap-4 text-slate-300">
-                              <span>Attendance Rate:</span>
-                              <b className="text-purple-400">{data['Attendance %']}%</b>
-                            </div>
-                            <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-800">
-                              Enrolled Students: {data.students}
-                            </div>
-                          </div>
-                        );
-                      }}
-                    />
-                    <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }} />
-                    <Bar dataKey="Tasks Assigned" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={38} />
-                    <Bar dataKey="Tasks Completed" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={38} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* MULTI-SELECT FILTERS BAR */}
         <Card className="rounded-2xl border-border shadow-xs bg-card p-4 space-y-4">
@@ -1360,6 +1268,181 @@ export default function StudentPerformanceReport() {
           </div>
         </Card>
 
+
+        {/* COLOURED OVERVIEW BOXES (Metrics Cards like in Attendance) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
+          {/* Box 1: Total Tasks Assigned */}
+          <Card className="rounded-2xl border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-50/70 to-indigo-50/30 dark:from-blue-950/30 dark:to-background border shadow-xs">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Tasks Assigned</span>
+                <ClipboardList className="w-4 h-4" />
+              </div>
+              <div className="text-2xl font-black text-slate-900 dark:text-white">
+                {overviewMetrics.totalAssigned}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1 truncate">
+                Across {overviewMetrics.totalStudents} students
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Box 2: Tasks Completed */}
+          <Card className="rounded-2xl border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-50/70 to-teal-50/30 dark:from-emerald-950/30 dark:to-background border shadow-xs">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Tasks Completed</span>
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                  {overviewMetrics.totalCompleted}
+                </span>
+                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                  ({overviewMetrics.completionRate}%)
+                </span>
+              </div>
+              <div className="mt-1.5">
+                <Progress value={overviewMetrics.completionRate} className="h-1.5 bg-emerald-100 dark:bg-emerald-950" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Box 3: Tasks Pending */}
+          <Card className="rounded-2xl border-l-4 border-l-amber-500 bg-gradient-to-br from-amber-50/70 to-orange-50/30 dark:from-amber-950/30 dark:to-background border shadow-xs">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Pending Tasks</span>
+                <Clock className="w-4 h-4" />
+              </div>
+              <div className="text-2xl font-black text-amber-600 dark:text-amber-400">
+                {overviewMetrics.totalPending}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1 truncate">
+                {overviewMetrics.totalAssigned > 0 ? `${100 - overviewMetrics.completionRate}% incomplete` : 'None pending'}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Box 4: Session Attendance % */}
+          <Card className="rounded-2xl border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-50/70 to-pink-50/30 dark:from-purple-950/30 dark:to-background border shadow-xs">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between text-purple-600 dark:text-purple-400 mb-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Attendance %</span>
+                <CalendarCheck className="w-4 h-4" />
+              </div>
+              <div className="text-2xl font-black text-purple-600 dark:text-purple-400">
+                {overviewMetrics.attendanceRate}%
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1 truncate">
+                {overviewMetrics.totalPresents} / {overviewMetrics.totalSessionDays} Days
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Box 5: Presents Breakdown */}
+          <Card className="rounded-2xl border-l-4 border-l-teal-500 bg-gradient-to-br from-teal-50/70 to-cyan-50/30 dark:from-teal-950/30 dark:to-background border shadow-xs">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between text-teal-600 dark:text-teal-400 mb-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Presents P(P+LT)</span>
+                <UserCheck className="w-4 h-4" />
+              </div>
+              <div className="text-2xl font-black text-slate-900 dark:text-white">
+                {overviewMetrics.totalPresents}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1 truncate">
+                {overviewMetrics.totalOntime} P • {overviewMetrics.totalLate} LT
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Box 6: Forecasted vs Earned */}
+          <Card className="rounded-2xl border-l-4 border-l-indigo-500 bg-gradient-to-br from-indigo-50/70 to-violet-50/30 dark:from-indigo-950/30 dark:to-background border shadow-xs">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between text-indigo-600 dark:text-indigo-400 mb-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Earned (Rs)</span>
+                <Coins className="w-4 h-4" />
+              </div>
+              <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                ₹{overviewMetrics.totalEarned.toLocaleString('en-IN')}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1 truncate">
+                Forecasted: ₹{overviewMetrics.totalForecasted.toLocaleString('en-IN')}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* VISUAL ANALYTICS / COMPARISON CHART (Collapsible) */}
+        {showChart && classComparisonChartData.length > 0 && (
+          <Card className="rounded-2xl border-border shadow-xs overflow-hidden bg-card">
+            <CardHeader className="py-4 px-6 border-b border-border/50 bg-muted/20 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-primary" />
+                  Class Comparison: Tasks Assigned vs Completed & Attendance
+                </CardTitle>
+                <CardDescription className="text-xs mt-0.5">
+                  Visual benchmark across all active classes matching current filters
+                </CardDescription>
+              </div>
+              <Badge variant="secondary" className="text-xs font-semibold">
+                {classComparisonChartData.length} Classes Shown
+              </Badge>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6">
+              <div className="w-full h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={classComparisonChartData} margin={{ top: 10, right: 20, left: 0, bottom: 25 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.6} />
+                    <XAxis
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: '#64748b', fontSize: 11, fontWeight: 500 }}
+                      dy={8}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: '#94a3b8', fontSize: 11 }}
+                    />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload || !payload.length) return null;
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-slate-900 text-white px-3.5 py-2.5 rounded-xl shadow-xl text-xs space-y-1.5 border border-slate-700">
+                            <p className="font-bold text-sm text-white">{data.fullName}</p>
+                            <div className="flex justify-between gap-4 text-slate-300">
+                              <span>Tasks Assigned:</span>
+                              <b className="text-blue-400">{data['Tasks Assigned']}</b>
+                            </div>
+                            <div className="flex justify-between gap-4 text-slate-300">
+                              <span>Tasks Completed:</span>
+                              <b className="text-emerald-400">{data['Tasks Completed']} ({data['Completion %']}%)</b>
+                            </div>
+                            <div className="flex justify-between gap-4 text-slate-300">
+                              <span>Attendance Rate:</span>
+                              <b className="text-purple-400">{data['Attendance %']}%</b>
+                            </div>
+                            <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-800">
+                              Enrolled Students: {data.students}
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }} />
+                    <Bar dataKey="Tasks Assigned" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={38} />
+                    <Bar dataKey="Tasks Completed" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={38} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* DETAILED REPORT TABLE */}
         <Card className="rounded-2xl border-border shadow-xs overflow-hidden bg-card">
           <CardHeader className="py-4 px-6 border-b border-border/50 bg-muted/20 flex flex-row items-center justify-between flex-wrap gap-2">
@@ -1402,85 +1485,142 @@ export default function StudentPerformanceReport() {
                       {/* Student Info */}
                       <TableHead
                         onClick={() => handleSort('name')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold min-w-[160px]"
+                        className="cursor-pointer hover:text-primary text-xs font-bold min-w-[160px] select-none group transition-colors"
+                        title="Click to sort by Student Name"
                       >
-                        Student Name
+                        <div className="flex items-center gap-1.5">
+                          <span>Student Name</span>
+                          {renderSortIcon('name')}
+                        </div>
                       </TableHead>
                       <TableHead
                         onClick={() => handleSort('class_name')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold"
+                        className="cursor-pointer hover:text-primary text-xs font-bold select-none group transition-colors"
+                        title="Click to sort by Class"
                       >
-                        Class
+                        <div className="flex items-center gap-1.5">
+                          <span>Class</span>
+                          {renderSortIcon('class_name')}
+                        </div>
                       </TableHead>
                       <TableHead
                         onClick={() => handleSort('designation')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold"
+                        className="cursor-pointer hover:text-primary text-xs font-bold select-none group transition-colors"
+                        title="Click to sort by Designation"
                       >
-                        Designation
+                        <div className="flex items-center gap-1.5">
+                          <span>Designation</span>
+                          {renderSortIcon('designation')}
+                        </div>
                       </TableHead>
 
                       {/* TASKS METRICS */}
                       <TableHead
                         onClick={() => handleSort('tasksAssigned')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-blue-50/50 dark:bg-blue-950/20"
+                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-blue-50/50 dark:bg-blue-950/20 select-none group transition-colors"
+                        title="Click to sort by Total Assigned Tasks"
                       >
-                        Total Assigned
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Total Assigned</span>
+                          {renderSortIcon('tasksAssigned')}
+                        </div>
                       </TableHead>
                       <TableHead
                         onClick={() => handleSort('tasksCompleted')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-blue-50/50 dark:bg-blue-950/20"
+                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-blue-50/50 dark:bg-blue-950/20 select-none group transition-colors"
+                        title="Click to sort by Completed Tasks"
                       >
-                        Completed
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Completed</span>
+                          {renderSortIcon('tasksCompleted')}
+                        </div>
                       </TableHead>
                       <TableHead
                         onClick={() => handleSort('taskCompletionPercent')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-blue-50/50 dark:bg-blue-950/20 min-w-[130px]"
+                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-blue-50/50 dark:bg-blue-950/20 min-w-[130px] select-none group transition-colors"
+                        title="Click to sort by Completion %"
                       >
-                        Completion %
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Completion %</span>
+                          {renderSortIcon('taskCompletionPercent')}
+                        </div>
                       </TableHead>
 
                       {/* ATTENDANCE METRICS */}
                       <TableHead
                         onClick={() => handleSort('presents')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-purple-50/50 dark:bg-purple-950/20"
+                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-purple-50/50 dark:bg-purple-950/20 select-none group transition-colors"
+                        title="Click to sort by Presents"
                       >
-                        Presents (P+LT)
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Presents (P+LT)</span>
+                          {renderSortIcon('presents')}
+                        </div>
                       </TableHead>
                       <TableHead
                         onClick={() => handleSort('sessionDays')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-purple-50/50 dark:bg-purple-950/20"
+                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-purple-50/50 dark:bg-purple-950/20 select-none group transition-colors"
+                        title="Click to sort by Session Days"
                       >
-                        Session Days
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Session Days</span>
+                          {renderSortIcon('sessionDays')}
+                        </div>
                       </TableHead>
                       <TableHead
                         onClick={() => handleSort('attendancePercent')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-purple-50/50 dark:bg-purple-950/20 min-w-[100px]"
+                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-purple-50/50 dark:bg-purple-950/20 min-w-[110px] select-none group transition-colors"
+                        title="Click to sort by Attendance %"
                       >
-                        Attendance %
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Attendance %</span>
+                          {renderSortIcon('attendancePercent')}
+                        </div>
                       </TableHead>
 
                       {/* EARNINGS METRICS */}
                       <TableHead
                         onClick={() => handleSort('earningsForecasted')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold text-right bg-emerald-50/50 dark:bg-emerald-950/20"
+                        className="cursor-pointer hover:text-primary text-xs font-bold text-right bg-emerald-50/50 dark:bg-emerald-950/20 select-none group transition-colors"
+                        title="Click to sort by Forecasted Earnings"
                       >
-                        Forecasted (₹)
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span>Forecasted (₹)</span>
+                          {renderSortIcon('earningsForecasted')}
+                        </div>
                       </TableHead>
                       <TableHead
                         onClick={() => handleSort('earningsEarned')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold text-right bg-emerald-50/50 dark:bg-emerald-950/20"
+                        className="cursor-pointer hover:text-primary text-xs font-bold text-right bg-emerald-50/50 dark:bg-emerald-950/20 select-none group transition-colors"
+                        title="Click to sort by Actual Earned"
                       >
-                        Earned (₹)
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span>Earned (₹)</span>
+                          {renderSortIcon('earningsEarned')}
+                        </div>
                       </TableHead>
                       <TableHead
                         onClick={() => handleSort('earningsPercent')}
-                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-emerald-50/50 dark:bg-emerald-950/20"
+                        className="cursor-pointer hover:text-primary text-xs font-bold text-center bg-emerald-50/50 dark:bg-emerald-950/20 select-none group transition-colors"
+                        title="Click to sort by Earned %"
                       >
-                        Earned %
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Earned %</span>
+                          {renderSortIcon('earningsPercent')}
+                        </div>
                       </TableHead>
 
                       {/* Overall Level & Actions */}
-                      <TableHead className="text-center text-xs font-bold min-w-[120px]">Rating / Tier</TableHead>
+                      <TableHead 
+                        onClick={() => handleSort('scoreIndex')}
+                        className="cursor-pointer hover:text-primary text-center text-xs font-bold min-w-[120px] select-none group transition-colors"
+                        title="Click to sort by Rating / Tier"
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Rating / Tier</span>
+                          {renderSortIcon('scoreIndex')}
+                        </div>
+                      </TableHead>
                       <TableHead className="text-right text-xs font-bold w-20">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1699,12 +1839,15 @@ export default function StudentPerformanceReport() {
 
                 {/* Tabs inside Modal */}
                 <Tabs defaultValue="tasks" className="w-full pt-2">
-                  <TabsList className="grid grid-cols-2 w-full mb-3">
+                  <TabsList className="grid grid-cols-3 w-full mb-3">
                     <TabsTrigger value="tasks" className="text-xs">
                       Assigned Tasks ({tasksList.filter(t => t.student_id === selectedStudentForHistory.student.id).length})
                     </TabsTrigger>
                     <TabsTrigger value="attendance" className="text-xs">
                       Attendance Log ({attendanceList.filter(a => a.student_id === selectedStudentForHistory.student.id).length})
+                    </TabsTrigger>
+                    <TabsTrigger value="earnings" className="text-xs">
+                      Earnings Log ({earningsList.filter(e => e.student_id === selectedStudentForHistory.student.id).length})
                     </TabsTrigger>
                   </TabsList>
 
@@ -1820,6 +1963,48 @@ export default function StudentPerformanceReport() {
                                     >
                                       {a.status}
                                     </Badge>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      );
+                    })()}
+                  </TabsContent>
+
+                  {/* Earnings Tab */}
+                  <TabsContent value="earnings" className="space-y-2">
+                    {(() => {
+                      const studentEarnings = earningsList.filter(e => e.student_id === selectedStudentForHistory.student.id);
+                      if (studentEarnings.length === 0) {
+                        return (
+                          <div className="py-8 text-center text-xs text-muted-foreground">
+                            No earning transactions recorded for this student in this academic year.
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="rounded-xl border overflow-hidden">
+                          <Table>
+                            <TableHeader className="bg-muted/40">
+                              <TableRow>
+                                <TableHead className="text-xs font-bold">Earned Date</TableHead>
+                                <TableHead className="text-xs font-bold">Description / Reward</TableHead>
+                                <TableHead className="text-xs font-bold text-right">Amount (₹)</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {studentEarnings.map(e => (
+                                <TableRow key={e.id} className="text-xs">
+                                  <TableCell className="text-muted-foreground">
+                                    {e.earned_at ? new Date(e.earned_at).toLocaleDateString() : '-'}
+                                  </TableCell>
+                                  <TableCell className="font-semibold">
+                                    {e.description || 'Reward'}
+                                  </TableCell>
+                                  <TableCell className="text-right font-bold text-emerald-600">
+                                    ₹{e.amount}
                                   </TableCell>
                                 </TableRow>
                               ))}
