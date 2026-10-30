@@ -58,6 +58,8 @@ import { AddSessionDialog } from '@/components/sessions/AddSessionDialog';
 import { ImportSessionsDialog } from '@/components/sessions/ImportSessionsDialog';
 import { UpdateRecordingDialog } from '@/components/sessions/UpdateRecordingDialog';
 import { EditSessionDialog } from '@/components/sessions/EditSessionDialog';
+import { UnlockFeedbackDialog } from '@/components/sessions/UnlockFeedbackDialog';
+import { isFeedbackCurrentlyUnlocked, getUnlockRemainingTimeText } from '@/utils/feedbackLockUtils';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { attachSessionIdCodes } from '@/utils/sessionIdGenerator';
 
@@ -108,6 +110,7 @@ interface Session {
   created_at: string;
   updated_at: string;
   feedback_unlocked?: boolean;
+  feedback_unlocked_until?: string | null;
   logged_hours_in_benevity?: boolean;
   benevity_id?: string | null;
 }
@@ -241,6 +244,8 @@ export default function Sessions() {
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [updateRecordingDialogOpen, setUpdateRecordingDialogOpen] = useState(false);
   const [editSessionDialogOpen, setEditSessionDialogOpen] = useState(false);
+  const [unlockFeedbackDialogOpen, setUnlockFeedbackDialogOpen] = useState(false);
+  const [sessionForUnlock, setSessionForUnlock] = useState<Session | null>(null);
   const [selectedSessionType, setSelectedSessionType] = useState<'guest_teacher' | 'guest_speaker' | 'local_teacher' | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
@@ -694,22 +699,9 @@ export default function Sessions() {
     setIsFormDialogOpen(true);
   };
 
-  const handleToggleFeedbackLock = async (session: Session) => {
-    try {
-      const newStatus = !session.feedback_unlocked;
-      const { error } = await supabase
-        .from('sessions')
-        .update({ feedback_unlocked: newStatus })
-        .eq('id', session.id);
-      
-      if (error) throw error;
-      
-      toast.success(`Feedback ${newStatus ? 'unlocked' : 'locked'} successfully.`);
-      fetchSessions();
-    } catch (e) {
-      console.error(e);
-      toast.error('Failed to change feedback lock status.');
-    }
+  const handleToggleFeedbackLock = (session: Session) => {
+    setSessionForUnlock(session);
+    setUnlockFeedbackDialogOpen(true);
   };
 
   return (
@@ -1477,7 +1469,19 @@ export default function Sessions() {
                             {isDelayed(session) ? <Badge variant="destructive">Yes</Badge> : <Badge variant="secondary">No</Badge>}
                           </TableCell>
                           <TableCell>
-                            <DropdownMenu>
+                            <div className="flex items-center gap-1.5 justify-end">
+                              {isFeedbackCurrentlyUnlocked(session) && (
+                                <Badge 
+                                  variant="outline" 
+                                  className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-700 text-[10px] px-1.5 py-0 h-5 font-normal flex items-center gap-1 cursor-pointer"
+                                  onClick={() => userRole === 1 && handleToggleFeedbackLock(session)}
+                                  title={session.feedback_unlocked_until ? `Unlocked until: ${session.feedback_unlocked_until}` : 'Feedback Unlocked'}
+                                >
+                                  <Unlock className="h-3 w-3 text-amber-600" />
+                                  <span>{session.feedback_unlocked_until ? (getUnlockRemainingTimeText(session.feedback_unlocked_until) || 'Unlocked') : 'Unlocked'}</span>
+                                </Badge>
+                              )}
+                              <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" className="h-8 w-8 p-0">
                                   <span className="sr-only">Open menu</span>
@@ -1500,14 +1504,25 @@ export default function Sessions() {
                                   <Edit className="h-4 w-4 mr-2" />
                                   Edit Status
                                 </DropdownMenuItem>
-                                {userRole === 1 && (
-                                  <DropdownMenuItem 
-                                    onClick={() => handleToggleFeedbackLock(session)}
-                                  >
-                                    {session.feedback_unlocked ? <Lock className="h-4 w-4 mr-2" /> : <Unlock className="h-4 w-4 mr-2" />}
-                                    {session.feedback_unlocked ? 'Lock Feedback' : 'Unlock Feedback'}
-                                  </DropdownMenuItem>
-                                )}
+                                {userRole === 1 && (() => {
+                                  const isUnlocked = isFeedbackCurrentlyUnlocked(session);
+                                  const remaining = session.feedback_unlocked_until ? getUnlockRemainingTimeText(session.feedback_unlocked_until) : null;
+                                  return (
+                                    <DropdownMenuItem 
+                                      onClick={() => handleToggleFeedbackLock(session)}
+                                    >
+                                      {isUnlocked ? <Lock className="h-4 w-4 mr-2 text-amber-600" /> : <Unlock className="h-4 w-4 mr-2" />}
+                                      <span className="flex items-center justify-between w-full">
+                                        <span>{isUnlocked ? 'Lock / Manage Unlock' : 'Unlock Feedback'}</span>
+                                        {isUnlocked && remaining && remaining !== 'Expired' && (
+                                          <span className="ml-2 text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-1.5 py-0.5 rounded font-mono">
+                                            {remaining}
+                                          </span>
+                                        )}
+                                      </span>
+                                    </DropdownMenuItem>
+                                  );
+                                })()}
                                 {userRole === 1 && (
                                   <DropdownMenuItem 
                                     onClick={() => {
@@ -1522,6 +1537,7 @@ export default function Sessions() {
                                 )}
                               </DropdownMenuContent>
                             </DropdownMenu>
+                            </div>
                           </TableCell>
                         </TableRow>
                         );
@@ -1751,18 +1767,22 @@ export default function Sessions() {
                           <FileText className="h-4 w-4 mr-1" />
                           Record
                         </Button>
-                        {userRole === 1 && (
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleToggleFeedbackLock(session)}
-                            className="flex-1"
-                            title={session.feedback_unlocked ? 'Lock Feedback' : 'Unlock Feedback'}
-                          >
-                            {session.feedback_unlocked ? <Lock className="h-4 w-4 mr-1" /> : <Unlock className="h-4 w-4 mr-1" />}
-                            {session.feedback_unlocked ? 'Lock' : 'Unlock'}
-                          </Button>
-                        )}
+                        {userRole === 1 && (() => {
+                          const isUnlocked = isFeedbackCurrentlyUnlocked(session);
+                          const remaining = session.feedback_unlocked_until ? getUnlockRemainingTimeText(session.feedback_unlocked_until) : null;
+                          return (
+                            <Button 
+                              size="sm" 
+                              variant={isUnlocked ? "secondary" : "outline"}
+                              onClick={() => handleToggleFeedbackLock(session)}
+                              className={`flex-1 ${isUnlocked ? 'border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300' : ''}`}
+                              title={isUnlocked ? `Feedback Unlocked (${remaining || 'Active'})` : 'Unlock Feedback'}
+                            >
+                              {isUnlocked ? <Lock className="h-4 w-4 mr-1 text-amber-600" /> : <Unlock className="h-4 w-4 mr-1" />}
+                              {isUnlocked ? (remaining && remaining !== 'Expired' ? remaining : 'Unlocked') : 'Unlock'}
+                            </Button>
+                          );
+                        })()}
                         {userRole === 1 && (
                           <Button 
                             size="sm" 
