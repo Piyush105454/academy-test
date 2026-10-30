@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { runAutoApprovalWorker } from '@/utils/scheduledTaskWorker';
 
 export default function MyWork() {
   const navigate = useNavigate();
@@ -22,6 +23,12 @@ export default function MyWork() {
   const fetchMyTasks = async () => {
     setLoading(true);
     try {
+      try {
+        await runAutoApprovalWorker();
+      } catch (wErr) {
+        console.warn("AutoApproval worker error:", wErr);
+      }
+
       const { data, error } = await supabase
         .from('academy_tasks')
         .select(`

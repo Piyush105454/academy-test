@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { runAutoApprovalWorker } from '@/utils/scheduledTaskWorker';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { 
@@ -38,6 +39,12 @@ export default function Approvals() {
   const fetchSubmissions = async () => {
     setLoading(true);
     try {
+      try {
+        await runAutoApprovalWorker();
+      } catch (wErr) {
+        console.warn("AutoApproval worker error:", wErr);
+      }
+
       const { data, error } = await supabase
         .from('academy_submissions')
         .select(`
@@ -507,9 +514,16 @@ export default function Approvals() {
                         {/* Status */}
                         <td className="px-6 py-4 text-center">
                           {task?.status === 'submitted' && (
-                            <span className="inline-flex px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold items-center gap-1">
-                              <Clock className="h-3.5 w-3.5" /> Pending
-                            </span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="inline-flex px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold items-center gap-1">
+                                <Clock className="h-3.5 w-3.5" /> Pending
+                              </span>
+                              {task?.auto_approve_at && (
+                                <span className="text-[10px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded border border-blue-100 whitespace-nowrap">
+                                  ⚡ Auto-approves {new Date(task.auto_approve_at) > new Date() ? `in ${Math.max(1, Math.round((new Date(task.auto_approve_at).getTime() - Date.now()) / (1000 * 60)))}m` : 'soon'}
+                                </span>
+                              )}
+                            </div>
                           )}
                           {task?.status === 'approved' && (
                             <span className="inline-flex px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold items-center gap-1">

@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { runAutoApprovalWorker } from '@/utils/scheduledTaskWorker';
 import { cn } from '@/lib/utils';
 
 interface SubmissionData {
@@ -102,6 +103,12 @@ export default function WorkTemplateHistory() {
   const fetchTemplateAndHistory = async () => {
     try {
       setLoading(true);
+
+      try {
+        await runAutoApprovalWorker();
+      } catch (wErr) {
+        console.warn("AutoApproval worker error:", wErr);
+      }
 
       // 1. Fetch template details
       const { data: tplData, error: tplError } = await supabase
