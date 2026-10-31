@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Plus, Trash2, MoreVertical, BookOpen, Users, Upload, Pencil, Eye, Lock, Unlock } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Trash2, MoreVertical, BookOpen, Users, Upload, Pencil, Eye, Lock, Unlock, Search, X, Loader2, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -85,6 +85,75 @@ export default function Classes() {
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [classToEdit, setClassToEdit] = useState<Class | null>(null);
+
+  // Global Student Search State
+  const [searchStudentQuery, setSearchStudentQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const term = searchStudentQuery.trim();
+    if (!term) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const { data, error } = await supabase
+          .from('students')
+          .select(`
+            id,
+            name,
+            student_id,
+            roll_number,
+            designation,
+            class_id,
+            classes (
+              id,
+              name
+            )
+          `)
+          .or(`name.ilike.%${term}%,student_id.ilike.%${term}%,roll_number.ilike.%${term}%`)
+          .limit(15);
+
+        if (error) throw error;
+
+        const formatted = (data || []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          student_id: s.student_id || s.roll_number || '',
+          roll_number: s.roll_number || '',
+          class_id: s.class_id,
+          class_name: s.classes?.name || 'No Class',
+          designation: s.designation || ''
+        }));
+
+        setSearchResults(formatted);
+        setIsSearchOpen(true);
+      } catch (err) {
+        console.error('Error searching students:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [searchStudentQuery]);
 
   useEffect(() => {
     fetchClasses();
@@ -266,7 +335,103 @@ export default function Classes() {
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
+            {/* Global Student Search Box */}
+            <div ref={searchRef} className="relative w-full sm:w-64 md:w-72">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder="Search student by name or ID..."
+                  value={searchStudentQuery}
+                  onChange={(e) => {
+                    setSearchStudentQuery(e.target.value);
+                    if (e.target.value.trim()) setIsSearchOpen(true);
+                  }}
+                  onFocus={() => {
+                    if (searchStudentQuery.trim() && searchResults.length > 0) {
+                      setIsSearchOpen(true);
+                    }
+                  }}
+                  className="pl-9 pr-8 bg-white h-9 text-xs sm:text-sm border-slate-200 focus:border-blue-400 rounded-lg shadow-2xs"
+                />
+                {searchStudentQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchStudentQuery('');
+                      setSearchResults([]);
+                      setIsSearchOpen(false);
+                    }}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Autocomplete Result Dropdown */}
+              {isSearchOpen && (
+                <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-80 overflow-y-auto divide-y divide-slate-100">
+                  {isSearching ? (
+                    <div className="px-4 py-5 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                      Searching students...
+                    </div>
+                  ) : searchResults.length === 0 ? (
+                    <div className="px-4 py-5 text-center text-xs text-slate-400">
+                      No students found matching "{searchStudentQuery}"
+                    </div>
+                  ) : (
+                    <>
+                      <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex justify-between">
+                        <span>Students Found ({searchResults.length})</span>
+                        <span className="font-normal text-slate-400">Name - Class</span>
+                      </div>
+                      {searchResults.map((student) => (
+                        <div
+                          key={student.id}
+                          onClick={() => {
+                            setIsSearchOpen(false);
+                            const targetPath = student.class_id && student.class_id !== 'all'
+                              ? `/classes/${student.class_id}/students`
+                              : `/students`;
+                            navigate(`${targetPath}?search=${encodeURIComponent(student.name)}&studentId=${student.id}&openProfile=true`);
+                          }}
+                          className="px-3 py-2 hover:bg-blue-50/70 cursor-pointer flex items-center justify-between transition-colors group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                              {student.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="truncate">
+                              <div className="text-xs sm:text-sm font-semibold text-slate-800 truncate">
+                                <span>{student.name}</span>
+                                <span className="text-slate-400 font-normal mx-1.5">-</span>
+                                <span className="text-blue-600 font-semibold">{student.class_name}</span>
+                              </div>
+                              {student.student_id && (
+                                <div className="text-[11px] text-slate-400 font-medium">
+                                  ID: <span className="font-mono text-slate-600">{student.student_id}</span>
+                                  {student.designation && (
+                                    <span className="ml-2 px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px]">
+                                      {student.designation}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 shrink-0 ml-2">
+                            Profile <ExternalLink className="h-3 w-3" />
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
             <Button
               variant="outline"
               onClick={() => navigate('/students')}

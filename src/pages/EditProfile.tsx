@@ -58,8 +58,8 @@ export default function EditProfile() {
         setProfileData({
           full_name: data.full_name || '',
           phone: data.phone || '',
-          bio: data.bio || '',
-          location: data.location || '',
+          bio: data.bio && data.bio !== 'null' ? data.bio : '',
+          location: data.location && data.location !== 'null' ? data.location : '',
         });
         if (data.profile_image_url) {
           setProfileImage(data.profile_image_url);
@@ -72,7 +72,7 @@ export default function EditProfile() {
           // Fetch student record by email
           const { data: studentRecord } = await supabase
             .from('students')
-            .select('bank_name, account_number, ifsc_code, allow_profile_edit')
+            .select('bank_name, account_number, ifsc_code, allow_profile_edit, location, bio, phone_number, name')
             .ilike('email', data.email)
             .maybeSingle();
 
@@ -81,6 +81,13 @@ export default function EditProfile() {
             setAccountNumber(studentRecord.account_number || '');
             setIfscCode(studentRecord.ifsc_code || '');
             setIsLocked(studentRecord.allow_profile_edit === false);
+
+            setProfileData(prev => ({
+              full_name: prev.full_name || studentRecord.name || '',
+              phone: prev.phone || studentRecord.phone_number || '',
+              bio: prev.bio || (studentRecord.bio && studentRecord.bio !== 'null' ? studentRecord.bio : ''),
+              location: prev.location || (studentRecord.location && studentRecord.location !== 'null' ? studentRecord.location : ''),
+            }));
           }
         }
       }
@@ -221,6 +228,8 @@ export default function EditProfile() {
             ifsc_code: ifscCode.trim() || null,
             name: profileData.full_name.trim() || undefined,
             phone_number: profileData.phone.trim() || undefined,
+            location: profileData.location?.trim() || null,
+            bio: profileData.bio?.trim() || null,
           })
           .ilike('email', user.email);
 

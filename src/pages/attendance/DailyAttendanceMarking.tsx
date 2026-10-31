@@ -231,6 +231,9 @@ export default function DailyAttendanceMarking() {
     if (selectedAttendanceStatus === 'unmarked') {
       return studentsByDesignation.filter(s => !attendance[s.id]);
     }
+    if (selectedAttendanceStatus === 'P_LT') {
+      return studentsByDesignation.filter(s => attendance[s.id] === 'P' || attendance[s.id] === 'LT');
+    }
     return studentsByDesignation.filter(s => attendance[s.id] === selectedAttendanceStatus);
   }, [studentsByDesignation, selectedAttendanceStatus, attendance]);
 
@@ -338,9 +341,10 @@ export default function DailyAttendanceMarking() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="P_LT">Present + Late (PR+LT)</SelectItem>
                     <SelectItem value="P">Present (P)</SelectItem>
-                    <SelectItem value="A">Absent (A)</SelectItem>
                     <SelectItem value="LT">Late (LT)</SelectItem>
+                    <SelectItem value="A">Absent (A)</SelectItem>
                     <SelectItem value="L">Leave (L)</SelectItem>
                     <SelectItem value="H">Holiday (H)</SelectItem>
                     <SelectItem value="unmarked">Unmarked</SelectItem>
@@ -363,25 +367,61 @@ export default function DailyAttendanceMarking() {
           </div>
 
           {/* Real-time Attendance Count Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6 pt-3">
+            {/* Total Card */}
             <div 
               onClick={() => setSelectedAttendanceStatus('all')}
-              className={`bg-slate-50 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-slate-100 ${
+              className={`bg-slate-50 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-slate-100 col-span-2 sm:col-span-1 lg:col-span-1 ${
                 selectedAttendanceStatus === 'all' ? 'ring-2 ring-slate-400 border-slate-400' : 'border-slate-200/80'
               }`}
             >
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total</span>
               <span className="text-2xl font-bold text-slate-800 mt-0.5">{counts.total}</span>
             </div>
-            <div 
-              onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'P' ? 'all' : 'P')}
-              className={`bg-emerald-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-emerald-100/80 ${
-                selectedAttendanceStatus === 'P' ? 'ring-2 ring-emerald-500 border-emerald-500' : 'border-emerald-200'
-              }`}
-            >
-              <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider">Present (P)</span>
-              <span className="text-2xl font-bold text-emerald-700 mt-0.5">{counts.p}</span>
+
+            {/* Present + Late Group with PR+LT Sum centered on top */}
+            <div className="col-span-2 sm:col-span-2 lg:col-span-2 relative">
+              {/* Centered sum badge above Present & Late */}
+              <button
+                type="button"
+                onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'P_LT' ? 'all' : 'P_LT')}
+                className={`absolute -top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-0.5 rounded-full text-xs font-bold shadow-xs cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap select-none ${
+                  selectedAttendanceStatus === 'P_LT'
+                    ? 'bg-emerald-700 text-white ring-2 ring-emerald-400 shadow-md scale-105'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700/60'
+                }`}
+                title="Click to filter by Present + Late (PR+LT)"
+              >
+                <span className="text-[10px] uppercase font-bold tracking-wider opacity-90">PR + LT :</span>
+                <span className="text-xs font-extrabold">{counts.p + counts.lt}</span>
+              </button>
+
+              <div className="grid grid-cols-2 gap-3 h-full">
+                {/* Present (P) */}
+                <div 
+                  onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'P' ? 'all' : 'P')}
+                  className={`bg-emerald-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-emerald-100/80 ${
+                    selectedAttendanceStatus === 'P' ? 'ring-2 ring-emerald-500 border-emerald-500' : 'border-emerald-200'
+                  }`}
+                >
+                  <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider">Present (P)</span>
+                  <span className="text-2xl font-bold text-emerald-700 mt-0.5">{counts.p}</span>
+                </div>
+
+                {/* Late (LT) */}
+                <div 
+                  onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'LT' ? 'all' : 'LT')}
+                  className={`bg-amber-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-amber-100/80 ${
+                    selectedAttendanceStatus === 'LT' ? 'ring-2 ring-amber-500 border-amber-500' : 'border-amber-200'
+                  }`}
+                >
+                  <span className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider">Late (LT)</span>
+                  <span className="text-2xl font-bold text-amber-700 mt-0.5">{counts.lt}</span>
+                </div>
+              </div>
             </div>
+
+            {/* Absent (A) */}
             <div 
               onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'A' ? 'all' : 'A')}
               className={`bg-rose-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-rose-100/80 ${
@@ -391,15 +431,8 @@ export default function DailyAttendanceMarking() {
               <span className="text-[11px] font-semibold text-rose-700 uppercase tracking-wider">Absent (A)</span>
               <span className="text-2xl font-bold text-rose-700 mt-0.5">{counts.a}</span>
             </div>
-            <div 
-              onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'LT' ? 'all' : 'LT')}
-              className={`bg-amber-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-amber-100/80 ${
-                selectedAttendanceStatus === 'LT' ? 'ring-2 ring-amber-500 border-amber-500' : 'border-amber-200'
-              }`}
-            >
-              <span className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider">Late (LT)</span>
-              <span className="text-2xl font-bold text-amber-700 mt-0.5">{counts.lt}</span>
-            </div>
+
+            {/* Leave (L) */}
             <div 
               onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'L' ? 'all' : 'L')}
               className={`bg-blue-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-blue-100/80 ${
@@ -409,9 +442,11 @@ export default function DailyAttendanceMarking() {
               <span className="text-[11px] font-semibold text-blue-700 uppercase tracking-wider">Leave (L)</span>
               <span className="text-2xl font-bold text-blue-700 mt-0.5">{counts.l}</span>
             </div>
+
+            {/* Holiday (H) */}
             <div 
               onClick={() => setSelectedAttendanceStatus(selectedAttendanceStatus === 'H' ? 'all' : 'H')}
-              className={`bg-purple-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-purple-100/80 ${
+              className={`bg-purple-50/80 border rounded-xl p-3 flex flex-col items-center justify-center text-center shadow-xs cursor-pointer transition-all hover:bg-purple-100/80 col-span-2 sm:col-span-1 lg:col-span-1 ${
                 selectedAttendanceStatus === 'H' ? 'ring-2 ring-purple-500 border-purple-500' : 'border-purple-200'
               }`}
             >
@@ -443,9 +478,10 @@ export default function DailyAttendanceMarking() {
                   <span className="text-xs text-muted-foreground">
                     Filtered by: <span className="font-semibold text-slate-700">
                       {selectedAttendanceStatus === 'unmarked' ? 'Unmarked' : 
+                       selectedAttendanceStatus === 'P_LT' ? 'Present + Late (PR+LT)' :
                        selectedAttendanceStatus === 'P' ? 'Present (P)' :
-                       selectedAttendanceStatus === 'A' ? 'Absent (A)' :
                        selectedAttendanceStatus === 'LT' ? 'Late (LT)' :
+                       selectedAttendanceStatus === 'A' ? 'Absent (A)' :
                        selectedAttendanceStatus === 'L' ? 'Leave (L)' :
                        selectedAttendanceStatus === 'H' ? 'Holiday (H)' : selectedAttendanceStatus}
                     </span> ({filteredStudents.length})

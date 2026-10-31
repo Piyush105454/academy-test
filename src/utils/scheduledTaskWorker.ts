@@ -197,37 +197,94 @@ export async function runScheduledTaskWorker(selectedYear: string): Promise<void
 
 /**
  * Auto-approval background worker:
- * Queries all academy_tasks where status = 'submitted' and auto_approve_at <= NOW().
+ * Queries all academy_tasks where status = 'submitted' and either:
+ *  - auto_approve_at <= NOW(), OR
+ *  - manager_approval_required = false and auto_approve_minutes = 0 (Immediate), OR
+ *  - template specifies auto-approval and duration has passed.
  * Automatically approves them and updates the corresponding academy_submissions record.
  */
 export async function runAutoApprovalWorker(): Promise<void> {
   try {
     const nowIso = new Date().toISOString();
 
-    // Fetch submitted academy tasks where auto_approve_at is reached
-    const { data: expiredTasks, error } = await (supabase as any)
+    // 1. Tasks where auto_approve_at timestamp has passed
+    const { data: expiredTasks, error: err1 } = await (supabase as any)
       .from('academy_tasks')
       .select('id, auto_approve_at, auto_approve_minutes, submitted_at, created_at')
       .eq('status', 'submitted')
       .lte('auto_approve_at', nowIso);
 
-    if (error) {
-      console.warn('[AutoApprove Worker] Fetch error (schema may not be migrated yet):', error.message);
+    if (err1) {
+      console.warn('[AutoApprove Worker] Error checking expired tasks:', err1.message);
+    }
+
+    // 2. Tasks marked without manager approval and 0 minutes (Immediate) that were submitted
+    const { data: immediateTasks, error: err2 } = await (supabase as any)
+      .from('academy_tasks')
+      .select('id, auto_approve_at, auto_approve_minutes, submitted_at, created_at')
+      .eq('status', 'submitted')
+      .eq('manager_approval_required', false)
+      .eq('auto_approve_minutes', 0);
+
+    if (err2) {
+      console.warn('[AutoApprove Worker] Error checking immediate tasks:', err2.message);
+    }
+
+    // 3. Fallback: inspect template description tags for __AUTOAPPROVE[...]__
+    const { data: tagTasks } = await (supabase as any)
+      .from('academy_tasks')
+      .select(`
+        id,
+        auto_approve_at,
+        auto_approve_minutes,
+        manager_approval_required,
+        academy_task_assignments (
+          academy_task_templates (
+            description,
+            manager_approval_required,
+            auto_approve_minutes
+          )
+        )
+      `)
+      .eq('status', 'submitted');
+
+    const tasksToApproveMap = new Map<string, any>();
+
+    (expiredTasks || []).forEach(t => tasksToApproveMap.set(t.id, t));
+    (immediateTasks || []).forEach(t => tasksToApproveMap.set(t.id, t));
+
+    (tagTasks || []).forEach(t => {
+      const tpl = t.academy_task_assignments?.academy_task_templates;
+      const tagMatch = (tpl?.description || '').match(/__AUTOAPPROVE\[(.*?)\]__/);
+      if (tagMatch) {
+        if (tagMatch[1] === '0') {
+          tasksToApproveMap.set(t.id, t);
+        } else if (tagMatch[1] !== 'manual') {
+          if (t.auto_approve_at && new Date(t.auto_approve_at) <= new Date()) {
+            tasksToApproveMap.set(t.id, t);
+          }
+        }
+      } else if (tpl?.manager_approval_required === false && tpl?.auto_approve_minutes === 0) {
+        tasksToApproveMap.set(t.id, t);
+      }
+    });
+
+    const tasksToApprove = Array.from(tasksToApproveMap.values());
+    if (tasksToApprove.length === 0) {
       return;
     }
 
-    if (!expiredTasks || expiredTasks.length === 0) {
-      return;
-    }
+    console.log(`[AutoApprove Worker] Found ${tasksToApprove.length} tasks ready for auto-approval.`);
 
-    console.log(`[AutoApprove Worker] Found ${expiredTasks.length} tasks ready for auto-approval.`);
-
-    for (const task of expiredTasks) {
+    for (const task of tasksToApprove) {
       try {
         // Update task status to approved
         const { error: taskErr } = await (supabase as any)
           .from('academy_tasks')
-          .update({ status: 'approved' })
+          .update({ 
+            status: 'approved',
+            auto_approve_at: null 
+          })
           .eq('id', task.id);
 
         if (taskErr) {

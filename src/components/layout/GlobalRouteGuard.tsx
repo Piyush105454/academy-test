@@ -63,18 +63,21 @@ export function GlobalRouteGuard({ children }: { children: React.ReactNode }) {
           path === '/student-support' ||
           path === '/auth';
           
-        const isStudentPerformance = path.startsWith('/student-performance');
+        const isStaffStudentPage = 
+          path.startsWith('/student-performance') || 
+          path.startsWith('/student-locations') || 
+          path.startsWith('/locations');
 
         if (isStudent) {
           // Prevent student from accessing staff pages
-          if (!isStudentPath || isStudentPerformance) {
+          if (!isStudentPath || isStaffStudentPage) {
             toast.error('You do not have permission to access this page');
             navigate('/student-dashboard', { replace: true });
             return;
           }
         } else {
           // Prevent staff from accessing student pages (except auth and profile)
-          if (isStudentPath && path !== '/profile/edit' && path !== '/auth' && path !== '/student-auth') {
+          if (isStudentPath && !isStaffStudentPage && path !== '/profile/edit' && path !== '/auth' && path !== '/student-auth') {
             toast.error('You do not have permission to access the student portal');
             navigate('/dashboard', { replace: true });
             return;

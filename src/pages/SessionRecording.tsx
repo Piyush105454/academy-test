@@ -38,6 +38,12 @@ import { Badge } from '@/components/ui/badge';
 import { formatSingleSessionCode } from '@/utils/sessionIdGenerator';
 import { getDirectImageUrl, handleImageError } from '@/utils/imageUtils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  isSessionFeedbackLocked,
+  isFeedbackCurrentlyUnlocked,
+  getUnlockRemainingTimeText,
+  formatUnlockDateTime,
+} from '@/utils/feedbackLockUtils';
 
 interface SessionRecording {
   id: string;
@@ -63,6 +69,7 @@ interface SessionRecording {
   class_batch: string | null;
   designations?: string[];
   feedback_unlocked?: boolean;
+  feedback_unlocked_until?: string | null;
 }
 
 interface StudentPerformance {
@@ -416,19 +423,9 @@ export default function SessionRecording() {
     }
   }, [studentFormData, studentPerformance, students, formData.best_performer]);
 
-  const isFeedbackLocked = (() => {
-    if (!session || userRole === 1 || session.feedback_unlocked) return false;
-    if (!session.session_date) return false;
-    
-    const msPerDay = 1000 * 60 * 60 * 24;
-    const sessionTime = new Date(session.session_date).getTime();
-    const diffDays = Math.floor((Date.now() - sessionTime) / msPerDay);
-
-    if ((userRole === 4 || userRole === 3) && diffDays > 3) return true;
-    if (userRole === 2 && diffDays > 7) return true;
-    
-    return false;
-  })();
+  const isFeedbackLocked = useMemo(() => {
+    return isSessionFeedbackLocked(session, userRole);
+  }, [session, userRole]);
 
   const canEditFacilitatorSection = userRole === 1 || userRole === 4;
   const canEditCoordinatorSection = userRole === 1 || userRole === 3;
@@ -2374,6 +2371,27 @@ export default function SessionRecording() {
               <p className="text-sm mt-1">
                 The deadline for editing this session's feedback has passed. Please contact an Admin to unlock it if you need to make changes.
               </p>
+            </div>
+          </div>
+        )}
+
+        {!isFeedbackLocked && isFeedbackCurrentlyUnlocked(session) && session?.feedback_unlocked_until && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-lg flex items-start justify-between gap-3 shadow-xs dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-200">
+            <div className="flex items-start gap-3">
+              <Unlock className="h-5 w-5 mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+              <div>
+                <p className="font-semibold text-sm flex items-center gap-2">
+                  <span>Feedback Temporarily Unlocked</span>
+                  <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 font-mono text-xs dark:bg-amber-900/50 dark:text-amber-300">
+                    {getUnlockRemainingTimeText(session.feedback_unlocked_until) || 'Active'}
+                  </Badge>
+                </p>
+                <p className="text-xs mt-1 text-amber-800 dark:text-amber-300">
+                  This session feedback was unlocked by an administrator until{' '}
+                  <span className="font-semibold">{formatUnlockDateTime(session.feedback_unlocked_until)}</span>.
+                  It will automatically re-lock once the time limit expires.
+                </p>
+              </div>
             </div>
           </div>
         )}

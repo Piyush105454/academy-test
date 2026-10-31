@@ -5,11 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { runAutoApprovalWorker } from '@/utils/scheduledTaskWorker';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { 
   CheckCircle2, AlertCircle, Clock, ExternalLink, Search, 
-  FileText, Link2, ShieldCheck, User, Sparkles, Filter, Hash
+  FileText, Link2, ShieldCheck, User, Sparkles, Filter, Hash,
+  RotateCcw, Undo2, XCircle, AlertTriangle
 } from 'lucide-react';
 
 export default function Approvals() {
@@ -24,6 +26,10 @@ export default function Approvals() {
   const [rejectComment, setRejectComment] = useState("");
   const [rejectDueDate, setRejectDueDate] = useState<string>('');
   const [rejectDueTime, setRejectDueTime] = useState<string>('23:59');
+
+  // Revert / Undo dialog state
+  const [isRevertDialogOpen, setIsRevertDialogOpen] = useState(false);
+  const [selectedSubForRevert, setSelectedSubForRevert] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
@@ -33,6 +39,12 @@ export default function Approvals() {
   const fetchSubmissions = async () => {
     setLoading(true);
     try {
+      try {
+        await runAutoApprovalWorker();
+      } catch (wErr) {
+        console.warn("AutoApproval worker error:", wErr);
+      }
+
       const { data, error } = await supabase
         .from('academy_submissions')
         .select(`
@@ -104,11 +116,14 @@ export default function Approvals() {
     if (!selectedSubForReject) return;
     setIsProcessing(true);
     try {
-      // Reject the task and set new resubmission deadline
+      const wasApproved = selectedSubForReject.academy_tasks?.status === 'approved';
+
+      // Reject the task, reset auto_approve_at, and set new resubmission deadline
       const { error: taskError } = await (supabase as any)
         .from('academy_tasks')
         .update({ 
           status: 'rejected',
+          auto_approve_at: null,
           task_date: rejectDueDate || new Date().toISOString().split('T')[0],
           due_time: rejectDueTime || '23:59'
         })
@@ -127,11 +142,73 @@ export default function Approvals() {
 
       if (subError) throw subError;
 
-      toast.success('Task rejected with new resubmission deadline set!');
+      // Ensure any ledger / facilitator earnings entry is also deleted/cleared
+      try {
+        await supabase
+          .from('facilitator_earnings')
+          .delete()
+          .eq('task_id', selectedSubForReject.task_id);
+      } catch (e) {
+        // Safe ignore if no direct row exists
+      }
+
+      toast.success(
+        wasApproved 
+          ? 'Task rejected! Approved earnings cleared and resubmission deadline set.' 
+          : 'Task rejected with new resubmission deadline set!'
+      );
       setIsRejectDialogOpen(false);
+      setSelectedSubForReject(null);
       fetchSubmissions();
     } catch (err: any) {
       toast.error('Error rejecting submission: ' + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRevertToPending = async () => {
+    if (!selectedSubForRevert) return;
+    setIsProcessing(true);
+    try {
+      // Revert task status back to submitted, clear auto_approve_at so it won't auto-resolve
+      const { error: taskError } = await (supabase as any)
+        .from('academy_tasks')
+        .update({ 
+          status: 'submitted',
+          auto_approve_at: null
+        })
+        .eq('id', selectedSubForRevert.task_id);
+      
+      if (taskError) throw taskError;
+
+      // Reset reviewer comment and reviewed_at
+      const { error: subError } = await supabase
+        .from('academy_submissions')
+        .update({ 
+          reviewed_at: null,
+          reviewer_comments: 'Reverted to pending review by manager (approval undone)'
+        })
+        .eq('id', selectedSubForRevert.id);
+
+      if (subError) throw subError;
+
+      // Ensure any ledger / facilitator earnings entry is also deleted/cleared
+      try {
+        await supabase
+          .from('facilitator_earnings')
+          .delete()
+          .eq('task_id', selectedSubForRevert.task_id);
+      } catch (e) {
+        // Safe ignore
+      }
+
+      toast.success('Approval undone! Task reverted to Pending Review and earnings cleared.');
+      setIsRevertDialogOpen(false);
+      setSelectedSubForRevert(null);
+      fetchSubmissions();
+    } catch (err: any) {
+      toast.error('Error reverting submission: ' + err.message);
     } finally {
       setIsProcessing(false);
     }
@@ -437,9 +514,16 @@ export default function Approvals() {
                         {/* Status */}
                         <td className="px-6 py-4 text-center">
                           {task?.status === 'submitted' && (
-                            <span className="inline-flex px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold items-center gap-1">
-                              <Clock className="h-3.5 w-3.5" /> Pending
-                            </span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="inline-flex px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold items-center gap-1">
+                                <Clock className="h-3.5 w-3.5" /> Pending
+                              </span>
+                              {task?.auto_approve_at && (
+                                <span className="text-[10px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded border border-blue-100 whitespace-nowrap">
+                                  ⚡ Auto-approves {new Date(task.auto_approve_at) > new Date() ? `in ${Math.max(1, Math.round((new Date(task.auto_approve_at).getTime() - Date.now()) / (1000 * 60)))}m` : 'soon'}
+                                </span>
+                              )}
+                            </div>
                           )}
                           {task?.status === 'approved' && (
                             <span className="inline-flex px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold items-center gap-1">
@@ -455,7 +539,7 @@ export default function Approvals() {
 
                         {/* Actions */}
                         <td className="px-6 py-4 text-right">
-                          {task?.status === 'submitted' ? (
+                          {task?.status === 'submitted' && (
                             <div className="flex items-center justify-end gap-2">
                               <Button 
                                 variant="outline" 
@@ -481,8 +565,70 @@ export default function Approvals() {
                                 Approve
                               </Button>
                             </div>
-                          ) : (
-                            <span className="text-xs text-slate-400 font-medium italic">Reviewed</span>
+                          )}
+
+                          {task?.status === 'approved' && (
+                            <div className="flex items-center justify-end gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100 font-semibold h-8 px-2.5 rounded-lg text-xs flex items-center gap-1 shadow-2xs"
+                                onClick={() => {
+                                  setSelectedSubForRevert(sub);
+                                  setIsRevertDialogOpen(true);
+                                }}
+                                disabled={isProcessing}
+                                title="Undo approval and revert to Pending Review (revoking earnings)"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                Revert Pending
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="text-red-600 border-red-200 bg-red-50 hover:bg-red-100 font-semibold h-8 px-3 rounded-lg text-xs flex items-center gap-1 shadow-2xs"
+                                onClick={() => {
+                                  setSelectedSubForReject(sub);
+                                  setRejectComment("");
+                                  const today = new Date().toISOString().split('T')[0];
+                                  setRejectDueDate(sub.academy_tasks?.task_date || today);
+                                  setRejectDueTime(sub.academy_tasks?.due_time || "23:59");
+                                  setIsRejectDialogOpen(true);
+                                }}
+                                disabled={isProcessing}
+                                title="Reject task and revoke earnings"
+                              >
+                                <XCircle className="h-3.5 w-3.5" />
+                                Reject
+                              </Button>
+                            </div>
+                          )}
+
+                          {task?.status === 'rejected' && (
+                            <div className="flex items-center justify-end gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100 font-semibold h-8 px-2.5 rounded-lg text-xs flex items-center gap-1 shadow-2xs"
+                                onClick={() => {
+                                  setSelectedSubForRevert(sub);
+                                  setIsRevertDialogOpen(true);
+                                }}
+                                disabled={isProcessing}
+                                title="Revert to Pending Review"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                Revert Pending
+                              </Button>
+                              <Button 
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-8 px-4 rounded-lg shadow-xs text-xs"
+                                onClick={() => handleApprove(sub)}
+                                disabled={isProcessing}
+                              >
+                                Approve
+                              </Button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -507,6 +653,18 @@ export default function Approvals() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {selectedSubForReject?.academy_tasks?.status === 'approved' && (
+              <div className="flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold mb-0.5">Earnings Revocation Notice</p>
+                  <p className="text-amber-800">
+                    This task was previously approved. Rejecting it will immediately clear & revoke the facilitator's credited earnings (₹{selectedSubForReject?.academy_tasks?.academy_task_assignments?.custom_reward_amount || selectedSubForReject?.academy_tasks?.academy_task_assignments?.academy_task_templates?.base_reward_amount || 0}) until resubmitted and approved again.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="text-xs font-semibold text-slate-700 mb-1.5 block">Rejection Feedback / Reason</label>
               <Textarea 
@@ -545,6 +703,74 @@ export default function Approvals() {
             </Button>
             <Button variant="destructive" onClick={handleReject} disabled={isProcessing || !rejectComment.trim()}>
               {isProcessing ? 'Processing...' : 'Reject Submission'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revert to Pending / Undo Dialog */}
+      <Dialog open={isRevertDialogOpen} onOpenChange={setIsRevertDialogOpen}>
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-amber-600" /> Undo & Revert to Pending
+            </DialogTitle>
+            <DialogDescription className="text-sm text-slate-500 mt-1">
+              Revert this submission back to Pending Review status.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedSubForRevert && (
+            <div className="space-y-4 py-2">
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs text-slate-700">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Facilitator:</span>
+                  <span className="font-bold text-slate-900">
+                    {selectedSubForRevert.academy_tasks?.academy_task_assignments?.user_profiles?.full_name || 'Facilitator'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Task:</span>
+                  <span className="font-semibold text-slate-900">
+                    {selectedSubForRevert.academy_tasks?.academy_task_assignments?.academy_task_templates?.name || 'Task'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Current Status:</span>
+                  <Badge variant="outline" className="capitalize font-bold text-[11px]">
+                    {selectedSubForRevert.academy_tasks?.status}
+                  </Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Amount:</span>
+                  <span className="font-black text-slate-900 text-sm">
+                    ₹{selectedSubForRevert.academy_tasks?.academy_task_assignments?.custom_reward_amount || selectedSubForRevert.academy_tasks?.academy_task_assignments?.academy_task_templates?.base_reward_amount || 0}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold mb-0.5">Earnings Will Be Cleared / Revoked</p>
+                  <p className="text-amber-800">
+                    Reverting to Pending will immediately clear the approved earnings from the facilitator's balance until it is reviewed and approved again.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setIsRevertDialogOpen(false)} disabled={isProcessing}>
+              Cancel
+            </Button>
+            <Button 
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+              onClick={handleRevertToPending} 
+              disabled={isProcessing}
+            >
+              {isProcessing ? 'Reverting...' : 'Confirm Revert to Pending'}
             </Button>
           </DialogFooter>
         </DialogContent>

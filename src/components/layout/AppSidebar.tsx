@@ -1,4 +1,4 @@
-import { Home, Users, LogOut, CalendarDays, BookOpen, Menu, X, Users2, MapPin, FileText, GraduationCap, Shield, ClipboardList, ChevronDown, MessageCircle, Clock, Wrench, Wallet, LucideIcon } from 'lucide-react';
+import { Home, Users, LogOut, CalendarDays, BookOpen, Menu, X, Users2, MapPin, FileText, GraduationCap, Shield, ClipboardList, ChevronDown, MessageCircle, Clock, Wrench, Wallet, TrendingUp, LucideIcon, Compass } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDeveloperMode } from '@/contexts/DeveloperModeContext';
@@ -60,6 +60,64 @@ const renderNavTitle = (title: string, isActive: boolean) => {
   return <span className="truncate" title={title}>{title}</span>;
 };
 
+const SECTION_COLOR_CONFIG: Record<string, { text: string; dot: string; hoverBg: string }> = {
+  'Main': {
+    text: 'text-sky-600 dark:text-sky-400',
+    dot: 'bg-sky-500',
+    hoverBg: 'hover:bg-sky-500/10'
+  },
+  'Session Management': {
+    text: 'text-indigo-600 dark:text-indigo-400',
+    dot: 'bg-indigo-500',
+    hoverBg: 'hover:bg-indigo-500/10'
+  },
+  'Student Attendance & Task Management': {
+    text: 'text-emerald-600 dark:text-emerald-400',
+    dot: 'bg-emerald-500',
+    hoverBg: 'hover:bg-emerald-500/10'
+  },
+  'Rewards & Earnings': {
+    text: 'text-amber-600 dark:text-amber-400',
+    dot: 'bg-amber-500',
+    hoverBg: 'hover:bg-amber-500/10'
+  },
+  'People Management': {
+    text: 'text-purple-600 dark:text-purple-400',
+    dot: 'bg-purple-500',
+    hoverBg: 'hover:bg-purple-500/10'
+  },
+  'Logistic': {
+    text: 'text-cyan-600 dark:text-cyan-400',
+    dot: 'bg-cyan-500',
+    hoverBg: 'hover:bg-cyan-500/10'
+  },
+  'Logistic ': {
+    text: 'text-cyan-600 dark:text-cyan-400',
+    dot: 'bg-cyan-500',
+    hoverBg: 'hover:bg-cyan-500/10'
+  },
+  'Schedule Facilitator Work Management': {
+    text: 'text-rose-600 dark:text-rose-400',
+    dot: 'bg-rose-500',
+    hoverBg: 'hover:bg-rose-500/10'
+  },
+  'Admin Panel': {
+    text: 'text-red-600 dark:text-red-400',
+    dot: 'bg-red-500',
+    hoverBg: 'hover:bg-red-500/10'
+  },
+  'Dev Section': {
+    text: 'text-slate-600 dark:text-slate-400',
+    dot: 'bg-slate-500',
+    hoverBg: 'hover:bg-slate-500/10'
+  },
+  'Student': {
+    text: 'text-teal-600 dark:text-teal-400',
+    dot: 'bg-teal-500',
+    hoverBg: 'hover:bg-teal-500/10'
+  },
+};
+
 const navGroups: NavGroup[] = [
   {
     label: 'Main',
@@ -88,25 +146,9 @@ const navGroups: NavGroup[] = [
     items: [
       { title: 'Tasks & Projects', url: '/tasks', icon: ClipboardList, requiredRole: null, studentVisible: false },
       { title: 'Scheduled Tasks', url: '/scheduled-tasks', icon: Clock, requiredRole: null, studentVisible: false },
+      { title: 'Performance', url: '/performance', icon: TrendingUp, requiredRole: null, studentVisible: false },
       { title: 'Student Attendance', url: '/admin-attendance', icon: ClipboardList, requiredRole: null, studentVisible: false },
       { title: 'Attendance Management', url: '/attendance-management', icon: CalendarDays, requiredRole: null, studentVisible: false },
-    ]
-  },
-  {
-    label: 'Schedule Facilitator Work Management',
-    studentVisible: false,
-    items: [
-      // Teacher / Employee Views (Only Role 4)
-      { title: 'My Work', url: '/academy/my-work', icon: ClipboardList, requiredRole: 4, studentVisible: false },
-      { title: 'My Work Earnings', url: '/academy/my-earnings', icon: FileText, requiredRole: 4, studentVisible: false },
-      { title: 'My Goals', url: '/academy/my-goals', icon: FileText, requiredRole: 4, studentVisible: false },
-      { title: 'Leaderboard', url: '/academy/leaderboard', icon: Users2, requiredRole: 4, studentVisible: false },
-      
-      // Admin / Manager Views (Hidden from Role 4)
-      { title: 'Work & Templates', url: '/academy/tasks', icon: ClipboardList, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
-      { title: 'Approvals', url: '/academy/approvals', icon: Shield, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
-      { title: 'Goals Admin', url: '/academy/manage-goals', icon: FileText, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
-      { title: 'Leaderboard', url: '/academy/leaderboard', icon: Users, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
     ]
   },
   {
@@ -131,12 +173,30 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: 'Logistic ',
+    label: 'Logistic',
     studentVisible: false,
     items: [
       { title: 'Centres & Slots', url: '/centres', icon: MapPin, requiredRole: null, studentVisible: false },
       { title: 'Classes & Students', url: '/classes', icon: GraduationCap, requiredRole: null, studentVisible: false },
+      { title: 'Student Locations', url: '/student-locations', icon: Compass, requiredRole: null, studentVisible: false },
       { title: 'Support Requests', url: '/support', icon: MessageCircle, requiredRole: null, studentVisible: false },
+    ]
+  },
+  {
+    label: 'Schedule Facilitator Work Management',
+    studentVisible: false,
+    items: [
+      // Teacher / Employee Views (Only Role 4)
+      { title: 'My Work', url: '/academy/my-work', icon: ClipboardList, requiredRole: 4, studentVisible: false },
+      { title: 'My Work Earnings', url: '/academy/my-earnings', icon: FileText, requiredRole: 4, studentVisible: false },
+      { title: 'My Goals', url: '/academy/my-goals', icon: FileText, requiredRole: 4, studentVisible: false },
+      { title: 'Leaderboard', url: '/academy/leaderboard', icon: Users2, requiredRole: 4, studentVisible: false },
+      
+      // Admin / Manager Views (Hidden from Role 4)
+      { title: 'Work & Templates', url: '/academy/tasks', icon: ClipboardList, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
+      { title: 'Approvals', url: '/academy/approvals', icon: Shield, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
+      { title: 'Goals Admin', url: '/academy/manage-goals', icon: FileText, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
+      { title: 'Leaderboard', url: '/academy/leaderboard', icon: Users, requiredRole: null, studentVisible: false, hiddenRoles: [4] },
     ]
   },
   {
@@ -176,6 +236,47 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const [assignedRoles, setAssignedRoles] = useState<number[]>([]);
   const [isRoleLoading, setIsRoleLoading] = useState(userRole === null);
   const roleLoadedRef = useRef(false);
+
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('sidebar_collapsed_groups');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleGroup = (groupLabel: string) => {
+    setCollapsedGroups((prev) => {
+      const next = { ...prev, [groupLabel]: !prev[groupLabel] };
+      try {
+        localStorage.setItem('sidebar_collapsed_groups', JSON.stringify(next));
+      } catch (e) {
+        console.error('Error saving sidebar collapsed state:', e);
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const currentPath = location.pathname + location.search;
+    navGroups.forEach((group) => {
+      const hasActive = group.items.some((item) =>
+        item.url.includes('?')
+          ? currentPath === item.url
+          : location.pathname === item.url && (!location.search || !location.search.includes('tab='))
+      );
+      if (hasActive && collapsedGroups[group.label]) {
+        setCollapsedGroups((prev) => {
+          const next = { ...prev, [group.label]: false };
+          try {
+            localStorage.setItem('sidebar_collapsed_groups', JSON.stringify(next));
+          } catch {}
+          return next;
+        });
+      }
+    });
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (user?.id && !roleLoadedRef.current) {
@@ -247,28 +348,36 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed md:sticky md:top-0 h-screen bg-card border-r border-border flex flex-col transition-all duration-300 z-40",
-        collapsed ? "w-0 md:w-0 border-r-0 overflow-hidden" : "w-64",
+        "fixed top-0 left-0 bottom-0 h-screen bg-card border-r border-border flex flex-col transition-all duration-300 z-40",
+        collapsed ? "w-0 md:w-16" : "w-64",
         isOpen ? "translate-x-0 w-64" : "-translate-x-full md:translate-x-0"
       )}>
-        <div className="w-64 h-full flex flex-col flex-shrink-0">
+        <div className={cn("h-full flex flex-col transition-all duration-300", collapsed ? "w-full md:w-16" : "w-64")}>
           {/* Logo Section */}
-          <div className="h-[72px] px-4 md:px-6 border-b border-border flex items-center">
-            <div className="flex items-center gap-3">
+          <div className={cn(
+            "h-[72px] border-b border-border flex items-center transition-all duration-300",
+            collapsed ? "px-2 justify-center" : "px-4 md:px-6"
+          )}>
+            <div className="flex items-center gap-3 min-w-0">
               <img
                 src={wesLogo}
                 alt="WES Foundation Logo"
-              className="h-10 md:h-12 w-10 md:w-12 object-contain"
-            />
-            <div className="min-w-0">
-              <h1 className="font-bold text-foreground text-base md:text-lg truncate">WesFellow Hub</h1>
-              <p className="text-xs text-muted-foreground truncate">Management Platform</p>
+                className="h-10 md:h-12 w-10 md:w-12 object-contain shrink-0"
+              />
+              {!collapsed && (
+                <div className="min-w-0">
+                  <h1 className="font-bold text-foreground text-base md:text-lg truncate">WesFellow Hub</h1>
+                  <p className="text-xs text-muted-foreground truncate">Management Platform</p>
+                </div>
+              )}
             </div>
           </div>
-        </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 md:p-4 space-y-3 overflow-y-auto">
+        <nav className={cn(
+          "flex-1 space-y-3 overflow-y-auto overflow-x-hidden overscroll-contain transition-all",
+          collapsed ? "p-2" : "p-3 md:p-4"
+        )}>
           {isRoleLoading ? (
             <div className="flex justify-center p-4">
               <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
@@ -288,53 +397,96 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
 
             if (visibleItems.length === 0) return null;
 
+            const groupColor = SECTION_COLOR_CONFIG[group.label.trim()] || {
+              text: 'text-primary dark:text-primary',
+              dot: 'bg-primary',
+              hoverBg: 'hover:bg-accent/50'
+            };
+            const isCollapsed = !!collapsedGroups[group.label];
+
             return (
-              <div key={group.label}>
-                <p className="px-3 md:px-4 mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                  {group.label}
-                </p>
-                <div className="space-y-0.5">
-                  {visibleItems.map((item) => {
-                    const isActive = item.url.includes('?') ? (location.pathname + location.search) === item.url : (location.pathname === item.url && (!location.search || !location.search.includes('tab=')));
-                    return (
-                      <NavLink
-                        key={item.title}
-                        to={item.url}
-                        onClick={() => setIsOpen(false)}
-                        className={cn(
-                          'flex items-center gap-3 px-3 md:px-4 py-2 rounded-lg transition-colors',
-                          'text-sm font-medium',
-                          isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                        )}
-                      >
-                        <item.icon className="h-4 w-4 flex-shrink-0" />
-                        {renderNavTitle(item.title, isActive)}
-                      </NavLink>
-                    );
-                  })}
-                </div>
+              <div key={group.label} className="space-y-1">
+                {collapsed ? (
+                  <div className="py-1 flex justify-center" title={group.label}>
+                    <div className={cn("w-2 h-1 rounded-full opacity-60", groupColor.dot || "bg-border")} />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.label)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-left transition-colors select-none group",
+                      groupColor.hoverBg
+                    )}
+                    title={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.label}`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={cn("w-2 h-2 rounded-full shrink-0 shadow-sm", groupColor.dot)} />
+                      <span className={cn("text-[11px] font-bold uppercase tracking-wider truncate", groupColor.text)}>
+                        {group.label}
+                      </span>
+                    </div>
+                    <ChevronDown
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 transition-transform duration-200 text-muted-foreground/60 group-hover:text-foreground",
+                        isCollapsed ? "-rotate-90" : "rotate-0"
+                      )}
+                    />
+                  </button>
+                )}
+
+                {(collapsed || !isCollapsed) && (
+                  <div className="space-y-1">
+                    {visibleItems.map((item) => {
+                      const isActive = item.url.includes('?') ? (location.pathname + location.search) === item.url : (location.pathname === item.url && (!location.search || !location.search.includes('tab=')));
+                      return (
+                        <NavLink
+                          key={item.title}
+                          to={item.url}
+                          onClick={() => setIsOpen(false)}
+                          title={item.title}
+                          className={cn(
+                            'flex items-center rounded-xl transition-all relative group',
+                            collapsed
+                              ? 'justify-center w-10 h-10 mx-auto'
+                              : 'gap-3 px-3 md:px-4 py-2 text-sm font-medium',
+                            isActive
+                              ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          )}
+                        >
+                          <item.icon className={cn(collapsed ? "h-5 w-5" : "h-4 w-4", "flex-shrink-0")} />
+                          {!collapsed && renderNavTitle(item.title, isActive)}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
         </nav>
 
-                {/* Role Switcher Section */}
-        <RoleSwitcher variant="sidebar" />
+        {/* Role Switcher Section (expanded only, header has switcher in collapsed) */}
+        {!collapsed && <RoleSwitcher variant="sidebar" />}
 
         {/* Sign Out Button */}
-        <div className="p-3 md:p-4 border-t border-border">
+        <div className={cn(
+          "border-t border-border transition-all",
+          collapsed ? "p-2 flex justify-center" : "p-3 md:p-4"
+        )}>
           <button
             onClick={handleSignOut}
+            title="Sign Out"
             className={cn(
-              'flex items-center gap-3 w-full px-3 md:px-4 py-2 md:py-3 rounded-lg transition-colors',
-              'text-sm md:text-base font-medium',
-              'text-destructive hover:bg-destructive/10'
+              'flex items-center rounded-xl transition-colors text-destructive hover:bg-destructive/10',
+              collapsed
+                ? 'justify-center w-10 h-10 p-0'
+                : 'gap-3 w-full px-3 md:px-4 py-2 md:py-3 text-sm md:text-base font-medium'
             )}
           >
             <LogOut className="h-5 w-5 flex-shrink-0" />
-            <span className="truncate">Sign Out</span>
+            {!collapsed && <span className="truncate">Sign Out</span>}
           </button>
         </div>
         </div>

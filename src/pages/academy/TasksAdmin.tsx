@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar, Clock, Plus, Users, Award, FileText, Settings2, MoreHorizontal, X, Edit, Trash2, Search, RotateCcw, ArrowUpDown, CheckCircle2, ExternalLink, Archive, ArchiveRestore, Power } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from '@/integrations/supabase/client';
+import { runAutoApprovalWorker } from '@/utils/scheduledTaskWorker';
 
 interface Facilitator {
   id: string;
@@ -286,10 +287,26 @@ export default function TasksAdmin() {
     setRequiresNote(task.requires_note ?? true);
     setRequiresPhoto(task.requires_photo ?? true);
 
-    const approvalReq = task.manager_approval_required ?? true;
+    // Extract approval settings from __AUTOAPPROVE tag or database columns
+    const autoApproveMatch = (task.description || "").match(/__AUTOAPPROVE\[(.*?)\]__/);
+    let approvalReq = task.manager_approval_required ?? true;
+    let autoMins = Number(task.auto_approve_minutes) || 0;
+
+    if (autoApproveMatch) {
+      if (autoApproveMatch[1] === 'manual') {
+        approvalReq = true;
+        autoMins = 0;
+      } else {
+        approvalReq = false;
+        autoMins = parseInt(autoApproveMatch[1], 10) || 0;
+      }
+    } else if (task.manager_approval_required === false) {
+      approvalReq = false;
+      autoMins = Number(task.auto_approve_minutes) || 0;
+    }
+
     setRequiresManagerApproval(approvalReq);
-    const autoMins = Number(task.auto_approve_minutes) || 0;
-    if (!approvalReq && autoMins > 0) {
+    if (!approvalReq) {
       setAutoApproveHours(Math.floor(autoMins / 60));
       setAutoApproveMins(autoMins % 60);
       if ([0, 360, 720, 1440, 2880, 4320].includes(autoMins)) {
@@ -297,10 +314,6 @@ export default function TasksAdmin() {
       } else {
         setAutoApprovePreset("custom");
       }
-    } else if (!approvalReq && autoMins === 0) {
-      setAutoApprovePreset("0");
-      setAutoApproveHours(0);
-      setAutoApproveMins(0);
     } else {
       setAutoApprovePreset("1440");
       setAutoApproveHours(24);
@@ -432,6 +445,28 @@ export default function TasksAdmin() {
           console.error("Error regenerating tasks:", rpcErr);
         }
 
+        // Sync tasks approval settings for all non-approved tasks of this template
+        try {
+          const { data: allAsgns } = await supabase
+            .from('academy_task_assignments')
+            .select('id')
+            .eq('template_id', editingTemplateId);
+
+          if (allAsgns && allAsgns.length > 0) {
+            const asgnIds = allAsgns.map(a => a.id);
+            await (supabase as any)
+              .from('academy_tasks')
+              .update({
+                manager_approval_required: requiresManagerApproval,
+                auto_approve_minutes: totalAutoApproveMinutes
+              })
+              .in('assignment_id', asgnIds)
+              .neq('status', 'approved');
+          }
+        } catch (syncErr) {
+          console.warn("Could not sync tasks approval settings:", syncErr);
+        }
+
         toast.success("Work template updated successfully!");
       } else {
         // CREATE new template
@@ -457,14 +492,31 @@ export default function TasksAdmin() {
             custom_reward_amount: null
           }));
 
-          const { error: assignError } = await supabase
+          const { data: insertedAssignments, error: assignError } = await supabase
             .from('academy_task_assignments')
-            .insert(assignments);
+            .insert(assignments)
+            .select('id');
             
           if (assignError) throw assignError;
 
           const { error: rpcError } = await supabase.rpc('generate_academy_tasks');
           if (rpcError) console.error("Error generating initial tasks:", rpcError);
+
+          // Sync newly generated tasks with approval settings
+          if (insertedAssignments && insertedAssignments.length > 0) {
+            try {
+              const asgnIds = insertedAssignments.map(a => a.id);
+              await (supabase as any)
+                .from('academy_tasks')
+                .update({
+                  manager_approval_required: requiresManagerApproval,
+                  auto_approve_minutes: totalAutoApproveMinutes
+                })
+                .in('assignment_id', asgnIds);
+            } catch (syncErr) {
+              console.warn("Could not sync newly generated tasks approval settings:", syncErr);
+            }
+          }
         }
 
         toast.success("Work template created successfully!");
@@ -502,6 +554,12 @@ export default function TasksAdmin() {
     const fetchTemplates = async () => {
       setLoading(true);
       try {
+        try {
+          await runAutoApprovalWorker();
+        } catch (wErr) {
+          console.warn("AutoApproval worker error:", wErr);
+        }
+
         const { data, error } = await supabase
           .from('academy_task_templates')
           .select(`
@@ -675,6 +733,17 @@ export default function TasksAdmin() {
         occurrenceText += ` (${daysArr.join(', ')})`;
       }
 
+      const autoMatch = (task.description || '').match(/__AUTOAPPROVE\[(.*?)\]__/);
+      const isAutoApprove = autoMatch 
+        ? autoMatch[1] !== 'manual' 
+        : (task.manager_approval_required === false);
+      const autoMins = autoMatch && autoMatch[1] !== 'manual' 
+        ? (parseInt(autoMatch[1], 10) || 0) 
+        : (Number(task.auto_approve_minutes) || 0);
+      const autoApproveText = autoMins === 0 
+        ? 'Immediate' 
+        : (autoMins < 60 ? `${autoMins}m` : `${Math.round(autoMins / 60)}h`);
+
       return {
         ...task,
         assignedText,
@@ -689,6 +758,9 @@ export default function TasksAdmin() {
         todaySubmitted,
         totalToday,
         occurrenceText,
+        isAutoApprove,
+        autoApproveText,
+        autoMins,
       };
     });
   }, [templates]);
@@ -1138,19 +1210,32 @@ export default function TasksAdmin() {
                       return (
                         <tr key={task.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-4">
-                            <a
-                              href={`/academy/tasks/${task.id}/history`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                navigate(`/academy/tasks/${task.id}/history`);
-                              }}
-                              className="font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer inline-flex items-center gap-1 group"
-                              title="Click to view full submission history and manage deadlines"
-                            >
-                              <span>{task.name}</span>
-                              <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </a>
-                            <div className="text-xs text-slate-500 capitalize">{task.category} • ₹{task.base_reward_amount}</div>
+                            <div className="flex items-center gap-1.5">
+                              <a
+                                href={`/academy/tasks/${task.id}/history`}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  navigate(`/academy/tasks/${task.id}/history`);
+                                }}
+                                className="font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer inline-flex items-center gap-1.5 group text-sm"
+                                title="Click to view full submission history and manage deadlines"
+                              >
+                                <span>{task.name}</span>
+                                <ExternalLink className="h-3.5 w-3.5 text-blue-500 opacity-70 group-hover:opacity-100 transition-opacity" />
+                              </a>
+                            </div>
+                            <div className="text-xs text-slate-500 capitalize mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              <span>{task.category} • ₹{task.base_reward_amount}</span>
+                              {task.isAutoApprove ? (
+                                <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-md inline-flex items-center gap-1">
+                                  ⚡ Auto-Approve ({task.autoApproveText})
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md inline-flex items-center gap-1">
+                                  🛡 Manager Review
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-slate-600">
                             {task.created_at ? new Date(task.created_at).toLocaleDateString('en-GB') : '-'}
@@ -1163,17 +1248,28 @@ export default function TasksAdmin() {
                           </td>
                           <td className="px-6 py-4">
                             {task.isArchived ? (
-                              <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">Archived</span>
-                            ) : task.isActive ? (
-                              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                                Active
+                              <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full inline-flex items-center gap-1">
+                                <Archive className="h-3 w-3 text-slate-500" /> Archived
                               </span>
                             ) : (
-                              <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                                Inactive {task.isEnded ? '(Ended)' : ''}
-                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleStatus(task)}
+                                title={`Currently ${task.isActive ? 'Active' : 'Inactive'}. Click to toggle status.`}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs focus:outline-none"
+                              >
+                                {task.isActive ? (
+                                  <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5 hover:bg-emerald-100 transition-colors">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                                    Active
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5 hover:bg-amber-100 transition-colors">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                    Inactive
+                                  </span>
+                                )}
+                              </button>
                             )}
                           </td>
                           <td className="px-6 py-4 text-sm">
@@ -1215,11 +1311,22 @@ export default function TasksAdmin() {
                                     </DropdownMenuItem>
 
                                     <DropdownMenuItem 
-                                      onClick={() => handleArchiveTemplate(task)}
-                                      className={task.isActive ? 'text-slate-400 cursor-not-allowed' : 'text-slate-700'}
+                                      onClick={() => {
+                                        if (task.isActive) {
+                                          toast.error("Active work cannot be archived. Please set status to Inactive first.");
+                                          return;
+                                        }
+                                        handleArchiveTemplate(task);
+                                      }}
+                                      className={task.isActive ? 'text-slate-400 cursor-not-allowed opacity-60' : 'text-slate-700 cursor-pointer'}
                                     >
                                       <Archive className="h-4 w-4 mr-2" />
-                                      Archive Work
+                                      <span>Archive Work</span>
+                                      {task.isActive && (
+                                        <span className="ml-auto text-[9px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-mono font-medium border border-amber-200">
+                                          Inactive first
+                                        </span>
+                                      )}
                                     </DropdownMenuItem>
                                   </>
                                 )}

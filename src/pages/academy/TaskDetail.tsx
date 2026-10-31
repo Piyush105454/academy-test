@@ -89,6 +89,40 @@ export default function AcademyTaskDetail() {
         .single();
 
       if (error) throw error;
+
+      // Check if this task is submitted and ready for immediate or expired auto-approval
+      if (data.status === 'submitted') {
+        const tpl = data.academy_task_assignments?.academy_task_templates;
+        const autoMatch = (tpl?.description || '').match(/__AUTOAPPROVE\[(.*?)\]__/);
+        const isManual = autoMatch ? autoMatch[1] === 'manual' : (tpl?.manager_approval_required ?? data.manager_approval_required ?? true);
+        const mins = autoMatch && autoMatch[1] !== 'manual' 
+          ? (parseInt(autoMatch[1], 10) || 0) 
+          : (tpl?.auto_approve_minutes ?? data.auto_approve_minutes ?? 0);
+
+        const shouldAutoApprove = !isManual && (
+          mins === 0 || 
+          (data.auto_approve_at && new Date(data.auto_approve_at) <= new Date())
+        );
+
+        if (shouldAutoApprove) {
+          const nowIso = new Date().toISOString();
+          await (supabase as any)
+            .from('academy_tasks')
+            .update({ status: 'approved', auto_approve_at: null })
+            .eq('id', data.id);
+          
+          await (supabase as any)
+            .from('academy_submissions')
+            .update({
+              reviewed_at: nowIso,
+              reviewer_comments: mins === 0 ? 'Auto-Approved immediately' : 'Auto-Approved after specified duration'
+            })
+            .eq('task_id', data.id);
+
+          data.status = 'approved';
+        }
+      }
+
       setTaskData(data);
 
       const existingSub = Array.isArray(data.academy_submissions) 
@@ -175,8 +209,30 @@ export default function AcademyTaskDetail() {
     }
   }
 
-  const managerApprovalReq = taskData.manager_approval_required ?? template?.manager_approval_required ?? true;
-  const autoApproveMins = taskData.auto_approve_minutes ?? template?.auto_approve_minutes;
+  // Priority check for __AUTOAPPROVE[...]__ tag in template description or task description
+  const autoApproveTagMatch = 
+    (template?.description || '').match(/__AUTOAPPROVE\[(.*?)\]__/) ||
+    (taskData.description || '').match(/__AUTOAPPROVE\[(.*?)\]__/);
+
+  let managerApprovalReq = true;
+  let autoApproveMins = 0;
+
+  if (autoApproveTagMatch) {
+    const val = autoApproveTagMatch[1];
+    if (val === 'manual') {
+      managerApprovalReq = true;
+      autoApproveMins = 0;
+    } else {
+      managerApprovalReq = false;
+      autoApproveMins = parseInt(val, 10) || 0;
+    }
+  } else if (template?.manager_approval_required !== undefined && template?.manager_approval_required !== null) {
+    managerApprovalReq = Boolean(template.manager_approval_required);
+    autoApproveMins = Number(template.auto_approve_minutes) || 0;
+  } else if (taskData.manager_approval_required !== undefined && taskData.manager_approval_required !== null) {
+    managerApprovalReq = Boolean(taskData.manager_approval_required);
+    autoApproveMins = Number(taskData.auto_approve_minutes) || 0;
+  }
 
   // Handle File Upload directly to Google Drive
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, reqId: string, reqType: string) => {

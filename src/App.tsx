@@ -30,6 +30,7 @@ const Coordinators = lazy(() => import("./pages/Coordinators").then(m => ({ defa
 const Centres = lazy(() => import("./pages/Centres"));
 const Classes = lazy(() => import("./pages/Classes"));
 const ClassStudents = lazy(() => import("./pages/ClassStudents"));
+const StudentLocations = lazy(() => import("./pages/StudentLocations"));
 const AddVolunteer = lazy(() => import("./pages/AddVolunteer"));
 const EditVolunteer = lazy(() => import("./pages/EditVolunteer"));
 const VolunteerList = lazy(() => import("./pages/VolunteerList"));
@@ -55,6 +56,7 @@ const Team = lazy(() => import("./pages/academy/Team"));
 const Reports = lazy(() => import("./pages/academy/Reports"));
 
 const Tasks = lazy(() => import("./pages/Tasks"));
+const StudentPerformanceReport = lazy(() => import("./pages/StudentPerformanceReport"));
 const TaskDetail = lazy(() => import("./pages/TaskDetail"));
 const TaskEdit = lazy(() => import("./pages/TaskEdit"));
 const StudentTasks = lazy(() => import("./pages/StudentTasks"));
@@ -116,6 +118,8 @@ const App = () => (
                     <Route path="/classes" element={<Classes />} />
                     <Route path="/classes/:classId/students" element={<ClassStudents />} />
                     <Route path="/students" element={<ClassStudents />} />
+                    <Route path="/student-locations" element={<StudentLocations />} />
+                    <Route path="/locations" element={<StudentLocations />} />
                     <Route path="/volunteers/edit/:id" element={<EditVolunteer />} /> 
                     <Route path="/volunteers" element={<VolunteerList />} />
                     <Route path="/volunteers/add" element={<AddVolunteer />} />
@@ -137,6 +141,8 @@ const App = () => (
                     
                     <Route path="/tasks" element={<Tasks />} />
                     <Route path="/scheduled-tasks" element={<ScheduledTasks />} />
+                    <Route path="/performance" element={<StudentPerformanceReport />} />
+                    <Route path="/tasks/performance" element={<StudentPerformanceReport />} />
                     <Route path="/tasks/:taskTitle" element={<TaskDetail />} />
                     <Route path="/tasks/:taskTitle/edit" element={<TaskEdit />} />
                     <Route path="/student-tasks" element={<StudentTasks />} />

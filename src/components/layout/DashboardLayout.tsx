@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AppSidebar } from './AppSidebar';
 import { StudentSidebar } from './StudentSidebar';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -135,6 +136,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             if (!role && fac.status !== 'inactive') role = 4;
           }
         }
+        if (!name || !role) {
+          const { data: std } = await supabase
+            .from('students')
+            .select('name')
+            .ilike('email', email)
+            .maybeSingle();
+          if (std && std.name) {
+            if (!name) name = std.name;
+            if (!role) role = 5;
+          }
+        }
       }
 
       if (!name) {
@@ -210,18 +222,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         path === '/profile/edit' ||
         path === '/auth';
         
-      // Special check: student-performance is actually a staff page for grading students
-      const isStudentPerformance = path.startsWith('/student-performance');
+      // Special check: student-performance and student-locations are staff pages
+      const isStaffStudentPage = 
+        path.startsWith('/student-performance') || 
+        path.startsWith('/student-locations') || 
+        path.startsWith('/locations');
 
       if (isStudent) {
         // Prevent student from accessing staff pages
-        if (!isStudentPath || isStudentPerformance) {
+        if (!isStudentPath || isStaffStudentPage) {
           toast.error('You do not have permission to access this page');
           navigate('/student-dashboard', { replace: true });
         }
       } else {
         // Prevent staff from accessing student pages (except auth and profile)
-        if (isStudentPath && path !== '/profile/edit' && path !== '/auth' && path !== '/student-auth') {
+        if (isStudentPath && !isStaffStudentPage && path !== '/profile/edit' && path !== '/auth' && path !== '/student-auth') {
           toast.error('You do not have permission to access the student portal');
           navigate('/dashboard', { replace: true });
         }
@@ -281,16 +296,25 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   // User is authenticated and role is loaded, render the dashboard
   return (
     <div className="min-h-screen print:min-h-0 bg-muted/30 flex w-full">
-      <div className="print:hidden h-full flex">
+      {/* Sidebar - Frozen on left side */}
+      <div className="print:hidden shrink-0">
         {userRole === 5 ? (
           <StudentSidebar collapsed={isSidebarCollapsed} />
         ) : (
           <AppSidebar collapsed={isSidebarCollapsed} />
         )}
+        {/* Desktop spacer to preserve layout flow since sidebar is fixed */}
+        <div
+          className={cn(
+            "hidden md:block shrink-0 transition-all duration-300",
+            isSidebarCollapsed ? "w-0 md:w-16" : "w-64"
+          )}
+          aria-hidden="true"
+        />
       </div>
       <main className="flex-1 flex flex-col min-w-0 print:block">
-        {/* Top Header with Profile */}
-        <div className="bg-card border-b border-border px-4 md:px-8 h-[72px] flex items-center justify-between print:hidden">
+        {/* Top Header with Profile (Frozen / Sticky at top) */}
+        <header className="sticky top-0 z-30 bg-card/95 backdrop-blur-sm border-b border-border px-4 md:px-8 h-[72px] flex items-center justify-between print:hidden shrink-0">
           <div className="flex-1 flex items-center gap-2">
             <Button
               variant="ghost"
@@ -343,29 +367,43 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               );
             })()}
 
-            {/* Profile Dropdown */}
+            {/* Profile Dropdown with Name & Email Visible by Default */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="rounded-full h-10 w-10 bg-primary/10 hover:bg-primary/20 p-0 overflow-hidden ring-1 ring-border focus-visible:ring-2 focus-visible:ring-primary"
+                <button
+                  type="button"
+                  className="flex items-center gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-xl hover:bg-accent/70 transition-all border border-border/50 hover:border-border text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer select-none bg-card shadow-2xs"
                   title={userName ? `${userName} (${userEmail})` : userEmail}
                 >
-                  {profileImage ? (
-                    <img
-                      src={profileImage}
-                      alt="Profile"
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center font-bold text-sm text-primary uppercase">
-                      {userName ? userName.trim().charAt(0) : (userEmail ? userEmail.charAt(0) : <User className="h-5 w-5 text-primary" />)}
-                    </div>
-                  )}
-                </Button>
+                  {/* Avatar Circle */}
+                  <div className="rounded-full h-9 w-9 bg-primary/10 flex-shrink-0 overflow-hidden ring-1 ring-border flex items-center justify-center">
+                    {profileImage ? (
+                      <img
+                        src={profileImage}
+                        alt="Profile"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center font-bold text-sm text-primary uppercase">
+                        {userName ? userName.trim().charAt(0) : (userEmail ? userEmail.charAt(0) : <User className="h-4 w-4 text-primary" />)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Name and Email shown directly in top bar */}
+                  <div className="flex flex-col text-left max-w-[120px] sm:max-w-[170px] md:max-w-[210px]">
+                    <span className="text-xs md:text-sm font-bold text-foreground leading-tight truncate">
+                      {userName || 'User'}
+                    </span>
+                    <span className="text-[10px] md:text-[11px] text-muted-foreground truncate leading-tight mt-0.5" title={userEmail}>
+                      {userEmail}
+                    </span>
+                  </div>
+
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground/70 group-hover:text-foreground transition-transform duration-200 shrink-0 ml-0.5" />
+                </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-60 p-1.5">
+              <DropdownMenuContent align="end" className="w-64 p-1.5">
                 {/* User Info Header: Name + Email + Role */}
                 <div className="px-3 py-2.5 bg-muted/40 rounded-md border border-border/50 mb-1">
                   <p className="text-sm font-bold text-foreground leading-tight truncate">
@@ -408,7 +446,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        </div>
+        </header>
 
         {/* Main Content */}
         <div className="flex-1 p-4 md:p-8 overflow-x-hidden print:overflow-visible print:p-0">
