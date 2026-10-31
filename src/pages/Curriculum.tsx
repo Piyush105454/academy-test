@@ -1,5 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Trash2, Upload, MoreVertical, Plus, Search, ListTodo, RefreshCcw, ExternalLink } from 'lucide-react';
+import { 
+  Trash2, 
+  Upload, 
+  MoreVertical, 
+  Plus, 
+  Search, 
+  ListTodo, 
+  RefreshCcw, 
+  ExternalLink,
+  Video,
+  FileSpreadsheet,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -86,6 +102,7 @@ interface CurriculumItem {
   topic_title: string;
   videos: string;
   quiz_content_ppt: string;
+  material_link?: string;
   fresh_session?: string;
   revision_session?: string;
   created_at?: string;
@@ -190,50 +207,200 @@ const getCategorySortOrder = (name: string): number => {
   return 99;
 };
 
-const resolveCurriculumUrl = (
+export interface ResolvedCurriculumLink {
+  url: string;
+  label: string;
+  type: 'video' | 'quiz' | 'material';
+}
+
+const extractAndResolveUrls = (
   rawUrl: string | null | undefined,
   type: 'video' | 'quiz' | 'material'
-): string | null => {
-  if (!rawUrl) return null;
-  const trimmed = rawUrl.trim();
-  if (!trimmed || trimmed === '-' || trimmed === '#') return null;
-
-  // If already absolute http/https
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed;
-  }
-
-  // If starts with domain like drive.google.com, docs.google.com, youtube.com, youtu.be, www.
+): ResolvedCurriculumLink[] => {
+  if (!rawUrl) return [];
+  const cleaned = rawUrl.trim();
   if (
-    trimmed.startsWith('www.') ||
-    trimmed.startsWith('drive.google.com') ||
-    trimmed.startsWith('docs.google.com') ||
-    trimmed.startsWith('youtube.com') ||
-    trimmed.startsWith('youtu.be')
+    !cleaned ||
+    cleaned === '-' ||
+    cleaned === '#' ||
+    cleaned.toLowerCase() === 'na' ||
+    cleaned.toLowerCase() === 'n/a'
   ) {
-    return `https://${trimmed}`;
+    return [];
   }
 
-  // If it's a domain with a slash like example.com/xyz
-  if (/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}\//.test(trimmed)) {
-    return `https://${trimmed}`;
+  // Regex to extract all http/https URLs or domain links
+  const urlRegex = /(https?:\/\/[^\s,;"'<>]+|www\.[^\s,;"'<>]+|drive\.google\.com[^\s,;"'<>]+|docs\.google\.com[^\s,;"'<>]+|youtu\.be[^\s,;"'<>]+|youtube\.com[^\s,;"'<>]+)/gi;
+  const matches = cleaned.match(urlRegex);
+
+  if (matches && matches.length > 0) {
+    return matches.map((m, idx) => {
+      let finalUrl = m.trim().replace(/[.,;:]+$/, '');
+      if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+        finalUrl = `https://${finalUrl}`;
+      }
+      const label =
+        matches.length === 1
+          ? type === 'video'
+            ? 'Watch Video'
+            : type === 'quiz'
+            ? 'View Quiz'
+            : 'View Material'
+          : type === 'video'
+          ? `Video ${idx + 1}`
+          : type === 'quiz'
+          ? `Quiz ${idx + 1}`
+          : `Material ${idx + 1}`;
+      return { url: finalUrl, label, type };
+    });
   }
 
-  // If it's a Google Drive file name or media file (.mp4, .mov, .pptx, .ppt, .pdf, .docx, or starts with Copy of / T16)
-  const isFileName = /\.(mp4|mov|mkv|webm|pptx|ppt|pdf|docx|doc|xlsx|csv)$/i.test(trimmed) || trimmed.startsWith('Copy of ') || /^T\d+/i.test(trimmed);
+  // If it's a file name (.pptx, .pdf, .mp4, etc.)
+  const isFileName =
+    /\.(mp4|mov|mkv|webm|pptx|ppt|pdf|docx|doc|xlsx|csv)$/i.test(cleaned) ||
+    cleaned.startsWith('Copy of ') ||
+    /^T\d+/i.test(cleaned);
   if (isFileName) {
-    // Open Google Drive search for this file name
-    return `https://drive.google.com/drive/search?q=${encodeURIComponent(trimmed)}`;
+    return [
+      {
+        url: `https://drive.google.com/drive/search?q=${encodeURIComponent(cleaned)}`,
+        label: type === 'video' ? 'Search Video' : type === 'quiz' ? 'Search Quiz' : 'Search Material',
+        type,
+      },
+    ];
   }
 
   // If it's a video search title (e.g. YouTube video title)
   if (type === 'video') {
-    return `https://www.youtube.com/results?search_query=${encodeURIComponent(trimmed)}`;
+    return [
+      {
+        url: `https://www.youtube.com/results?search_query=${encodeURIComponent(cleaned)}`,
+        label: 'Search Video',
+        type,
+      },
+    ];
   }
 
-  // If it's a quiz or material title
-  return `https://drive.google.com/drive/search?q=${encodeURIComponent(trimmed)}`;
+  return [
+    {
+      url: `https://drive.google.com/drive/search?q=${encodeURIComponent(cleaned)}`,
+      label: type === 'quiz' ? 'Search Quiz' : 'Search Material',
+      type,
+    },
+  ];
 };
+
+// Legacy helper for any raw string consumers
+const resolveCurriculumUrl = (
+  rawUrl: string | null | undefined,
+  type: 'video' | 'quiz' | 'material'
+): string | null => {
+  const links = extractAndResolveUrls(rawUrl, type);
+  return links.length > 0 ? links[0].url : null;
+};
+
+interface CurriculumLinkButtonProps {
+  rawUrl?: string | null;
+  type: 'video' | 'quiz' | 'material';
+}
+
+function CurriculumLinkButton({ rawUrl, type }: CurriculumLinkButtonProps) {
+  const links = useMemo(() => extractAndResolveUrls(rawUrl, type), [rawUrl, type]);
+
+  if (links.length === 0) {
+    return <span className="text-muted-foreground/60 text-xs select-none">-</span>;
+  }
+
+  const getStyle = () => {
+    switch (type) {
+      case 'video':
+        return {
+          icon: <Video className="h-3.5 w-3.5 text-blue-600 group-hover:text-white transition-colors shrink-0" />,
+          badgeClass:
+            'bg-blue-50/90 text-blue-700 border-blue-200/90 hover:bg-blue-600 hover:text-white hover:border-blue-600 hover:shadow-sm hover:shadow-blue-500/20 active:scale-95',
+          defaultLabel: 'View Video',
+        };
+      case 'quiz':
+        return {
+          icon: <FileSpreadsheet className="h-3.5 w-3.5 text-amber-600 group-hover:text-white transition-colors shrink-0" />,
+          badgeClass:
+            'bg-amber-50/90 text-amber-800 border-amber-200/90 hover:bg-amber-600 hover:text-white hover:border-amber-600 hover:shadow-sm hover:shadow-amber-500/20 active:scale-95',
+          defaultLabel: 'View Quiz',
+        };
+      case 'material':
+        return {
+          icon: <FileText className="h-3.5 w-3.5 text-purple-600 group-hover:text-white transition-colors shrink-0" />,
+          badgeClass:
+            'bg-purple-50/90 text-purple-700 border-purple-200/90 hover:bg-purple-600 hover:text-white hover:border-purple-600 hover:shadow-sm hover:shadow-purple-500/20 active:scale-95',
+          defaultLabel: 'Material',
+        };
+    }
+  };
+
+  const style = getStyle();
+
+  // If single link: Fast direct anchor tag with hover color shift & instantaneous tab opening
+  if (links.length === 1) {
+    const link = links[0];
+    return (
+      <a
+        href={link.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
+        title={`Open: ${link.url}`}
+        className={`group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all duration-150 cursor-pointer whitespace-nowrap ${style.badgeClass}`}
+      >
+        {style.icon}
+        <span>{style.defaultLabel}</span>
+        <ExternalLink className="h-3 w-3 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
+      </a>
+    );
+  }
+
+  // If multiple links: interactive dropdown menu
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          className={`group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all duration-150 cursor-pointer whitespace-nowrap ${style.badgeClass}`}
+          title={`${links.length} links available. Click to choose`}
+        >
+          {style.icon}
+          <span>
+            {links.length} {type === 'video' ? 'Videos' : type === 'quiz' ? 'Quizzes' : 'Files'}
+          </span>
+          <ExternalLink className="h-3 w-3 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56 p-1.5 bg-popover">
+        <div className="px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+          Select {type}:
+        </div>
+        {links.map((l, i) => (
+          <DropdownMenuItem
+            key={i}
+            onClick={(e) => {
+              e.stopPropagation();
+              window.open(l.url, '_blank', 'noopener,noreferrer');
+            }}
+            className="cursor-pointer text-xs flex items-center justify-between py-1.5 gap-2"
+          >
+            <div className="flex items-center gap-1.5 truncate">
+              {style.icon}
+              <span className="truncate">{l.label}</span>
+            </div>
+            <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export default function Curriculum({ isStudent = false }: { isStudent?: boolean }) {
   const { user } = useAuth();
@@ -346,33 +513,54 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
   const [topics, setTopics] = useState<string[]>([]);
   const [sessionInfo, setSessionInfo] = useState<Record<string, SessionInfo>>({});
 
+  // O(1) Pre-indexed fast lookup map to avoid scanning hundreds of regexes on every render
+  const fastSessionLookup = useMemo(() => {
+    const directMap = new Map<string, SessionInfo>();
+    const normMap = new Map<string, SessionInfo>();
+    const coreMap = new Map<string, SessionInfo>();
+
+    for (const [key, val] of Object.entries(sessionInfo)) {
+      directMap.set(key, val);
+      const trimmed = key.trim();
+      directMap.set(trimmed, val);
+      directMap.set(trimmed.toLowerCase(), val);
+
+      const normKey = normalizeTopicKey(key);
+      if (normKey && !normMap.has(normKey)) {
+        normMap.set(normKey, val);
+      }
+
+      const coreKey = extractCoreTopic(key);
+      if (coreKey && coreKey.length >= 4 && !coreMap.has(coreKey)) {
+        coreMap.set(coreKey, val);
+      }
+    }
+
+    return { directMap, normMap, coreMap };
+  }, [sessionInfo]);
+
   const getSessionInfo = (topicTitle?: string): SessionInfo | undefined => {
     if (!topicTitle) return undefined;
-    if (sessionInfo[topicTitle]) return sessionInfo[topicTitle];
+    const { directMap, normMap, coreMap } = fastSessionLookup;
+
+    let match = directMap.get(topicTitle);
+    if (match) return match;
+
     const trimmed = topicTitle.trim();
-    if (sessionInfo[trimmed]) return sessionInfo[trimmed];
-    const lower = trimmed.toLowerCase();
-    if (sessionInfo[lower]) return sessionInfo[lower];
+    match = directMap.get(trimmed) || directMap.get(trimmed.toLowerCase());
+    if (match) return match;
 
-    // Normalized match (handles 01.04 vs 1.4, punctuation differences)
     const normKey = normalizeTopicKey(topicTitle);
-    if (normKey && sessionInfo[normKey]) return sessionInfo[normKey];
+    if (normKey && (match = normMap.get(normKey))) return match;
 
-    // Scan all keys in sessionInfo using normalizeTopicKey
-    const normMatch = Object.keys(sessionInfo).find((k) => normalizeTopicKey(k) === normKey);
-    if (normMatch) return sessionInfo[normMatch];
-
-    // Fallback: Core topic match (stripping leading module/topic numbers)
     const coreKey = extractCoreTopic(topicTitle);
-    if (coreKey && coreKey.length >= 4) {
-      if (sessionInfo[coreKey]) return sessionInfo[coreKey];
-      const coreMatch = Object.keys(sessionInfo).find((k) => extractCoreTopic(k) === coreKey);
-      if (coreMatch) return sessionInfo[coreMatch];
-    }
+    if (coreKey && coreKey.length >= 4 && (match = coreMap.get(coreKey))) return match;
 
     return undefined;
   };
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(50);
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sessionTypeFilter, setSessionTypeFilter] = useState<string>('all');
@@ -389,8 +577,8 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     return sessions.filter(s => s.volunteer.toLowerCase().includes(search));
   };
 
-  // Calculate statistics
-  const stats = (() => {
+  // Calculate statistics (memoized for maximum performance)
+  const stats = useMemo(() => {
     let subjectBaseCurriculum = curriculum;
     if (isPublic) {
       subjectBaseCurriculum = subjectBaseCurriculum.filter(item => !isSubjectHiddenInPublic(item.subject_name || ''));
@@ -422,9 +610,9 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
       freshCount: freshCompleted,
       revisionCount: revisionCompleted
     };
-  })();
+  }, [curriculum, isPublic, selectedSubject, fastSessionLookup, publicVolunteerSearch]);
 
-  const subjectStats = (() => {
+  const subjectStats = useMemo(() => {
     const subjectsMap: Record<string, { total: number, fresh: number, revision: number, name: string }> = {};
     
     curriculum.forEach(item => {
@@ -442,7 +630,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     });
     
     return Object.values(subjectsMap);
-  })();
+  }, [curriculum, fastSessionLookup]);
 
   const rawSubjectName = selectedSubject && selectedSubject !== 'all'
     ? subjects.find((s) => s.id === selectedSubject)?.name || ''
@@ -687,7 +875,20 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
     }
     
     return filtered;
-  }, [curriculum, isPublic, selectedSubject, selectedCategory, selectedModule, selectedTopic, statusFilter, sessionTypeFilter, sessionCategoryFilter, searchQuery, publicVolunteerSearch, sessionInfo, sortColumn, sortDirection]);
+  }, [curriculum, isPublic, selectedSubject, selectedCategory, selectedModule, selectedTopic, statusFilter, sessionTypeFilter, sessionCategoryFilter, searchQuery, publicVolunteerSearch, fastSessionLookup, sortColumn, sortDirection]);
+
+  // Paginated curriculum to keep DOM lean and rendering instantaneous
+  const totalPages = useMemo(() => {
+    if (pageSize === 'all') return 1;
+    return Math.max(1, Math.ceil(filteredCurriculum.length / Number(pageSize)));
+  }, [filteredCurriculum.length, pageSize]);
+
+  const paginatedCurriculum = useMemo(() => {
+    if (pageSize === 'all') return filteredCurriculum;
+    const size = Number(pageSize);
+    const start = (currentPage - 1) * size;
+    return filteredCurriculum.slice(start, start + size);
+  }, [filteredCurriculum, currentPage, pageSize]);
 
   const fetchCurriculum = async (classId?: string) => {
     try {
@@ -725,6 +926,7 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
           topic_title: item.topics_covered || '',
           videos: item.videos || '',
           quiz_content_ppt: item.quiz_content_ppt || '',
+          material_link: item.material_link || item.record_sheet_link || item.final_content_ppt || '',
           fresh_session: item.fresh_session || '',
           revision_session: item.revision_session || '',
           created_at: item.created_at,
@@ -1630,8 +1832,8 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredCurriculum.map((item) => (
-                        <TableRow key={item.id}>
+                      {paginatedCurriculum.map((item) => (
+                        <TableRow key={item.id} className="hover:bg-muted/40 transition-colors">
                           <TableCell>
                             <Badge variant="secondary">{getDisplaySubjectName(item.subject_name || 'Unassigned')}</Badge>
                           </TableCell>
@@ -1641,58 +1843,13 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                           <TableCell className="font-medium"><TruncatedText text={item.module_title} maxLength={25} /></TableCell>
                           <TableCell className="max-w-[200px]"><TruncatedText text={item.topic_title} maxLength={25} /></TableCell>
                           <TableCell>
-                            {(() => {
-                              const videoUrl = resolveCurriculumUrl(item.videos, 'video');
-                              return videoUrl ? (
-                                <a
-                                  href={videoUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-primary hover:underline font-medium inline-flex items-center gap-1"
-                                >
-                                  🎥 View
-                                </a>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              );
-                            })()}
+                            <CurriculumLinkButton rawUrl={item.videos} type="video" />
                           </TableCell>
                           <TableCell>
-                            {(() => {
-                              const quizUrl = resolveCurriculumUrl(item.quiz_content_ppt, 'quiz');
-                              return quizUrl ? (
-                                <a
-                                  href={quizUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-primary hover:underline font-medium inline-flex items-center gap-1"
-                                >
-                                  📊 View
-                                </a>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              );
-                            })()}
+                            <CurriculumLinkButton rawUrl={item.quiz_content_ppt} type="quiz" />
                           </TableCell>
                           <TableCell>
-                            {(() => {
-                              const matUrl = resolveCurriculumUrl(item.material_link, 'material');
-                              return matUrl ? (
-                                <a
-                                  href={matUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-primary hover:underline font-medium"
-                                >
-                                  <div className="flex items-center gap-1">
-                                    <FileText className="h-4 w-4 text-purple-500" />
-                                    <span>View</span>
-                                  </div>
-                                </a>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              );
-                            })()}
+                            <CurriculumLinkButton rawUrl={item.material_link} type="material" />
                           </TableCell>
                           <TableCell>
                             {(() => {
@@ -2053,6 +2210,101 @@ export default function Curriculum({ isStudent = false }: { isStudent?: boolean 
                     </div>
                   ))}
                 </div>
+
+                {/* Pagination Controls */}
+                {filteredCurriculum.length > 0 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 border-t border-border/60 bg-muted/15">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                      <span>Showing</span>
+                      <span className="font-semibold text-foreground">
+                        {pageSize === 'all'
+                          ? 1
+                          : Math.min((currentPage - 1) * Number(pageSize) + 1, filteredCurriculum.length)}
+                      </span>
+                      <span>to</span>
+                      <span className="font-semibold text-foreground">
+                        {pageSize === 'all'
+                          ? filteredCurriculum.length
+                          : Math.min(currentPage * Number(pageSize), filteredCurriculum.length)}
+                      </span>
+                      <span>of</span>
+                      <span className="font-semibold text-foreground">{filteredCurriculum.length}</span>
+                      <span>items</span>
+
+                      <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border/60">
+                        <span>Per page:</span>
+                        <Select
+                          value={String(pageSize)}
+                          onValueChange={(val) => {
+                            setPageSize(val === 'all' ? 'all' : Number(val));
+                            setCurrentPage(1);
+                          }}
+                        >
+                          <SelectTrigger className="h-7 w-20 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="25">25</SelectItem>
+                            <SelectItem value="50">50</SelectItem>
+                            <SelectItem value="100">100</SelectItem>
+                            <SelectItem value="200">200</SelectItem>
+                            <SelectItem value="all">All</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {pageSize !== 'all' && totalPages > 1 && (
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage(1)}
+                          disabled={currentPage === 1}
+                          className="h-7 px-2 text-xs"
+                          title="First Page"
+                        >
+                          <ChevronsLeft className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          disabled={currentPage === 1}
+                          className="h-7 px-2.5 text-xs gap-1"
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                          <span>Prev</span>
+                        </Button>
+
+                        <span className="text-xs font-medium px-2">
+                          Page {currentPage} of {totalPages}
+                        </span>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={currentPage === totalPages}
+                          className="h-7 px-2.5 text-xs gap-1"
+                        >
+                          <span>Next</span>
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage(totalPages)}
+                          disabled={currentPage === totalPages}
+                          className="h-7 px-2 text-xs"
+                          title="Last Page"
+                        >
+                          <ChevronsRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </CardContent>
