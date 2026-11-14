@@ -1,0 +1,44 @@
+{
+  "_comment": "DERIVED FROM A REAL SUBMISSION. The note content below was transcribed from an actual student's handwritten page; the photograph itself is deliberately NOT in this repo (see sample_data/README.md). The student is identified by an opaque ID only. Video is absent because transcription was not available offline - see the README.",
+  "submission_id": "sub-real-001",
+  "student_id": "STUDENT-R1",
+  "module_id": "delegating_tasks",
+  "submitted_at": "2026-08-28",
+
+  "video_evidence": null,
+
+  "note_evidence": {
+    "rows_expected": 15,
+    "rows_filled": 15,
+    "legible": true,
+    "written_rows": {
+      "Effectively":      "प्रभावी ढंग से",
+      "Environment":      "वातावरण",
+      "Delegation":       "कार्य सौंपना",
+      "Management":       "प्रबंधन",
+      "Overwhelming":     "अत्यधिक",
+      "Dedicated":        "समर्पित",
+      "Strategy":         "रणनीति",
+      "Responsibilities": "जिम्मेदारियाँ",
+      "Inclusive":        "समावेशी",
+      "Engagement":       "जुड़ाव",
+      "Synergy":          "सहक्रिया",
+      "Partnership":      "साझेदारी",
+      "Accountability":   "जवाबदेही",
+      "Administrative":   "प्रशासनिक",
+      "Empowered":        "सशक्त"
+    },
+    "action_points": [
+      "Delegate tasks daily",
+      "Share responsibilities fairly",
+      "Build students confidence",
+      "Create inclusive spaces",
+      "Trust your students",
+      "Teach teamwork skills",
+      "Focus on teaching",
+      "Value every child",
+      "Encourage shared leadership",
+      "Inspire future leaders"
+    ]
+  }
+}

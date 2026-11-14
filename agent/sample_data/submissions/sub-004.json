@@ -1,0 +1,38 @@
+{
+  "_comment": "Smudged handwriting: two Hindi rows could not be read confidently. Those rows must abstain, not be marked wrong. One row is a genuine wrong answer and SHOULD count.",
+  "submission_id": "sub-004",
+  "student_id": "STUDENT-D",
+  "module_id": "day12_task2_english",
+  "submitted_at": "2026-05-09",
+
+  "video_evidence": {
+    "duration_seconds": 96.0,
+    "sampled_frame_count": 6,
+    "hands_visible_in_frames": 5,
+    "transcript": {
+      "text": "fear speaking english students confidence pronunciation judgment environment bravery criticism encourage",
+      "duration_seconds": 96.0,
+      "word_count": 152,
+      "filler_count": 9
+    }
+  },
+
+  "note_evidence": {
+    "rows_expected": 8,
+    "rows_filled": 6,
+    "legible": true,
+    "written_rows": {
+      "Fear": "डर",
+      "Confidence": "आत्मविश्वास",
+      "Pronunciation": "उच्चारन",
+      "Judgment": "निर्णय",
+      "Environment": "वातावरण",
+      "Bravery": "आलोचना"
+    },
+    "read_confidence": {
+      "Pronunciation": 0.42,
+      "Judgment": 0.38
+    },
+    "action_points": ["Be patient with slow learners"]
+  }
+}

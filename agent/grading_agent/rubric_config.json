@@ -1,0 +1,113 @@
+{
+  "_comment": "Grading rubric for the homework evaluation agent. Mirrors wiki/Homework-Grading-Agent.md. Scale bands are shown to the model at grading time AND used in feedback, so a score always comes with a meaning.",
+
+  "scale": {
+    "1": {"band": "Needs Support", "meaning": "Attempted, but key elements are missing or wrong; does not meet the task's basic ask"},
+    "2": {"band": "Emerging", "meaning": "Partial attempt; more gaps than hits"},
+    "3": {"band": "Developing", "meaning": "Meets the basic bar, but inconsistently"},
+    "4": {"band": "Proficient", "meaning": "Solid; only minor polish needed"},
+    "5": {"band": "Exemplary", "meaning": "Exceeds the ask; good enough to show other students as an example"}
+  },
+
+  "video_parameters": {
+    "confidence": {
+      "label": "Confidence",
+      "label_hi": "आत्मविश्वास",
+      "measured_by": "Filler-word rate in the transcript, plus sampled video frames",
+      "evidence": "inferred",
+      "requires_transcript": true
+    },
+    "vocabulary": {
+      "label": "Vocabulary",
+      "label_hi": "शब्दावली",
+      "measured_by": "Transcript checked against the module's word list",
+      "evidence": "inferred",
+      "requires_transcript": true
+    },
+    "tone": {
+      "label": "Tone",
+      "label_hi": "स्वर",
+      "measured_by": "Audio and frames, read against this module's own Instruction text",
+      "evidence": "inferred",
+      "requires_transcript": true
+    },
+    "hand_gesture": {
+      "label": "Hand Gesture",
+      "label_hi": "हाथ के इशारे",
+      "measured_by": "Sampled frames only - the weakest signal of the five",
+      "evidence": "sampled_frames_only",
+      "requires_transcript": false
+    },
+    "speed": {
+      "label": "Speed",
+      "label_hi": "गति",
+      "measured_by": "Computed words-per-minute from transcript timing - measured, not guessed",
+      "evidence": "measured",
+      "requires_transcript": true
+    }
+  },
+
+  "note_parameters": {
+    "completion": {
+      "label": "Completion",
+      "checks": "Was the full task attempted - every vocabulary item, every action point?",
+      "evidence": "measured",
+      "depends_on_script_reading": false
+    },
+    "accuracy": {
+      "label": "Accuracy",
+      "checks": "Are the meanings, translations and facts correct against the module's article?",
+      "evidence": "inferred",
+      "depends_on_script_reading": true
+    },
+    "comprehension": {
+      "label": "Comprehension",
+      "checks": "Do the action points show understanding in the student's own words, rather than copying line for line?",
+      "evidence": "inferred",
+      "depends_on_script_reading": true
+    },
+    "presentation": {
+      "label": "Presentation",
+      "checks": "Is it readable and organised - clear layout, the expected structure?",
+      "evidence": "inferred",
+      "depends_on_script_reading": false
+    }
+  },
+
+  "rating_weights": {
+    "_comment": "Simple means by default. Overall is a 50/50 blend of the two artifact ratings; video and note ratings are always reported separately as well.",
+    "video_parameters": "equal",
+    "note_parameters": "equal",
+    "overall": {"video": 0.5, "note": 0.5}
+  },
+
+  "abstain": {
+    "_comment": "When the model is below this confidence, the parameter is not_assessed and drops out of the average. It is never scored low instead.",
+    "min_confidence": 0.6,
+    "devanagari_match_min_confidence": 0.75
+  },
+
+  "trend": {
+    "_comment": "Compared against the student's own history for the same skill_type - never against other students.",
+    "history_window": 3,
+    "delta_threshold": 0.5,
+    "needs_attention_floor": 2.5
+  },
+
+  "teacher_flags": {
+    "_comment": "Flags route a teacher's attention. They do NOT gate publication - grading publishes automatically. Keep the combined flag rate near 10% of submissions or the triage value is lost.",
+    "low_overall_rating": 2.5,
+    "min_assessed_video_parameters": 3,
+    "min_assessed_note_parameters": 2,
+    "sharp_drop_delta": 1.0
+  },
+
+  "fairness": {
+    "_comment": "Not optional polish. These prevent the agent from penalising students for things that are not their performance.",
+    "accent_never_penalised": true,
+    "handwriting_never_affects_content_scores": true,
+    "minor_spelling_not_accuracy_failure": true,
+    "abstain_rather_than_score_low_on_thin_evidence": true,
+    "never_infer_activity_from_posture": true
+  }
+}

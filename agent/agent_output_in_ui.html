@@ -1,0 +1,191 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Output in Student Details</title><style>
+:root{--bg:#f4f5f7;--fg:#1c1917;--muted:#6d6862;--line:#dedbd7;--card:#fff;
+ --ai:#e8f6f0;--ai-line:#0d7a5f;--ed:#eef2fb;--ed-line:#2563eb;
+ --warn:#b45309;--warn-soft:#fdf1da;--pri:#2563eb;--na:#9a948d}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+ --bg:#151418;--fg:#ecebe7;--muted:#a29d97;--line:#35322e;--card:#1e1c21;
+ --ai:#0f2a22;--ai-line:#5fd3ac;--ed:#151d2e;--ed-line:#6f9bf5;
+ --warn:#f0b34a;--warn-soft:#382b11;--pri:#6f9bf5;--na:#6b6560}}
+:root[data-theme="dark"]{--bg:#151418;--fg:#ecebe7;--muted:#a29d97;--line:#35322e;
+ --card:#1e1c21;--ai:#0f2a22;--ai-line:#5fd3ac;--ed:#151d2e;--ed-line:#6f9bf5;
+ --warn:#f0b34a;--warn-soft:#382b11;--pri:#6f9bf5;--na:#6b6560}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);margin:0;font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:36px 20px 70px}
+h1{font-size:25px;margin:0 0 6px;letter-spacing:-.015em}
+.lede{color:var(--muted);margin:0 0 14px;font-size:14.5px;max-width:70ch}
+.note{background:var(--warn-soft);border:1px solid var(--warn);border-radius:9px;padding:13px 16px;font-size:13.5px;margin:0 0 26px}
+.note b{display:block;margin-bottom:3px}
+.row{background:var(--card);border:1px solid var(--line);border-radius:11px;margin:0 0 18px;overflow:hidden}
+.rhead{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;flex-wrap:wrap}
+.who{flex:1 1 190px;min-width:170px}.who h3{margin:0;font-size:16.5px}
+.who span{color:var(--muted);font-size:12.5px}
+.ratings{display:flex;gap:8px}
+.rt{text-align:center;border:1px solid var(--line);border-radius:8px;padding:5px 11px;min-width:56px}
+.rt b{display:block;font-size:17px;line-height:1.2}
+.rt span{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.rt.none b{color:var(--na)}
+.acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.st{font-size:11px;padding:3px 9px;border-radius:20px;border:1px solid var(--line);color:var(--muted)}
+.st.ok{color:var(--ai-line);border-color:var(--ai-line)}
+.st.pend{color:var(--warn);border-color:var(--warn)}
+button{font:inherit;font-size:12.5px;padding:5px 11px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+button.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+.ai{background:var(--ai);border-top:1px solid var(--line);border-left:4px solid var(--ai-line);padding:15px 18px}
+.ai.ed{background:var(--ed);border-left-color:var(--ed-line)}
+.ai-tag{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ai-line);margin-bottom:4px}
+.ai.ed .ai-tag{color:var(--ed-line)}
+.byline{font-size:11.5px;color:var(--muted);margin-bottom:9px}
+.byline.edited{color:var(--ed-line)}
+.fb-en{margin:0 0 7px;font-size:14.5px;border-radius:5px;padding:3px 5px;margin-left:-5px}
+.fb-hi{margin:0 0 7px;font-size:14.5px;color:var(--muted);border-radius:5px;padding:3px 5px;margin-left:-5px}
+.fb-en[contenteditable]:hover,.fb-hi[contenteditable]:hover{background:var(--card);outline:1px dashed var(--line)}
+.fb-en[contenteditable]:focus,.fb-hi[contenteditable]:focus{background:var(--card);outline:2px solid var(--pri)}
+.fb-en.action{color:var(--warn);font-weight:600}
+.editbar{display:flex;gap:7px;align-items:center;margin:10px 0 4px;flex-wrap:wrap}
+.hint{font-size:11.5px;color:var(--muted)}
+.orig{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:9px 12px;margin:10px 0;font-size:13px}
+.orig summary{cursor:pointer;font-size:12px;color:var(--muted);font-weight:600}
+.orig p{margin:8px 0 0;color:var(--muted)}
+.orig p.hi{font-size:13px}
+.learn{margin-top:9px;padding-top:8px;border-top:1px dashed var(--line);font-size:11.5px;color:var(--ed-line)}
+.teach{background:var(--card);border:1px dashed var(--line);border-radius:7px;padding:9px 12px;margin:10px 0;font-size:13px;color:var(--muted)}
+.teach span{display:block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;margin-bottom:3px;color:var(--fg)}
+.flags{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0}
+.f{font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--line);color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+.f.warn{border-color:var(--warn);color:var(--warn)}
+.f.ok{border-color:var(--ai-line);color:var(--ai-line)}
+.scores{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.sc{border:1px solid var(--line);border-radius:7px;padding:6px 9px;background:var(--card);min-width:105px;flex:1 1 105px;max-width:180px}
+.sc b{font-size:15px}
+.sc span{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.sc em{display:block;font-style:normal;font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35}
+.sc.na b{color:var(--na)}
+.why{padding:10px 18px;font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line)}
+
+.f.ovr{border-color:var(--ed-line);color:var(--ed-line)}
+.sc.ovr{border-color:var(--ed-line);border-width:2px}
+.sc b[contenteditable]{border-radius:4px;padding:0 3px;display:inline-block;min-width:16px}
+.sc b[contenteditable]:hover{outline:1px dashed var(--line)}
+.sc b[contenteditable]:focus{outline:2px solid var(--pri)}
+.sc i{display:block;font-style:normal;font-size:10px;color:var(--ed-line);margin-top:2px}
+.calib{background:var(--card);border:1px solid var(--ed-line);border-radius:7px;
+ padding:10px 13px;margin:10px 0;font-size:12.5px}
+.calib span{display:block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+ font-weight:700;color:var(--ed-line);margin-bottom:6px}
+.calib ul{margin:0 0 7px;padding-left:17px}
+.calib li{margin-bottom:3px}
+.calib p{margin:0;color:var(--muted);font-size:11.5px;line-height:1.5}
+</style></head><body><div class="wrap">
+<h1>What the agent actually outputs, in the Student Details page</h1>
+<p class="lede">Five submissions against DAY 12 &ndash; TASK 2. Every rating, sentence,
+flag and teacher note was produced by running the real scoring and referee code. Feedback
+text <em>and</em> scores are editable &mdash; click either to change it, as a teacher would.</p>
+<div class="note"><b>What is real and what is not</b>
+Ratings, bilingual wording, flags, teacher notes and all arithmetic are genuine output from
+<code>referee()</code>, <code>grade_submission()</code>, <code>edit_feedback()</code> and
+<code>override_score()</code>. The per-parameter judgements fed <em>in</em> are fixtures
+&mdash; no model has been called. Vivek's feedback was rewritten by a teacher; Vrendra's
+speed score was corrected by one.</div>
+
+    <div class="row">
+      <div class="rhead">
+        <div class="who"><h3>Vivek varman</h3><span>STU-118 · Everything in order</span></div>
+        <div class="ratings"><div class="rt"><b>4.0</b><span>video</span></div><div class="rt"><b>4.25</b><span>note</span></div><div class="rt"><b>4.12</b><span>overall</span></div></div>
+        <div class="acts"><span class="st ok">completed</span>
+          <button>Video</button><button>Handnote</button><button class="pri">Re-Verify</button></div>
+      </div>
+      <div class="ai ed">
+        <div class="ai-tag">Teacher feedback</div>
+        <div class="byline edited">Edited by <b>Mrs Sharma</b> · the student sees this</div><p class="fb-en" contenteditable="true">Well done Vivek — clear reading and a lovely calm voice. Look up at us between paragraphs next time.</p><p class="fb-hi" contenteditable="true">शाबाश विवेक — स्पष्ट पढ़ाई और बहुत शांत आवाज़। अगली बार पैराग्राफ़ के बीच हमारी ओर देखें।</p>
+        <div class="editbar"><button class="pri">Save</button>
+          <button>Revert to agent version</button>
+          <span class="hint">Click any feedback text or score to change it</span></div>
+        <details class="orig"><summary>What the agent originally wrote</summary>
+        <p>Good work — you read the whole article clearly and your tone was calm and encouraging. Next time, look up at the camera between paragraphs so it feels like you are speaking to the class.</p><p class="hi">अच्छा काम — आपने पूरा लेख स्पष्ट पढ़ा और आपका स्वर शांत और प्रोत्साहित करने वाला था। अगली बार पैराग्राफ़ के बीच कैमरे की ओर देखें।</p>
+        <div class="learn">Added to the style corpus — after 3 similar edits it becomes a
+        worked example in the agent's prompt. Wording only; it can never change a score.</div>
+        </details>
+        <div class="flags"><span class="f ok">module_confirmed_by_student</span><span class="f ok">feedback_edited_by_teacher (Mrs Sharma)</span></div>
+        <div class="scores"><div class="sc"><b contenteditable="true">4</b><span>confidence</span><em>Spoke steadily; only two long pauses.</em></div><div class="sc"><b contenteditable="true">4</b><span>vocabulary</span><em>9 of the 11 target words pronounced clearly.</em></div><div class="sc"><b contenteditable="true">5</b><span>tone</span><em>Calm and encouraging, as the module asks.</em></div><div class="sc"><b contenteditable="true">3</b><span>hand gesture</span><em>Hands visible but mostly still.</em></div><div class="sc"><b contenteditable="true">4</b><span>speed</span><em>About 108 words a minute; steady.</em></div></div><div class="scores"><div class="sc"><b contenteditable="true">5</b><span>completion</span><em>All 11 rows filled in.</em></div><div class="sc"><b contenteditable="true">4</b><span>accuracy</span><em>10 of 11 Hindi meanings match the key.</em></div><div class="sc"><b contenteditable="true">4</b><span>comprehension</span><em>Action points restated in own words.</em></div><div class="sc"><b contenteditable="true">4</b><span>presentation</span><em>Neat, ruled columns, one correction.</em></div></div>
+      </div>
+      <div class="why">Teacher rewrote the feedback. The agent&#x27;s wording is kept beside it, and the pair becomes a worked example the agent learns its style from.</div>
+    </div>
+    <div class="row">
+      <div class="rhead">
+        <div class="who"><h3>Khusi Rajak</h3><span>STU-204 · Uploaded under the wrong task</span></div>
+        <div class="ratings"><div class="rt"><b>4.0</b><span>video</span></div><div class="rt"><b>4.0</b><span>note</span></div><div class="rt none"><b>—</b><span>overall</span></div></div>
+        <div class="acts"><span class="st pend">needs action</span>
+          <button>Video</button><button>Handnote</button><button class="pri">Re-Verify</button></div>
+      </div>
+      <div class="ai">
+        <div class="ai-tag">AI feedback</div>
+        <div class="byline">Written by the agent · the student sees this</div><p class="fb-en" contenteditable="true">This looks like the homework for “DAY 12 - TASK 2 - Teacher English Speaking Training”, but it was uploaded under “DAY 13 - TASK 1 - Classroom Questions”. Your work has not been marked down — please ask your teacher to move it to the right task. We could still look at how you presented it — speaking confidently 4/5, your tone 4/5, your pace 4/5, how neatly you wrote 4/5.</p><p class="fb-hi" contenteditable="true">यह “DAY 12 - TASK 2 - Teacher English Speaking Training” का होमवर्क लगता है, लेकिन इसे “DAY 13 - TASK 1 - Classroom Questions” में अपलोड किया गया है। आपके अंक नहीं काटे गए हैं — कृपया अपने शिक्षक से इसे सही टास्क में ले जाने के लिए कहें। फिर भी हमने आपकी प्रस्तुति देखी — आत्मविश्वास से बोलना 4/5, आपका स्वर 4/5, आपकी गति 4/5, आपकी लिखावट की सफाई 4/5।</p>
+        <div class="editbar"><button class="pri">Save</button>
+          <button>Cancel</button>
+          <span class="hint">Click any feedback text or score to change it</span></div>
+        <div class="teach"><span>For the teacher</span>Uploaded under &#x27;DAY 13 - TASK 1 - Classroom Questions&#x27; but the student names &#x27;DAY 12 - TASK 2 - Teacher English Speaking Training&#x27; in the opening line. Likely the wrong slot rather than the wrong homework — move it and re-run rather than marking it down.</div>
+        <div class="flags"><span class="f">thin_note_evidence (1/1 assessed)</span><span class="f warn">wrong_task_uploaded — the student names &#x27;DAY 12 - TASK 2 - Teacher English Speaking Training&#x27; in the opening line; move it rather than marking it down</span></div>
+        <div class="scores"><div class="sc"><b contenteditable="true">4</b><span>confidence</span><em>Clear and unhesitating throughout.</em></div><div class="sc"><b contenteditable="true">4</b><span>tone</span><em>Warm and even.</em></div><div class="sc"><b contenteditable="true">4</b><span>speed</span><em>About 112 words a minute.</em></div></div><div class="scores"><div class="sc"><b contenteditable="true">4</b><span>presentation</span><em>Clearly written and well spaced.</em></div></div>
+      </div>
+      <div class="why">Named Day 12 but uploaded under Day 13. Content scores dropped, delivery kept, nothing marked down.</div>
+    </div>
+    <div class="row">
+      <div class="rhead">
+        <div class="who"><h3>Vrendra Tiwari</h3><span>STU-091 · Stopped halfway through</span></div>
+        <div class="ratings"><div class="rt"><b>4.5</b><span>video</span></div><div class="rt"><b>4.67</b><span>note</span></div><div class="rt"><b>4.58</b><span>overall</span></div></div>
+        <div class="acts"><span class="st ok">completed</span>
+          <button>Video</button><button>Handnote</button><button class="pri">Re-Verify</button></div>
+      </div>
+      <div class="ai">
+        <div class="ai-tag">AI feedback</div>
+        <div class="byline">Written by the agent · the student sees this</div><p class="fb-en" contenteditable="true">Lovely reading — calm, clear and well paced from the start. You covered about 52% of the article — next time, carry on to the end.</p><p class="fb-hi" contenteditable="true">बहुत अच्छा पढ़ा — शुरुआत से ही शांत, स्पष्ट और सही गति में। आपने लेख का लगभग 52% भाग पढ़ा — अगली बार पूरा पढ़ें।</p>
+        <div class="editbar"><button class="pri">Save</button>
+          <button>Cancel</button>
+          <span class="hint">Click any feedback text or score to change it</span></div>
+        <div class="calib"><span>Score corrected — feeds calibration</span><ul><li><b>video.speed</b>: agent 5 → teacher 4 · A little rushed in the middle section.</li></ul><p>Each correction is a teacher saying exactly where the agent was wrong and by how much. After 5 on a parameter, the report says whether the agent marks harder or softer than teachers. Nothing is applied automatically.</p></div>
+        <div class="flags"><span class="f ok">module_confirmed_by_student</span><span class="f">partial_coverage (52% of the module covered)</span><span class="f ovr">score_overridden_by_teacher (video.speed: 5 → 4, Mrs Sharma)</span></div>
+        <div class="scores"><div class="sc"><b contenteditable="true">5</b><span>confidence</span><em>Confident from the first sentence.</em></div><div class="sc"><b contenteditable="true">4</b><span>vocabulary</span><em>Every word reached was pronounced well.</em></div><div class="sc"><b contenteditable="true">5</b><span>tone</span><em>Calm and encouraging.</em></div><div class="sc ovr"><b contenteditable="true">4</b><span>speed</span><i>agent said 5 · Mrs Sharma</i><em>Set by Mrs Sharma. A little rushed in the middle section.</em></div></div><div class="scores"><div class="sc"><b contenteditable="true">5</b><span>completion</span><em>All 11 rows filled in.</em></div><div class="sc"><b contenteditable="true">5</b><span>accuracy</span><em>All Hindi meanings match the key.</em></div><div class="sc"><b contenteditable="true">4</b><span>presentation</span><em>Neat.</em></div></div>
+      </div>
+      <div class="why">Coverage is reported, not scored. The teacher also corrected one score — the agent&#x27;s value is kept and the pair feeds calibration.</div>
+    </div>
+    <div class="row">
+      <div class="rhead">
+        <div class="who"><h3>Vikash baiga</h3><span>STU-157 · No handwritten note uploaded</span></div>
+        <div class="ratings"><div class="rt"><b>4.0</b><span>video</span></div><div class="rt"><b>0.0</b><span>note</span></div><div class="rt"><b>2.0</b><span>overall</span></div></div>
+        <div class="acts"><span class="st pend">needs action</span>
+          <button>Video</button><button>Handnote</button><button class="pri">Re-Verify</button></div>
+      </div>
+      <div class="ai">
+        <div class="ai-tag">AI feedback</div>
+        <div class="byline">Written by the agent · the student sees this</div><p class="fb-en action">You did not upload your handwritten note. Please add it so your full work can be marked.</p>
+        <div class="editbar"><button class="pri">Save</button>
+          <button>Cancel</button>
+          <span class="hint">Click any feedback text or score to change it</span></div>
+        
+        <div class="flags"><span class="f warn">low_overall_rating (2.0)</span></div>
+        <div class="scores"><div class="sc"><b contenteditable="true">4</b><span>confidence</span><em>Steady throughout.</em></div><div class="sc"><b contenteditable="true">4</b><span>vocabulary</span><em>Target words clear.</em></div><div class="sc"><b contenteditable="true">4</b><span>tone</span><em>Warm.</em></div><div class="sc"><b contenteditable="true">4</b><span>speed</span><em>About 110 words a minute.</em></div></div>
+      </div>
+      <div class="why">Work not done scores 0 — the only route to a zero. Reversible: if the note arrives, the submission is graded again.</div>
+    </div>
+    <div class="row">
+      <div class="rhead">
+        <div class="who"><h3>Aafreen Bee</h3><span>STU-233 · Photo of the note is unreadable</span></div>
+        <div class="ratings"><div class="rt"><b>3.75</b><span>video</span></div><div class="rt none"><b>—</b><span>note</span></div><div class="rt"><b>3.75</b><span>overall</span></div></div>
+        <div class="acts"><span class="st pend">needs action</span>
+          <button>Video</button><button>Handnote</button><button class="pri">Re-Verify</button></div>
+      </div>
+      <div class="ai">
+        <div class="ai-tag">AI feedback</div>
+        <div class="byline">Written by the agent · the student sees this</div><p class="fb-en action">We could not read your note clearly. Please take the photo again in good light, with the whole page in frame.</p>
+        <div class="editbar"><button class="pri">Save</button>
+          <button>Cancel</button>
+          <span class="hint">Click any feedback text or score to change it</span></div>
+        
+        <div class="flags"><span class="f warn">note_not_evaluated (unreadable_image)</span></div>
+        <div class="scores"><div class="sc"><b contenteditable="true">4</b><span>confidence</span><em>Clear and steady.</em></div><div class="sc"><b contenteditable="true">3</b><span>vocabulary</span><em>Some words hesitant.</em></div><div class="sc"><b contenteditable="true">4</b><span>tone</span><em>Encouraging.</em></div><div class="sc"><b contenteditable="true">4</b><span>speed</span><em>About 106 words a minute.</em></div></div>
+      </div>
+      <div class="why">Our failure, not hers — no rating at all, never a 0. Contrast with Vikash above: the two must never be confused.</div>
+    </div></div></body></html>
