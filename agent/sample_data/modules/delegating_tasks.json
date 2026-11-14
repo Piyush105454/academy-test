@@ -1,0 +1,35 @@
+{
+  "_status": "NOT A REAL MODULE — DO NOT GRADE ANY STUDENT AGAINST THIS FILE",
+  "_provenance": {
+    "written_by": "Claude, not supplied by Wazir Education Society",
+    "why_it_is_unsafe": "The answer key was reverse-engineered from a student's own submitted note. Rows 1-10 are that student's answers copied verbatim, so comparing the student to this key is circular and will always score near 100%. Rows 11-15 had no answers to copy (the student's Hindi column had drifted a line and was self-corrected), so those meanings were supplied from Claude's own Hindi. Accuracy figures produced against this file are artifacts of provenance, not measurements.",
+    "rows_1_to_10": "copied from the student's note",
+    "rows_11_to_15": "invented by Claude",
+    "instruction_and_article": "invented by Claude; the real module 71-TS was never seen",
+    "replace_with": "the actual 71-TS module page from the portal — article text and the school's own Hindi meanings"
+  },
+  "module_id": "delegating_tasks",
+  "title": "Delegating Tasks - Time Management (PLACEHOLDER)",
+  "instruction": "Read the article aloud clearly. Write each key term with its Hindi meaning, then list the action points in your own words.",
+  "reference_content": "Empowering the Classroom: The Strength of Delegating Tasks. Delegation lets a teacher share responsibility, build student confidence, and create an inclusive classroom where every child is trusted with something that matters.",
+  "skill_type": "speaking_reading",
+  "expects_handwritten_note": true,
+  "eye_contact_expected": false,
+  "word_list": [
+    {"word": "Effectively",      "meaning": "प्रभावी ढंग से"},
+    {"word": "Environment",      "meaning": "वातावरण"},
+    {"word": "Delegation",       "meaning": "कार्य सौंपना"},
+    {"word": "Management",       "meaning": "प्रबंधन"},
+    {"word": "Overwhelming",     "meaning": "अत्यधिक"},
+    {"word": "Dedicated",        "meaning": "समर्पित"},
+    {"word": "Strategy",         "meaning": "रणनीति"},
+    {"word": "Responsibilities", "meaning": "जिम्मेदारियाँ"},
+    {"word": "Inclusive",        "meaning": "समावेशी"},
+    {"word": "Engagement",       "meaning": "जुड़ाव"},
+    {"word": "Synergy",          "meaning": "सहक्रिया"},
+    {"word": "Partnership",      "meaning": "साझेदारी"},
+    {"word": "Accountability",   "meaning": "जवाबदेही"},
+    {"word": "Administrative",   "meaning": "प्रशासनिक"},
+    {"word": "Empowered",        "meaning": "सशक्त"}
+  ]
+}

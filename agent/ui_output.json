@@ -1,0 +1,313 @@
+[
+  {
+    "edited_by": "Mrs Sharma",
+    "agent_en": "Good work — you read the whole article clearly and your tone was calm and encouraging. Next time, look up at the camera between paragraphs so it feels like you are speaking to the class.",
+    "agent_hi": "अच्छा काम — आपने पूरा लेख स्पष्ट पढ़ा और आपका स्वर शांत और प्रोत्साहित करने वाला था। अगली बार पैराग्राफ़ के बीच कैमरे की ओर देखें।",
+    "student": "Vivek varman",
+    "student_id": "STU-118",
+    "scenario": "Everything in order",
+    "explanation": "Teacher rewrote the feedback. The agent's wording is kept beside it, and the pair becomes a worked example the agent learns its style from.",
+    "video_rating": 4.0,
+    "note_rating": 4.25,
+    "overall": 4.12,
+    "incomplete": false,
+    "flags": [
+      "module_confirmed_by_student",
+      "feedback_edited_by_teacher (Mrs Sharma)"
+    ],
+    "feedback_en": "Well done Vivek — clear reading and a lovely calm voice. Look up at us between paragraphs next time.",
+    "feedback_hi": "शाबाश विवेक — स्पष्ट पढ़ाई और बहुत शांत आवाज़। अगली बार पैराग्राफ़ के बीच हमारी ओर देखें।",
+    "for_the_teacher": "",
+    "overrides": [],
+    "video_scores": [
+      {
+        "p": "confidence",
+        "v": 4,
+        "why": "Spoke steadily; only two long pauses.",
+        "assessed": true
+      },
+      {
+        "p": "vocabulary",
+        "v": 4,
+        "why": "9 of the 11 target words pronounced clearly.",
+        "assessed": true
+      },
+      {
+        "p": "tone",
+        "v": 5,
+        "why": "Calm and encouraging, as the module asks.",
+        "assessed": true
+      },
+      {
+        "p": "hand_gesture",
+        "v": 3,
+        "why": "Hands visible but mostly still.",
+        "assessed": true
+      },
+      {
+        "p": "speed",
+        "v": 4,
+        "why": "About 108 words a minute; steady.",
+        "assessed": true
+      }
+    ],
+    "note_scores": [
+      {
+        "p": "completion",
+        "v": 5,
+        "why": "All 11 rows filled in.",
+        "assessed": true
+      },
+      {
+        "p": "accuracy",
+        "v": 4,
+        "why": "10 of 11 Hindi meanings match the key.",
+        "assessed": true
+      },
+      {
+        "p": "comprehension",
+        "v": 4,
+        "why": "Action points restated in own words.",
+        "assessed": true
+      },
+      {
+        "p": "presentation",
+        "v": 4,
+        "why": "Neat, ruled columns, one correction.",
+        "assessed": true
+      }
+    ],
+    "video_message": "",
+    "note_message": ""
+  },
+  {
+    "edited_by": "",
+    "agent_en": "",
+    "agent_hi": "",
+    "student": "Khusi Rajak",
+    "student_id": "STU-204",
+    "scenario": "Uploaded under the wrong task",
+    "explanation": "Named Day 12 but uploaded under Day 13. Content scores dropped, delivery kept, nothing marked down.",
+    "video_rating": 4.0,
+    "note_rating": 4.0,
+    "overall": null,
+    "incomplete": true,
+    "flags": [
+      "thin_note_evidence (1/1 assessed)",
+      "wrong_task_uploaded — the student names 'DAY 12 - TASK 2 - Teacher English Speaking Training' in the opening line; move it rather than marking it down"
+    ],
+    "feedback_en": "This looks like the homework for “DAY 12 - TASK 2 - Teacher English Speaking Training”, but it was uploaded under “DAY 13 - TASK 1 - Classroom Questions”. Your work has not been marked down — please ask your teacher to move it to the right task. We could still look at how you presented it — speaking confidently 4/5, your tone 4/5, your pace 4/5, how neatly you wrote 4/5.",
+    "feedback_hi": "यह “DAY 12 - TASK 2 - Teacher English Speaking Training” का होमवर्क लगता है, लेकिन इसे “DAY 13 - TASK 1 - Classroom Questions” में अपलोड किया गया है। आपके अंक नहीं काटे गए हैं — कृपया अपने शिक्षक से इसे सही टास्क में ले जाने के लिए कहें। फिर भी हमने आपकी प्रस्तुति देखी — आत्मविश्वास से बोलना 4/5, आपका स्वर 4/5, आपकी गति 4/5, आपकी लिखावट की सफाई 4/5।",
+    "for_the_teacher": "Uploaded under 'DAY 13 - TASK 1 - Classroom Questions' but the student names 'DAY 12 - TASK 2 - Teacher English Speaking Training' in the opening line. Likely the wrong slot rather than the wrong homework — move it and re-run rather than marking it down.",
+    "overrides": [],
+    "video_scores": [
+      {
+        "p": "confidence",
+        "v": 4,
+        "why": "Clear and unhesitating throughout.",
+        "assessed": true
+      },
+      {
+        "p": "tone",
+        "v": 4,
+        "why": "Warm and even.",
+        "assessed": true
+      },
+      {
+        "p": "speed",
+        "v": 4,
+        "why": "About 112 words a minute.",
+        "assessed": true
+      }
+    ],
+    "note_scores": [
+      {
+        "p": "presentation",
+        "v": 4,
+        "why": "Clearly written and well spaced.",
+        "assessed": true
+      }
+    ],
+    "video_message": "",
+    "note_message": ""
+  },
+  {
+    "edited_by": "",
+    "agent_en": "",
+    "agent_hi": "",
+    "student": "Vrendra Tiwari",
+    "student_id": "STU-091",
+    "scenario": "Stopped halfway through",
+    "explanation": "Coverage is reported, not scored. The teacher also corrected one score — the agent's value is kept and the pair feeds calibration.",
+    "video_rating": 4.5,
+    "note_rating": 4.67,
+    "overall": 4.58,
+    "incomplete": false,
+    "flags": [
+      "module_confirmed_by_student",
+      "partial_coverage (52% of the module covered)",
+      "score_overridden_by_teacher (video.speed: 5 → 4, Mrs Sharma)"
+    ],
+    "feedback_en": "Lovely reading — calm, clear and well paced from the start. You covered about 52% of the article — next time, carry on to the end.",
+    "feedback_hi": "बहुत अच्छा पढ़ा — शुरुआत से ही शांत, स्पष्ट और सही गति में। आपने लेख का लगभग 52% भाग पढ़ा — अगली बार पूरा पढ़ें।",
+    "for_the_teacher": "",
+    "overrides": [
+      {
+        "artifact": "video",
+        "parameter": "speed",
+        "agent_score": 5,
+        "agent_reason": "About 104 words a minute; well paced.",
+        "teacher_score": 4,
+        "edited_by": "Mrs Sharma",
+        "reason": "A little rushed in the middle section.",
+        "edited_at": "2026-09-07T14:51:27+00:00"
+      }
+    ],
+    "video_scores": [
+      {
+        "p": "confidence",
+        "v": 5,
+        "why": "Confident from the first sentence.",
+        "assessed": true
+      },
+      {
+        "p": "vocabulary",
+        "v": 4,
+        "why": "Every word reached was pronounced well.",
+        "assessed": true
+      },
+      {
+        "p": "tone",
+        "v": 5,
+        "why": "Calm and encouraging.",
+        "assessed": true
+      },
+      {
+        "p": "speed",
+        "v": 4,
+        "why": "Set by Mrs Sharma. A little rushed in the middle section.",
+        "assessed": true
+      }
+    ],
+    "note_scores": [
+      {
+        "p": "completion",
+        "v": 5,
+        "why": "All 11 rows filled in.",
+        "assessed": true
+      },
+      {
+        "p": "accuracy",
+        "v": 5,
+        "why": "All Hindi meanings match the key.",
+        "assessed": true
+      },
+      {
+        "p": "presentation",
+        "v": 4,
+        "why": "Neat.",
+        "assessed": true
+      }
+    ],
+    "video_message": "",
+    "note_message": ""
+  },
+  {
+    "edited_by": "",
+    "agent_en": "",
+    "agent_hi": "",
+    "student": "Vikash baiga",
+    "student_id": "STU-157",
+    "scenario": "No handwritten note uploaded",
+    "explanation": "Work not done scores 0 — the only route to a zero. Reversible: if the note arrives, the submission is graded again.",
+    "video_rating": 4.0,
+    "note_rating": 0.0,
+    "overall": 2.0,
+    "incomplete": true,
+    "flags": [
+      "low_overall_rating (2.0)"
+    ],
+    "feedback_en": "",
+    "feedback_hi": "",
+    "for_the_teacher": "",
+    "overrides": [],
+    "video_scores": [
+      {
+        "p": "confidence",
+        "v": 4,
+        "why": "Steady throughout.",
+        "assessed": true
+      },
+      {
+        "p": "vocabulary",
+        "v": 4,
+        "why": "Target words clear.",
+        "assessed": true
+      },
+      {
+        "p": "tone",
+        "v": 4,
+        "why": "Warm.",
+        "assessed": true
+      },
+      {
+        "p": "speed",
+        "v": 4,
+        "why": "About 110 words a minute.",
+        "assessed": true
+      }
+    ],
+    "note_scores": [],
+    "video_message": "",
+    "note_message": "You did not upload your handwritten note. Please add it so your full work can be marked."
+  },
+  {
+    "edited_by": "",
+    "agent_en": "",
+    "agent_hi": "",
+    "student": "Aafreen Bee",
+    "student_id": "STU-233",
+    "scenario": "Photo of the note is unreadable",
+    "explanation": "Our failure, not hers — no rating at all, never a 0. Contrast with Vikash above: the two must never be confused.",
+    "video_rating": 3.75,
+    "note_rating": null,
+    "overall": 3.75,
+    "incomplete": true,
+    "flags": [
+      "note_not_evaluated (unreadable_image)"
+    ],
+    "feedback_en": "",
+    "feedback_hi": "",
+    "for_the_teacher": "",
+    "overrides": [],
+    "video_scores": [
+      {
+        "p": "confidence",
+        "v": 4,
+        "why": "Clear and steady.",
+        "assessed": true
+      },
+      {
+        "p": "vocabulary",
+        "v": 3,
+        "why": "Some words hesitant.",
+        "assessed": true
+      },
+      {
+        "p": "tone",
+        "v": 4,
+        "why": "Encouraging.",
+        "assessed": true
+      },
+      {
+        "p": "speed",
+        "v": 4,
+        "why": "About 106 words a minute.",
+        "assessed": true
+      }
+    ],
+    "note_scores": [],
+    "video_message": "",
+    "note_message": "We could not read your note clearly. Please take the photo again in good light, with the whole page in frame."
+  }
+]

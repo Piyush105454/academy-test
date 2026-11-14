@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engineer Briefing — Grading Agent</title>
+<style>
+  :root{
+    --bg:#faf9f7; --fg:#1c1917; --muted:#6b6560; --line:#d9d5d1; --card:#ffffff;
+    --accent:#b45309; --accent-soft:#fdf0d5; --shield:#0d7a5f; --shield-soft:#d9f2e9;
+    --stop:#b91c1c; --code:#f1efec;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#16151a; --fg:#eeebe6; --muted:#a5a09a; --line:#37342f; --card:#201e24;
+      --accent:#f0b34a; --accent-soft:#3a2c10; --shield:#5fd3ac; --shield-soft:#0d2b23;
+      --stop:#f28e84; --code:#262329;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#16151a; --fg:#eeebe6; --muted:#a5a09a; --line:#37342f; --card:#201e24;
+    --accent:#f0b34a; --accent-soft:#3a2c10; --shield:#5fd3ac; --shield-soft:#0d2b23;
+    --stop:#f28e84; --code:#262329;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--fg);margin:0;
+       font:16px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:40px 24px 80px}
+  .top{margin-bottom:12px}
+  h1{font-size:28px;margin:0 0 4px;letter-spacing:-.015em}
+  .lede{color:var(--muted);margin:0;font-size:15px}
+  .slide{background:var(--card);border:1px solid var(--line);border-radius:12px;
+         padding:26px 28px;margin:22px 0}
+  .num{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.09em;
+       color:var(--accent);background:var(--accent-soft);padding:3px 9px;
+       border-radius:20px;margin-bottom:10px}
+  .slide h2{font-size:21px;margin:0 0 8px;letter-spacing:-.01em}
+  .slide .key{color:var(--muted);font-size:14.5px;margin:0 0 16px}
+  p{margin:0 0 12px}
+  ul{margin:0 0 12px;padding-left:20px}
+  li{margin:0 0 7px}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:13px;
+       background:var(--code);padding:1px 5px;border-radius:3px}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;
+      padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.55;margin:0 0 14px}
+  pre code{background:none;padding:0}
+  .tbl-wrap{overflow-x:auto;margin:6px 0 14px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:520px}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:650}
+  .shield{border-left:3px solid var(--shield);background:var(--shield-soft);
+          padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0;font-size:14px}
+  .warn{border-left:3px solid var(--stop);padding:2px 0 2px 15px;margin:14px 0;
+        font-size:14px;color:var(--muted)}
+  .warn strong{color:var(--fg)}
+  figure{margin:4px 0 14px}
+  figure svg{max-width:100%;height:auto;display:block}
+  .box{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+  .box-s{fill:var(--shield-soft);stroke:var(--shield);stroke-width:2}
+  .t{fill:var(--fg);font-size:12.5px;font-weight:650}
+  .d{fill:var(--muted);font-size:11px}
+  .arw{stroke:var(--fg);stroke-width:1.5;fill:none}
+  text{font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="top">
+  <h1>Grading agent — engineer briefing</h1>
+  <p class="lede">Four things to know before you wire it into the portal. 212 tests, all
+  passing. Full detail: <em>Engineer-Guide-Portal-Integration</em> in the wiki.</p>
+</div>
+
+<!-- 1 -->
+<div class="slide">
+  <span class="num">POINT 1</span>
+  <h2>The model scores. Code decides what reaches a child.</h2>
+  <p class="key">Two layers, deliberately separate.</p>
+
+  <figure>
+  <svg viewBox="0 0 840 130" role="img" aria-label="Tools feed the agent, the agent produces an evaluation, the referee enforces guarantees, then the grade is published to the portal.">
+    <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+    <rect class="box" x="4" y="34" width="150" height="62" rx="8"/>
+    <text class="t" x="20" y="60">8 tools</text>
+    <text class="d" x="20" y="79">module, transcript, frames</text>
+    <line class="arw" x1="154" y1="65" x2="192" y2="65" marker-end="url(#a)"/>
+    <rect class="box" x="194" y="34" width="180" height="62" rx="8"/>
+    <text class="t" x="212" y="60">agent (LLM)</text>
+    <text class="d" x="212" y="79">decides the scores</text>
+    <line class="arw" x1="374" y1="65" x2="412" y2="65" marker-end="url(#a)"/>
+    <rect class="box-s" x="414" y="26" width="212" height="78" rx="8"/>
+    <text class="t" x="432" y="52">referee()</text>
+    <text class="d" x="432" y="71">enforces the guarantees</text>
+    <text class="d" x="432" y="88">whatever the model returns</text>
+    <line class="arw" x1="626" y1="65" x2="664" y2="65" marker-end="url(#a)"/>
+    <rect class="box" x="666" y="34" width="170" height="62" rx="8"/>
+    <text class="t" x="684" y="60">portal</text>
+    <text class="d" x="684" y="79">Student Details row</text>
+  </svg>
+  </figure>
+
+  <p>The referee does <strong>not</strong> second-guess the model's scores. It makes a
+  fixed set of rules hold no matter what comes back — which is the only way they are
+  guarantees rather than hopes about a prompt.</p>
+  <div class="warn"><strong>Rule of thumb:</strong> if you're about to add a sentence to
+  the prompt to stop something bad, it probably belongs in the referee. Prompts drift
+  between model versions. The referee doesn't.</div>
+</div>
+
+<!-- 2 -->
+<div class="slide">
+  <span class="num">POINT 2</span>
+  <h2>You implement four Protocols. Nothing else.</h2>
+  <p class="key">Structural typing — no imports from us, no subclassing.</p>
+<pre><code>class PortalSource:                      # no base class
+    def pending_submissions(self): ...
+    def load_module(self, module_id): ...</code></pre>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th style="width:30%">Protocol</th><th>Job</th></tr></thead>
+    <tbody>
+      <tr><td><code>SubmissionSource</code></td><td>Pull submissions and modules from the portal</td></tr>
+      <tr><td><code>ResultSink</code></td><td>Write the grade back to the Student Details row</td></tr>
+      <tr><td><code>StudentLifecycle</code></td><td>Called when a student leaves. <strong>Not optional</strong> — erasure that depends on someone remembering isn't a right</td></tr>
+      <tr><td><code>Transcriber</code></td><td>Optional. Only if you replace Whisper</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Delete <code>sample_data/modules/</code> once the portal is wired. A stale local
+  module that silently shadows the portal is how a class gets graded against last term's
+  word list.</p>
+</div>
+
+<!-- 3 -->
+<div class="slide">
+  <span class="num">POINT 3</span>
+  <h2>Binding is the one to get right first.</h2>
+  <p class="key">A wrong score is recoverable. A wrong binding is not.</p>
+  <p>If Vivek's video is graded beside Khusi's note, both get plausible feedback about work
+  they never did, and nothing in the text reveals it. At 35–40 students across 6 periods
+  that's ~240 bindings a day.</p>
+<pre><code>submission = bind([
+    ArtifactRef(submission_id="s-4821", student_id="STU-118",
+                module_id="day12_task2_english", kind="video", path=v),
+    ArtifactRef(submission_id="s-4821", student_id="STU-118",
+                module_id="day12_task2_english", kind="note",  path=n),
+])</code></pre>
+  <p>Identifiers travel <em>with the file</em>, from the portal row — never from a
+  filename. <code>WhatsApp Video 2026-08-30 at 7.15.37 AM.mp4</code> carries no student
+  and no module.</p>
+  <div class="warn"><strong>Let <code>BindingError</code> raise.</strong> Do not catch and
+  continue. A swallowed exception here is the failure nobody ever notices.</div>
+</div>
+
+<!-- 4 -->
+<div class="slide">
+  <span class="num">POINT 4</span>
+  <h2>Responsible AI is code, not a policy document.</h2>
+  <p class="key">Each rule below has tests. Breaking one fails the suite.</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th style="width:40%">Rule</th><th>What it prevents</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Consent before the file opens</strong></td><td>Grading a child nobody agreed to</td></tr>
+      <tr><td><strong>Coverage checked before scoring</strong></td><td>Marks deducted for content we never actually heard</td></tr>
+      <tr><td><strong>Wrong slot ≠ wrong work</strong></td><td>Telling a child their correct homework was wrong</td></tr>
+      <tr><td><strong>Missing ≠ unreadable</strong></td><td>Our OCR failure becoming the student's 0</td></tr>
+      <tr><td><strong>Abstentions never zeroed or clamped</strong></td><td>"Couldn't judge" silently becoming "did badly"</td></tr>
+      <tr><td><strong>Every score cites evidence</strong></td><td>A number nobody can question or appeal</td></tr>
+      <tr><td><strong>Forbidden-inference scan</strong></td><td>Judgements about ability, effort, family, caste, religion</td></tr>
+      <tr><td><strong>Profiles bounded &amp; non-comparative</strong></td><td>A permanent file on a child; ranking against classmates</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="shield"><strong>The one that keeps being proved right.</strong> The
+  forbidden-inference scanner is crude substring matching. During this week's verification
+  pass, <em>"probably from a home without books"</em> and <em>"seems uninterested"</em>
+  both passed it cleanly — two of the eight banned categories, straight through. Both are
+  now caught. <strong>The phrasing that gets through is never the phrasing you thought
+  of</strong>, which is the argument for scanning at all rather than trusting the prompt.
+  When you see one slip past, add it.</div>
+
+  <div class="warn"><strong>Before this grades anyone:</strong> the thresholds are
+  reasoned, not measured — 0.85 Devanagari similarity, 10%/25%/40-word relevance. A
+  teacher marks 10 real submissions, we compare, we adjust. Until then the guarantees are
+  solid and the numbers are guesses.</div>
+</div>
+
+</div>
+</body>
+</html>

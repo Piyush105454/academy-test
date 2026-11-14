@@ -1,0 +1,30 @@
+{
+  "_comment": "Silent video — the microphone was off. Must produce NO video rating and a re-upload request, never a low score.",
+  "submission_id": "sub-002",
+  "student_id": "STUDENT-B",
+  "module_id": "day12_task2_english",
+  "submitted_at": "2026-05-09",
+
+  "video_evidence": {
+    "duration_seconds": 68.0,
+    "sampled_frame_count": 6,
+    "hands_visible_in_frames": 3,
+    "transcript": null
+  },
+
+  "note_evidence": {
+    "rows_expected": 8,
+    "rows_filled": 7,
+    "legible": true,
+    "written_rows": {
+      "Fear": "डर",
+      "Confidence": "आत्मविश्वास",
+      "Pronunciation": "उच्चारण",
+      "Judgment": "निर्णय",
+      "Environment": "वातावरण",
+      "Bravery": "साहस",
+      "Criticism": "आलोचना"
+    },
+    "action_points": ["Encourage students to try", "Correct gently"]
+  }
+}

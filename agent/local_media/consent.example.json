@@ -1,0 +1,15 @@
+{
+  "_comment": "Copy to consent.json and fill in as guardian permission is collected. Record only that consent exists and when - never names, signatures or contact details.",
+  "STUDENT-R1": {
+    "granted": true,
+    "recorded_on": "2026-08-20",
+    "scope": "evaluation_only",
+    "note": "Signed consent form held by the school office"
+  },
+  "STUDENT-R2": {
+    "granted": false,
+    "recorded_on": "",
+    "scope": "evaluation_only",
+    "note": "Form sent home, not yet returned"
+  }
+}
