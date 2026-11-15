@@ -268,6 +268,156 @@ def download_from_drive(file_id: str, dest: str):
     raise RuntimeError(f"All download methods failed: {'; '.join(reasons)}")
 
 
+def download_from_sharepoint(url: str, dest: str):
+    """
+    Download a file or item from a Microsoft SharePoint or OneDrive link.
+    Supports:
+    1. Microsoft Graph API with Azure App Registration (for organization-restricted WES links).
+    2. Direct file download with &download=1 (for public/open sharing links).
+    """
+    import base64
+    import requests
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+    }
+
+    # METHOD 1: Microsoft Graph API if Azure credentials are configured
+    tenant_id = os.environ.get("AZURE_TENANT_ID") or "8de7d318-1a4e-4787-b5a5-74f02871f732"
+    client_id = os.environ.get("AZURE_CLIENT_ID")
+    client_secret = os.environ.get("AZURE_CLIENT_SECRET")
+
+    if client_id and client_secret:
+        try:
+            print("Attempting SharePoint download via Microsoft Graph API...")
+            token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+            token_resp = requests.post(token_url, data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "scope": "https://graph.microsoft.com/.default",
+                "grant_type": "client_credentials"
+            }, timeout=30)
+            token_resp.raise_for_status()
+            access_token = token_resp.json().get("access_token")
+
+            if access_token:
+                # Microsoft Graph API allows resolving sharing links using base64 URL encoding
+                b64 = base64.urlsafe_b64encode(url.encode("utf-8")).decode("utf-8").rstrip("=")
+                share_token = f"u!{b64}"
+                graph_headers = {"Authorization": f"Bearer {access_token}"}
+
+                # Get item metadata
+                item_url = f"https://graph.microsoft.com/v1.0/shares/{share_token}/driveItem"
+                item_resp = requests.get(item_url, headers=graph_headers, timeout=30)
+                
+                if item_resp.status_code == 200:
+                    item_data = item_resp.json()
+                    # If it's a folder (:f:/ link), find the file inside
+                    if "folder" in item_data:
+                        children_url = f"{item_url}/children"
+                        child_resp = requests.get(children_url, headers=graph_headers, timeout=30)
+                        if child_resp.status_code == 200:
+                            children = child_resp.json().get("value", [])
+                            target_item = None
+                            for c in children:
+                                cname = c.get("name", "").lower()
+                                if any(ext in cname for ext in [".mp4", ".mov", ".mkv", ".webm", ".pdf", ".jpg", ".jpeg", ".png"]):
+                                    target_item = c
+                                    break
+                            if not target_item and children:
+                                target_item = children[0]
+                            if target_item:
+                                download_url = target_item.get("@microsoft.graph.downloadUrl")
+                                if download_url:
+                                    dl_r = requests.get(download_url, stream=True, timeout=120)
+                                    dl_r.raise_for_status()
+                                    with open(dest, "wb") as f:
+                                        for chunk in dl_r.iter_content(chunk_size=32768):
+                                            if chunk:
+                                                f.write(chunk)
+                                    if os.path.exists(dest) and os.path.getsize(dest) > 1000:
+                                        print(f"Graph API folder child download OK ({os.path.getsize(dest)} bytes)")
+                                        return
+                    else:
+                        download_url = item_data.get("@microsoft.graph.downloadUrl") or f"{item_url}/content"
+                        dl_r = requests.get(download_url, headers=graph_headers, stream=True, timeout=120)
+                        dl_r.raise_for_status()
+                        with open(dest, "wb") as f:
+                            for chunk in dl_r.iter_content(chunk_size=32768):
+                                if chunk:
+                                    f.write(chunk)
+                        if os.path.exists(dest) and os.path.getsize(dest) > 1000:
+                            print(f"Graph API file download OK ({os.path.getsize(dest)} bytes)")
+                            return
+        except Exception as e:
+            print(f"Warning: Microsoft Graph API download error: {e}")
+
+    # METHOD 2: Direct download via &download=1 (for public sharing links)
+    try:
+        print("Attempting direct SharePoint download (?download=1)...")
+        if "download=1" not in url:
+            sep = "&" if "?" in url else "?"
+            dl_url = f"{url}{sep}download=1"
+        else:
+            dl_url = url
+
+        session = requests.Session()
+        resp = session.get(dl_url, headers=headers, stream=True, allow_redirects=True, timeout=120)
+        
+        if "login.microsoftonline.com" in resp.url or "login.live.com" in resp.url:
+            raise PermissionError(
+                "SharePoint link requires Microsoft 365 organization login. "
+                "Please configure AZURE_CLIENT_ID and AZURE_CLIENT_SECRET, or share via Google Drive."
+            )
+        
+        resp.raise_for_status()
+        with open(dest, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=32768):
+                if chunk:
+                    f.write(chunk)
+
+        if os.path.exists(dest) and os.path.getsize(dest) > 5000:
+            print(f"Direct SharePoint download OK ({os.path.getsize(dest)} bytes)")
+            return
+        elif os.path.exists(dest):
+            os.remove(dest)
+    except Exception as e:
+        print(f"Direct SharePoint download failed: {e}")
+        if os.path.exists(dest):
+            os.remove(dest)
+        raise
+
+
+def download_artifact(url: str, dest: str):
+    """
+    Unified media downloader supporting Google Drive, Microsoft SharePoint,
+    and direct HTTP/HTTPS URLs.
+    """
+    if not url:
+        raise ValueError("Empty URL provided")
+
+    url_lower = url.lower()
+    if "drive.google.com" in url_lower:
+        file_id = extract_file_id(url)
+        if not file_id:
+            raise ValueError(f"Could not extract Google Drive file ID from {url}")
+        return download_from_drive(file_id, dest)
+    elif "sharepoint.com" in url_lower or "1drv.ms" in url_lower:
+        return download_from_sharepoint(url, dest)
+    else:
+        import requests
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        r = requests.get(url, headers=headers, stream=True, timeout=120)
+        r.raise_for_status()
+        with open(dest, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=32768):
+                if chunk:
+                    f.write(chunk)
+
+
 @app.route('/health', methods=['GET'])
 def health():
     from grading_agent.llm_config import describe
@@ -277,6 +427,9 @@ def health():
         "drive_service_account_configured": bool(
             os.environ.get("GOOGLE_SERVICE_ACCOUNT_EMAIL") and
             os.environ.get("GOOGLE_PRIVATE_KEY")),
+        "sharepoint_graph_configured": bool(
+            os.environ.get("AZURE_CLIENT_ID") and
+            os.environ.get("AZURE_CLIENT_SECRET")),
         "groq_whisper_configured": bool(os.environ.get("GROQ_API_KEY")),
         "llm": describe(),
     })
@@ -290,7 +443,7 @@ def grade_submission():
         "id": "row uuid",
         "student_id": "student uuid",
         "task_id": "task identifier",
-        "submission_link": "https://drive.google.com/file/d/...",
+        "submission_link": "https://drive.google.com/... or https://wesfoundationorg.sharepoint.com/...",
         "task_name": "Day 12 Task 2",         (optional, from tasks table join)
         "task_description": "Read and write...(optional, from tasks table join)
     }
@@ -313,12 +466,9 @@ def grade_submission():
 
     video_url, note_url = parse_submission_artifacts(raw_submission_link, raw_submission_types)
 
-    video_file_id = extract_file_id(video_url) if video_url else None
-    note_file_id = extract_file_id(note_url) if note_url else None
-
-    if not video_file_id and not note_file_id:
+    if not video_url and not note_url:
         return jsonify({
-            "error": f"No valid Google Drive URL found in submission_link: {raw_submission_link}"
+            "error": f"No valid media URL found in submission_link: {raw_submission_link}"
         }), 400
 
     # 1. Deduplication guard: reject identical concurrent requests
@@ -354,27 +504,27 @@ def grade_submission():
             video_path = None
 
             # 1. Download Note if present
-            if note_file_id:
+            if note_url:
                 note_dest = os.path.join(temp_dir, "note_upload")
                 try:
-                    print(f"Downloading student note (ID: {note_file_id})...")
-                    download_from_drive(note_file_id, note_dest)
+                    print(f"Downloading student note from: {note_url}...")
+                    download_artifact(note_url, note_dest)
                     note_path = note_dest
                 except Exception as e:
-                    print(f"Warning: Failed to download note {note_file_id}: {e}")
+                    print(f"Warning: Failed to download note from {note_url}: {e}")
 
             # 2. Download Video if present
-            if video_file_id:
+            if video_url:
                 video_dest = os.path.join(temp_dir, "video_upload.mp4")
                 try:
-                    print(f"Downloading student video (ID: {video_file_id})...")
-                    download_from_drive(video_file_id, video_dest)
+                    print(f"Downloading student video from: {video_url}...")
+                    download_artifact(video_url, video_dest)
                     video_path = video_dest
                 except Exception as e:
-                    print(f"Warning: Failed to download video {video_file_id}: {e}")
+                    print(f"Warning: Failed to download video from {video_url}: {e}")
 
             if not note_path and not video_path:
-                return jsonify({"error": "Failed to download both video and note from Google Drive"}), 500
+                return jsonify({"error": "Failed to download media artifacts (Google Drive / SharePoint failed or restricted)"}), 500
 
             # Build the Module from the webhook/request payload
             task_name = row_data.get('task_name', 'Student Assignment')

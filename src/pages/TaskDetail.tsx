@@ -416,6 +416,37 @@ export default function TaskDetail() {
         return;
       }
 
+      const agentUrl = (import.meta.env.VITE_AI_AGENT_URL as string) || "";
+      if (agentUrl) {
+        toast.info("Sending grading request to AI Agent...");
+        try {
+          const resp = await fetch(`${agentUrl.replace(/\/$/, '')}/api/grade`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: task.id,
+              student_id: task.student_id,
+              task_id: taskGroup?.task_id || "default",
+              submission_link: task.submission_link,
+              submission_types: task.submission_types,
+              task_name: taskGroup?.task_name,
+              task_description: taskGroup?.task_description
+            })
+          });
+
+          if (resp.ok) {
+            toast.success("AI grading complete! Refreshing...");
+            await fetchTaskDetail();
+            return;
+          } else {
+            const errData = await resp.json().catch(() => ({}));
+            toast.error("AI Agent error: " + (errData.error || errData.message || resp.statusText));
+          }
+        } catch (fetchErr: any) {
+          console.warn("Direct agent fetch failed, falling back to Supabase update:", fetchErr);
+        }
+      }
+
       toast.info("Triggering AI via Supabase...");
       
       const { error } = await supabase
